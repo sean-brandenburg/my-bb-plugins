@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiffThreads, localCommentState, threadIsOpen, threadKeyActions } from "./lib/app/comments/threads";
 import { buildFileTree } from "./lib/app/file-tree/build-file-tree";
+import { statusMark } from "./lib/app/file-status";
 import { activeReviews, distinctFindings, filterFindings, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
 import { isGeneratedFile } from "./lib/app/generated";
 import { riskByPath } from "./lib/app/risk";
@@ -368,6 +369,17 @@ describe("enclosingDefinition", () => {
 function file(path: string, additions = 1, deletions = 0, vendored = false): DiffFile {
   return { path, previousPath: null, status: "modified", additions, deletions, patch: null, vendored };
 }
+
+describe("statusMark", () => {
+  it("marks added, deleted, renamed, and copied files, and leaves modifications plain", () => {
+    const marks = ["added", "removed", "renamed", "copied", "modified", "changed"].map((status) => statusMark({ ...file("a.ts"), status })?.letter ?? null);
+    expect(marks).toEqual(["A", "D", "R", "C", null, null]);
+  });
+
+  it("names where a rename came from", () => {
+    expect(statusMark({ ...file("b.ts"), status: "renamed", previousPath: "a.ts" })?.label).toBe("Renamed from a.ts");
+  });
+});
 
 describe("buildFileTree", () => {
   it("nests by directory, folds single-child chains, sorts, and sums stats", () => {
