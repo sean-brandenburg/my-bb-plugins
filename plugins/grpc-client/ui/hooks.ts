@@ -38,6 +38,26 @@ export function useDismiss(root: RefObject<HTMLElement | null>, open: boolean, o
   }, [root, open, onOpenChange]);
 }
 
+const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+
+/**
+ * Makes a panel inert while it plays its exit, first handing focus inside it
+ * back to the trigger (the first focusable in `root` outside the panel).
+ * `inert` is set here rather than in JSX so focus moves before inert would
+ * drop it to the body.
+ */
+export function useInertWhileClosing(root: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>, closing: boolean): void {
+  useLayoutEffect(() => {
+    const node = panel.current;
+    if (node === null) return;
+    if (closing && node.contains(document.activeElement)) {
+      const trigger = [...(root.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])].find((element) => !node.contains(element));
+      trigger?.focus();
+    }
+    node.inert = closing;
+  }, [root, panel, closing]);
+}
+
 interface ServiceData {
   services: ServiceInfo[];
   state: DescriptorState;

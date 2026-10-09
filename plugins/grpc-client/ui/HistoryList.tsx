@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, EntranceScope } from "bb-motion";
+import { cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, EntranceScope, usePresenceList } from "bb-motion";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { HistoryEntry, rpcContract } from "../server/rpc-contract";
 import { CHANGED_CHANNEL, errorMessage } from "../shared/common";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { PresenceItem } from "./presence";
+import { PresenceRow } from "./presence";
 
 const HISTORY_LIST_LIMIT = 200;
 
@@ -35,8 +35,9 @@ export function HistoryList({ selectedId, onOpen }: { selectedId: number | null;
       refetch();
     });
   };
+  const presence = usePresenceList(entries ?? [], (entry) => String(entry.id));
   if (entries === null) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
-  if (entries.length === 0) return <p className={cx("p-4 text-sm text-muted-foreground", enter.fade)}>Calls you make here or with `bb grpc call` appear here.</p>;
+  if (presence.entries.length === 0) return <p className={cx("p-4 text-sm text-muted-foreground", enter.fade)}>Calls you make here or with `bb grpc call` appear here.</p>;
   return (
     <EntranceScope>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
@@ -64,43 +65,40 @@ export function HistoryList({ selectedId, onOpen }: { selectedId: number | null;
             </button>
           )}
         </div>
-        {entries.map((entry, index) => (
-          <PresenceItem
-            key={entry.id}
+        {presence.entries.map(({ key, item: entry, exiting }, index) => (
+          <PresenceRow
+            key={key}
             className={cn("flex items-start rounded-md hover:bg-state-hover", REVEAL_HOST, entry.id === selectedId && "bg-state-active")}
             cascadeIndex={index}
-            onRemove={() => remove(entry.id)}
+            exiting={exiting}
+            onExited={() => presence.onExited(key)}
           >
-            {(exitAndRemove) => (
-              <>
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-2 text-left"
-                  title={entry.message || entry.method}
-                  onClick={() => onOpen(entry)}
-                >
-                  <span className="flex min-w-0 items-center gap-2 text-sm">
-                    <span className={cn("size-2 shrink-0 rounded-full", entry.ok ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
-                    <span className="min-w-0 flex-1 truncate text-foreground">{entry.method.slice(entry.method.lastIndexOf("/") + 1)}</span>
-                    <span className={cn("shrink-0 text-xs", entry.ok ? "text-muted-foreground" : "text-destructive")}>{entry.status}</span>
-                  </span>
-                  <span className="truncate pl-4 text-xs text-muted-foreground">
-                    {entry.endpoint} · {formatWhen(entry.at)} · {entry.durationMs} ms
-                    {entry.origin === "cli" ? " · CLI" : ""}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={cx("mr-1 mt-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground", REVEAL)}
-                  aria-label={`Delete ${entry.method} from history`}
-                  title="Delete from history"
-                  onClick={exitAndRemove}
-                >
-                  <Icon name="Trash2" className="size-3.5" />
-                </button>
-              </>
-            )}
-          </PresenceItem>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-2 text-left"
+              title={entry.message || entry.method}
+              onClick={() => onOpen(entry)}
+            >
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                <span className={cn("size-2 shrink-0 rounded-full", entry.ok ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-foreground">{entry.method.slice(entry.method.lastIndexOf("/") + 1)}</span>
+                <span className={cn("shrink-0 text-xs", entry.ok ? "text-muted-foreground" : "text-destructive")}>{entry.status}</span>
+              </span>
+              <span className="truncate pl-4 text-xs text-muted-foreground">
+                {entry.endpoint} · {formatWhen(entry.at)} · {entry.durationMs} ms
+                {entry.origin === "cli" ? " · CLI" : ""}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={cx("mr-1 mt-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground", REVEAL)}
+              aria-label={`Delete ${entry.method} from history`}
+              title="Delete from history"
+              onClick={() => remove(entry.id)}
+            >
+              <Icon name="Trash2" className="size-3.5" />
+            </button>
+          </PresenceRow>
         ))}
       </div>
     </EntranceScope>

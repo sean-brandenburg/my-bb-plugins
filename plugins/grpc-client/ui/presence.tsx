@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import type { ReactNode } from "react";
-import { cx, EntranceScope, enter, exit, speed, stagger, STAGGER, useLateMount, usePresence } from "bb-motion";
+import { cx, EntranceScope, enter, exit, speed, stagger, STAGGER, useLateMount, useListKeys, usePresenceList, type PresenceEntry } from "bb-motion";
 
 const LATE_ENTRANCE = cx(enter.rise, speed.fast);
 
@@ -15,37 +15,79 @@ export function Appear({ className, children }: { className?: string; children: 
 }
 
 /**
- * A removable list item: rises in when added, and on removal plays its exit
- * before `onRemove` drops it from the data. `cascadeIndex` makes items present
- * when the list first shows cascade in.
+ * `usePresenceList`, but only items removed through `remove(key)` play an exit.
+ * Ones dropped by replacing the data wholesale (opening a history entry) just
+ * go, rather than sinking out underneath their replacements.
  */
-export function PresenceItem({
+export function usePresenceRemovals<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string,
+): { entries: PresenceEntry<T>[]; onExited: (key: string) => void; remove: (key: string) => void } {
+  const removed = useRef(new Set<string>());
+  const { entries, onExited } = usePresenceList(items, keyOf);
+  const exiting = new Set(entries.filter((entry) => entry.exiting).map((entry) => entry.key));
+  for (const key of removed.current) if (!exiting.has(key)) removed.current.delete(key);
+  const remove = useCallback((key: string) => {
+    removed.current.add(key);
+  }, []);
+  return { entries: entries.filter((entry) => !entry.exiting || removed.current.has(entry.key)), onExited, remove };
+}
+
+export type PresenceValue<T> = { key: string; value: T; index: number; exiting: boolean };
+
+/**
+ * `usePresenceRemovals` for a list stored as bare values, keyed by position at
+ * insertion. Call `forget(index)` just before removing that value from the
+ * data; its ghost keeps the value and index it had.
+ */
+export function usePresenceValues<T>(values: readonly T[]): {
+  rows: PresenceValue<T>[];
+  onExited: (key: string) => void;
+  forget: (index: number) => void;
+} {
+  const listKeys = useListKeys(values.length);
+  const { entries, onExited, remove } = usePresenceRemovals(
+    values.map((value, index) => ({ key: String(listKeys.keys[index]), value, index })),
+    (entry) => entry.key,
+  );
+  const forget = (index: number) => {
+    remove(String(listKeys.keys[index]));
+    listKeys.forget(index);
+  };
+  return { rows: entries.map(({ key, item, exiting }) => ({ key, value: item.value, index: item.index, exiting })), onExited, forget };
+}
+
+/**
+ * A row of a list kept by `usePresenceList`: rises in when added, cascades in
+ * with the list's first show when given `cascadeIndex`, and once removed from
+ * the data plays its exit as an inert ghost.
+ */
+export function PresenceRow({
   className,
   cascadeIndex,
-  onRemove,
+  exiting,
+  onExited,
   children,
 }: {
   className?: string;
   cascadeIndex?: number;
-  onRemove: () => void;
-  children: (remove: () => void) => ReactNode;
+  exiting: boolean;
+  onExited: () => void;
+  children: ReactNode;
 }) {
   const late = useLateMount();
-  const [removing, setRemoving] = useState(false);
-  const presence = usePresence(!removing);
-  const removeRef = useRef(onRemove);
-  removeRef.current = onRemove;
-  useEffect(() => {
-    if (!presence.mounted) removeRef.current();
-  }, [presence.mounted]);
-  const cascades = !late && cascadeIndex !== undefined;
+  const cascades = !exiting && !late && cascadeIndex !== undefined;
   return (
     <div
-      className={cx(className, presence.exiting ? exit.sink : late ? LATE_ENTRANCE : cascades && cx(enter.rise, STAGGER))}
+      className={cx(className, exiting ? exit.sink : late ? LATE_ENTRANCE : cascades && cx(enter.rise, STAGGER))}
       style={cascades ? stagger(cascadeIndex) : undefined}
-      onAnimationEnd={presence.onAnimationEnd}
+      inert={exiting || undefined}
+      aria-hidden={exiting || undefined}
+      onAnimationEnd={(event) => {
+        if (exiting && event.target === event.currentTarget) onExited();
+      }}
     >
-      <EntranceScope>{children(() => setRemoving(true))}</EntranceScope>
+      <EntranceScope>{children}</EntranceScope>
     </div>
   );
 }

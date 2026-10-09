@@ -74,23 +74,28 @@ const COPIED_MS = 1200;
 function CopyButton({ text }: { text: string }) {
   const [copied, flagCopied] = useFlag(COPIED_MS);
   return (
-    <button
-      type="button"
-      className={cx("ml-1 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
-      aria-label={copied ? "Copied" : "Copy response"}
-      title="Copy response"
-      onClick={() => navigator.clipboard.writeText(text).then(flagCopied, () => toast.error("Could not copy to the clipboard"))}
-    >
-      {copied ? (
-        <span key="copied" className={cx("flex", enter.pop)}>
-          <Icon name="Check" className="size-4 text-emerald-600 dark:text-emerald-400" />
-        </span>
-      ) : (
-        <span key="copy" className={cx("flex", enter.fade, speed.fast)}>
-          <Icon name="Copy" className="size-4" />
-        </span>
-      )}
-    </button>
+    <>
+      <button
+        type="button"
+        className={cx("ml-1 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
+        aria-label="Copy response"
+        title="Copy response"
+        onClick={() => navigator.clipboard.writeText(text).then(flagCopied, () => toast.error("Could not copy to the clipboard"))}
+      >
+        {copied ? (
+          <span key="copied" className={cx("flex", enter.pop)}>
+            <Icon name="Check" className="size-4 text-emerald-600 dark:text-emerald-400" />
+          </span>
+        ) : (
+          <span key="copy" className={cx("flex", enter.fade, speed.fast)}>
+            <Icon name="Copy" className="size-4" />
+          </span>
+        )}
+      </button>
+      <span className="sr-only" aria-live="polite">
+        {copied ? "Copied" : ""}
+      </span>
+    </>
   );
 }
 

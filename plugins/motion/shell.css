@@ -107,15 +107,19 @@
  * bb remounts [data-page-scroll-viewport] on every route change (thread to
  * thread, settings, plugin pages). Its first grandchild is the page's content
  * column; the sticky composer footer is a later sibling, so it stays put while
- * the conversation settles in. */
+ * the conversation fades in. Opacity only: bb's bottom-anchored scroll
+ * measures timeline rows with getBoundingClientRect while restoring position,
+ * and plugin pages (the kanban board) cascade their own content in. */
 [data-page-scroll-viewport] > * > :first-child {
-  animation: bbm-shell-settle var(--bbm-duration-base) var(--bbm-ease-out) backwards;
+  animation: bbm-fade-in var(--bbm-duration-base) var(--bbm-ease-out) backwards;
 }
 
 /* ---------- New timeline rows ----------
  * The timeline is virtualized, so a CSS entrance would replay on every row
- * scrolled into view. timeline-entrance.ts marks only rows appended live. */
-[data-timeline-row-id][data-bbm-new-row] {
+ * scrolled into view. timeline-entrance.ts marks only rows appended live.
+ * The row's children rise rather than the row, so the row box that bb's
+ * scroll anchoring measures never moves. */
+[data-timeline-row-id][data-bbm-new-row] > * {
   animation: bbm-rise-in var(--bbm-duration-base) var(--bbm-ease-out) backwards;
 }
 

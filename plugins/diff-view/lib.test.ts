@@ -7,6 +7,7 @@ import { riskByPath } from "./lib/app/risk";
 import { enclosingDefinition } from "./lib/app/structural/enclosing-definition";
 import { detectMoves } from "./lib/app/structural/moves";
 import { hunkSpan, structuralRows, visibleRows } from "./lib/app/structural/rows";
+import { buildLineAnnotations } from "./lib/app/text/line-annotations";
 import { splitUnifiedDiff } from "./lib/server";
 import type { DiffComment, DiffFile, Finding, GithubComment, Review, StructuralDiff } from "./lib/types";
 
@@ -171,6 +172,31 @@ describe("inlineFindingsByPath", () => {
     const f1 = byPath.get("a.ts")![0]!.item;
     expect(f1).toMatchObject({ selected: true, overridden: true, edited: false });
     expect(byPath.get("a.ts")![1]!.item).toMatchObject({ selected: false, overridden: false, edited: true });
+  });
+});
+
+describe("buildLineAnnotations", () => {
+  const threads = buildDiffThreads([local({ id: "a", line: 3 }), local({ id: "file", line: null }), local({ id: "b", line: 9, side: "LEFT" })], []);
+  const findings = inlineFindingsByPath([review("r", 1, [finding("F1", [{ file: "x.ts", startLine: 3, endLine: 3 }, { file: "x.ts", startLine: 7, endLine: 7 }, { file: "x.ts", startLine: null, endLine: null }])])], null).get("x.ts")!;
+  const composer = { line: 3, side: "RIGHT" as const };
+  const keys = (list: ReturnType<typeof buildLineAnnotations>) => list.map((annotation) => annotation.metadata.key);
+
+  it("puts line threads, then the composer, then each placed finding, under stable keys", () => {
+    const list = buildLineAnnotations(threads, composer, findings);
+    expect(keys(list)).toEqual(["thread:a", "thread:b", "composer", "finding:r:F1:3", "finding:r:F1:7"]);
+    expect(list.map((annotation) => `${annotation.side}-${annotation.lineNumber}`)).toEqual(["additions-3", "deletions-9", "additions-3", "additions-3", "additions-7"]);
+  });
+
+  it("keeps threads and the composer at their indices when findings come and go", () => {
+    expect(keys(buildLineAnnotations(threads, composer, [])).slice(0, 3)).toEqual(keys(buildLineAnnotations(threads, composer, findings)).slice(0, 3));
+  });
+
+  it("hands a submitted composer's index to the thread it became, so nothing after it shifts", () => {
+    const before = keys(buildLineAnnotations(threads, composer, findings));
+    const added = buildDiffThreads([local({ id: "a", line: 3 }), local({ id: "file", line: null }), local({ id: "b", line: 9, side: "LEFT" }), local({ id: "c", line: 3 })], []);
+    const after = keys(buildLineAnnotations(added, null, findings));
+    expect(after.indexOf("thread:c")).toBe(before.indexOf("composer"));
+    expect(after.slice(3)).toEqual(before.slice(3));
   });
 });
 

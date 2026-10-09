@@ -60,6 +60,8 @@ A library that other plugins bundle (like `diff-view/lib`) must not import `bb-m
 
 tw-animate's `animate-in` / `animate-out`, bare or behind a variant like `data-[state=open]:`, pick up `--bbm-ease-out` / `--bbm-ease-in` automatically and lose their zoom and slide under reduced motion. Radix popper content (menus, popovers, selects, tooltips, hover cards) grows out of its trigger. `POPOVER_MOTION` is the class set for a radix menu or popover that has no animation of its own.
 
+Radix portals its overlays to `body`, so these two overlay rules can't be scoped to a plugin: they reach bb's own menus and dialogs too, and they ship with every plugin that imports `motion.css`. Disabling the Motion plugin removes `shell.css` (presses, page changes, chat rows, per-overlay timing) but not them, for as long as any other plugin using bb-motion is enabled.
+
 ## Helpers
 
 | Helper | Use it for |

@@ -4,7 +4,7 @@ import type { EndpointSummary, Overview } from "../server/rpc-contract";
 import type { DescriptorState } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { useDismiss } from "./hooks";
+import { useDismiss, useInertWhileClosing } from "./hooks";
 
 /**
  * The endpoint and proto source rarely change, so they live behind one compact
@@ -32,7 +32,9 @@ export function EndpointSwitcher({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useDismiss(root, open, setOpen);
+  const panel = useRef<HTMLDivElement>(null);
   const presence = usePresence(open);
+  useInertWhileClosing(root, panel, presence.exiting);
 
   const sources = overview.sources.some((source) => source.name === sourceName)
     ? overview.sources
@@ -59,8 +61,10 @@ export function EndpointSwitcher({
       </button>
       {presence.mounted ? (
         <div
+          ref={panel}
           role="dialog"
           aria-label="Endpoint"
+          aria-hidden={presence.exiting || undefined}
           className={cx(
             "absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-border bg-background p-1.5 shadow-lg",
             presence.exiting ? exit.fade : cx(enter.drop, speed.fast),

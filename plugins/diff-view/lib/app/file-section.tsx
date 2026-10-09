@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { experimental_Diff as Diff, experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { DiffFile, HunkExplanation, SemanticChange, SymbolLookup } from "../types";
 import { Badge } from "./ui/badge";
@@ -56,10 +56,11 @@ export function FileSection({
 }) {
   const { layout, mode } = useDiffPreferences();
   const reveal = useOpenedSinceMount(!collapsed) ? cn(enter.rise, FAST) : undefined;
+  // Sections past the cap are below the fold when the list mounts; animating hundreds of full diffs at once costs a
+  // compositor layer each for nothing. Decided at mount, so a refresh that moves a shown file up the list leaves it be.
+  const [entrance] = useState(() => (index <= STAGGER_CAP ? { className: cn(enter.fade, STAGGER), style: stagger(index) } : null));
   return (
-    // Sections past the cap are below the fold when the list mounts; animating hundreds of full diffs at once costs
-    // a compositor layer each for nothing.
-    <section ref={sectionRef} className={cn("border-b border-border", index <= STAGGER_CAP && [enter.fade, STAGGER])} style={stagger(index)}>
+    <section ref={sectionRef} className={cn("border-b border-border", entrance?.className)} style={entrance?.style}>
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5">
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
@@ -90,7 +91,7 @@ export function FileSection({
         : annotations.findings
             .filter((entry) => entry.line === null)
             .map((entry) => (
-              <div key={entry.item.finding.id} className={cn("px-3", reveal)}>
+              <div key={`${entry.item.reviewId}:${entry.item.finding.id}`} className={cn("px-3", reveal)}>
                 <FindingAnnotation item={entry.item} onToggle={(selected) => annotations.onToggleFinding(entry.item, selected)} onEdit={(edit) => annotations.onEditFinding(entry.item, edit)} />
               </div>
             ))}

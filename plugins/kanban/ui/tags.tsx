@@ -45,6 +45,8 @@ function TagChip({
   const entrance = useEntrance(arrival === "new" ? enter.pop : undefined);
   return (
     <span
+      aria-hidden={exiting || undefined}
+      inert={exiting}
       onAnimationEnd={(event) => {
         if (exiting && event.target === event.currentTarget) onExited?.();
         else entrance.onAnimationEnd(event);

@@ -181,13 +181,13 @@ export function StructuralPatch({
     return (
       <tr key={`${side}-${line}-notes`}>
         <td colSpan={4} className="px-3 py-1">
-          {lineFindings.map((entry) => (
-            <FindingAnnotation key={entry.item.finding.id} item={entry.item} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
-          ))}
           {list.map((thread) => (
             <DiffThreadView key={thread.id} thread={thread} />
           ))}
           {composing ? <DiffCommentForm path={path} line={line} side={side} defaultTarget={composeTarget} onSubmit={onSubmitComposer} onCancel={onCancelComposer} /> : null}
+          {lineFindings.map((entry) => (
+            <FindingAnnotation key={`${entry.item.reviewId}:${entry.item.finding.id}`} item={entry.item} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
+          ))}
         </td>
       </tr>
     );

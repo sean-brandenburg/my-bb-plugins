@@ -221,6 +221,8 @@ export function Group({
       </div>
       {body.mounted ? (
         <div
+          aria-hidden={body.exiting || undefined}
+          inert={body.exiting}
           onAnimationEnd={body.onAnimationEnd}
           className={cn("flex flex-col gap-2 border-t border-border px-2.5 py-2.5", body.exiting ? exit.fade : toggled && cn(enter.rise, speed.fast))}
         >
@@ -231,11 +233,21 @@ export function Group({
   );
 }
 
-export function Property({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+export function Property({
+  label,
+  children,
+  className,
+  onAnimationEnd,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+  onAnimationEnd?: (event: AnimationEvent) => void;
+}) {
   return (
     <>
-      <dt className={cn("pt-1 text-xs text-muted-foreground", className)}>{label}</dt>
-      <dd className={cn("min-w-0 text-sm", className)}>{children}</dd>
+      <dt onAnimationEnd={onAnimationEnd} className={cn("pt-1 text-xs text-muted-foreground", className)}>{label}</dt>
+      <dd onAnimationEnd={onAnimationEnd} className={cn("min-w-0 text-sm", className)}>{children}</dd>
     </>
   );
 }
@@ -310,6 +322,8 @@ export function MotionListItem({
   return (
     <li
       style={stagger(index)}
+      aria-hidden={exiting || undefined}
+      inert={exiting}
       onAnimationEnd={(event) => {
         if (event.target !== event.currentTarget) return;
         if (exiting) {

@@ -1,7 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { experimental_useCodeTheme as useCodeTheme } from "@get-bb/plugin-sdk/app";
 import { PatchDiff, useWorkerPool } from "@pierre/diffs/react";
-import type { DiffLineAnnotation } from "@pierre/diffs/react";
 import type { DiffSide } from "../../types";
 import { useDiffPreferences } from "../state";
 import { useHostPierreThemes } from "../theme";
@@ -9,16 +8,8 @@ import type { PatchAnnotationProps } from "../patch-annotations";
 import { DiffCommentForm } from "../comments/comment-form";
 import { FileLevelComments } from "../comments/file-level-comments";
 import { DiffThreadView } from "../comments/thread-view";
-import type { DiffThread } from "../comments/threads";
 import { FindingAnnotation } from "../findings/finding-annotation";
-import type { InlineFinding } from "../findings/findings";
-
-type AnnotationMeta = { kind: "thread"; thread: DiffThread } | { kind: "composer" } | { kind: "finding"; finding: InlineFinding };
-type PierreSide = "deletions" | "additions";
-
-function toPierreSide(side: DiffSide): PierreSide {
-  return side === "LEFT" ? "deletions" : "additions";
-}
+import { buildLineAnnotations, toPierreSide, type AnnotationMeta, type PierreSide } from "./line-annotations";
 
 function fromPierreSide(side: PierreSide): DiffSide {
   return side === "deletions" ? "LEFT" : "RIGHT";
@@ -51,22 +42,12 @@ export function AnnotatedPatch({
     () => (patch.startsWith("diff --git") ? patch : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${patch}`),
     [patch, path],
   );
-  // Pierre keys annotation slots by index, so an insertion hands every later slot to a different annotation (replaying
-  // entrances, swapping state). Findings change least, then threads (new ones append), then the composer, which is
-  // also the structural view's order on a shared line.
-  const annotations = useMemo<DiffLineAnnotation<AnnotationMeta>[]>(() => {
-    const list: DiffLineAnnotation<AnnotationMeta>[] = [];
-    for (const entry of findings) {
-      if (entry.line !== null) list.push({ side: "additions", lineNumber: entry.line, metadata: { kind: "finding", finding: entry.item } });
-    }
-    for (const thread of threads) {
-      if (thread.line !== null) list.push({ side: toPierreSide(thread.side), lineNumber: thread.line, metadata: { kind: "thread", thread } });
-    }
-    if (composer !== null && composer.line !== null) {
-      list.push({ side: toPierreSide(composer.side), lineNumber: composer.line, metadata: { kind: "composer" } });
-    }
-    return list;
-  }, [threads, composer, findings]);
+  const annotations = useMemo(() => buildLineAnnotations(threads, composer, findings), [threads, composer, findings]);
+  // A key already on screen at the last commit that mounts again was shifted to another slot, not added.
+  const committedKeys = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    committedKeys.current = new Set(annotations.map((annotation) => annotation.metadata.key));
+  }, [annotations]);
   const selected = composer !== null && composer.line !== null ? { start: composer.line, end: composer.line, side: toPierreSide(composer.side), endSide: toPierreSide(composer.side) } : undefined;
   const options = useMemo(
     () => ({
@@ -99,15 +80,15 @@ export function AnnotatedPatch({
         {...(selected === undefined ? {} : { selectedLines: selected })}
         disableWorkerPool={workerPool === undefined}
         className="text-xs"
-        renderAnnotation={(annotation) => {
-          if (annotation.metadata.kind === "composer") {
-            return <DiffCommentForm path={path} line={composer?.line ?? null} side={composer?.side ?? "RIGHT"} defaultTarget={composeTarget} onSubmit={onSubmitComposer} onCancel={onCancelComposer} />;
+        renderAnnotation={({ metadata }) => {
+          if (metadata.kind === "composer") {
+            return <DiffCommentForm key={metadata.key} path={path} line={composer?.line ?? null} side={composer?.side ?? "RIGHT"} defaultTarget={composeTarget} onSubmit={onSubmitComposer} onCancel={onCancelComposer} />;
           }
-          if (annotation.metadata.kind === "finding") {
-            const item = annotation.metadata.finding;
-            return <FindingAnnotation item={item} onToggle={(selected) => onToggleFinding(item, selected)} onEdit={(edit) => onEditFinding(item, edit)} />;
+          if (metadata.kind === "finding") {
+            const item = metadata.finding;
+            return <FindingAnnotation key={metadata.key} item={item} entrance={!committedKeys.current.has(metadata.key)} onToggle={(selected) => onToggleFinding(item, selected)} onEdit={(edit) => onEditFinding(item, edit)} />;
           }
-          return <DiffThreadView thread={annotation.metadata.thread} />;
+          return <DiffThreadView key={metadata.key} thread={metadata.thread} />;
         }}
       />
     </>

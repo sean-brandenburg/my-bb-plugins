@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { PRESS, enter, speed, usePopOnChange } from "bb-motion";
+import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,7 @@ function TicketDetails({
           <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
         </Property>
         {ticket.parentId !== null || showParentPicker ? (
-          <Property label="Parent" className={showParentPicker ? cn(enter.rise, speed.fast) : undefined}>
+          <ParentProperty rise={showParentPicker}>
             <Select
               aria-label="Parent card"
               value={ticket.parentId ?? ""}
@@ -191,7 +191,7 @@ function TicketDetails({
                 </option>
               ))}
             </Select>
-          </Property>
+          </ParentProperty>
         ) : null}
         <Property label="Thread">
           {ticket.threadId !== null ? (
@@ -316,6 +316,16 @@ function TicketDetails({
         </Button>
       </footer>
     </div>
+  );
+}
+
+/** The entrance is decided when the row mounts, so it only plays when the picker opens it, never on a card that already shows a parent. */
+function ParentProperty({ rise, children }: { rise: boolean; children: ReactNode }) {
+  const entrance = useEntrance(rise ? cn(enter.rise, speed.fast) : undefined);
+  return (
+    <Property label="Parent" className={entrance.className} onAnimationEnd={entrance.onAnimationEnd}>
+      {children}
+    </Property>
   );
 }
 

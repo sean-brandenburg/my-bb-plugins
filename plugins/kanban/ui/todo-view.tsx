@@ -221,6 +221,8 @@ function TodoRow({
   return (
     <li
       style={stagger(index)}
+      aria-hidden={exiting || undefined}
+      inert={exiting}
       onAnimationEnd={(event) => {
         if (exiting && event.target === event.currentTarget) onExited();
         else entrance.onAnimationEnd(event);

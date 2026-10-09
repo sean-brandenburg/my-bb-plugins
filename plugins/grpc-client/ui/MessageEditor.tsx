@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, stagger, STAGGER, EntranceScope, useListKeys } from "bb-motion";
+import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, stagger, STAGGER, EntranceScope } from "bb-motion";
 import type { FieldInfo, ScalarName, TypeClosure } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { Appear, PresenceItem } from "./presence";
+import { Appear, PresenceRow, usePresenceRemovals, usePresenceValues } from "./presence";
 import {
   defaultElement,
   elementLabel,
@@ -311,36 +311,31 @@ function ListEditor({ field, closure, depth, value, onChange }: EditorProps<Json
   const items = Array.isArray(value) ? value : [];
   const update = (next: Json[]) => onChange(next.length === 0 ? undefined : next);
   const messages = isMessageEditor(field);
-  const { keys, forget } = useListKeys(items.length);
+  const { rows, onExited, forget } = usePresenceValues(items);
   return (
     <div className="space-y-2">
-      {items.length === 0 ? <p className="text-xs text-muted-foreground">No items.</p> : null}
-      {items.map((item, index) => (
-        <PresenceItem
-          key={keys[index]}
-          className={cn("flex items-start gap-2", messages && "rounded-md bg-muted/30 p-2")}
-          onRemove={() => {
-            forget(index);
-            update(items.filter((_item, position) => position !== index));
-          }}
-        >
-          {(remove) => (
-            <>
-              <span className="mt-1.5 w-5 shrink-0 text-right font-mono text-xs text-muted-foreground">{index}</span>
-              <div className="min-w-0 flex-1">
-                <ElementEditor
-                  field={field}
-                  closure={closure}
-                  depth={depth}
-                  value={item}
-                  keepEmpty
-                  onChange={(next) => update(items.map((current, position) => (position === index ? (next ?? defaultElement(field, closure)) : current)))}
-                />
-              </div>
-              <RemoveButton label={`Remove item ${index}`} onClick={remove} />
-            </>
-          )}
-        </PresenceItem>
+      {rows.length === 0 ? <p className="text-xs text-muted-foreground">No items.</p> : null}
+      {rows.map(({ key, value: item, index, exiting }) => (
+        <PresenceRow key={key} className={cn("flex items-start gap-2", messages && "rounded-md bg-muted/30 p-2")} exiting={exiting} onExited={() => onExited(key)}>
+          <span className="mt-1.5 w-5 shrink-0 text-right font-mono text-xs text-muted-foreground">{index}</span>
+          <div className="min-w-0 flex-1">
+            <ElementEditor
+              field={field}
+              closure={closure}
+              depth={depth}
+              value={item}
+              keepEmpty
+              onChange={(next) => update(items.map((current, position) => (position === index ? (next ?? defaultElement(field, closure)) : current)))}
+            />
+          </div>
+          <RemoveButton
+            label={`Remove item ${index}`}
+            onClick={() => {
+              forget(index);
+              update(items.filter((_item, position) => position !== index));
+            }}
+          />
+        </PresenceRow>
       ))}
       <AddButton label={`Add ${elementLabel(field)}`} onClick={() => update([...items, defaultElement(field, closure)])} />
     </div>
@@ -379,37 +374,40 @@ function MapEditor({ field, closure, depth, value, onChange }: EditorProps<Json>
   };
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(row.key, (counts.get(row.key) ?? 0) + 1);
+  const { entries, onExited, remove } = usePresenceRemovals(rows, (row) => String(row.id));
   return (
     <div className="space-y-2">
-      {rows.length === 0 ? <p className="text-xs text-muted-foreground">No entries.</p> : null}
-      {rows.map((row) => {
-        const duplicate = (counts.get(row.key) ?? 0) > 1;
+      {entries.length === 0 ? <p className="text-xs text-muted-foreground">No entries.</p> : null}
+      {entries.map(({ key, item: row, exiting }) => {
+        const duplicate = !exiting && (counts.get(row.key) ?? 0) > 1;
         return (
-          <PresenceItem key={row.id} className="flex items-start gap-2" onRemove={() => update(rows.filter((current) => current.id !== row.id))}>
-            {(remove) => (
-              <>
-                <input
-                  className={cn(inputClass, "w-40 shrink-0 font-mono text-[13px]", duplicate && "border-destructive")}
-                  value={row.key}
-                  placeholder={`key (${field.mapKey})`}
-                  title={duplicate ? "Duplicate key: only the first entry is sent" : undefined}
-                  spellCheck={false}
-                  onChange={(event) => update(rows.map((current) => (current.id === row.id ? { ...current, key: event.target.value } : current)))}
-                />
-                <div className="min-w-0 flex-1">
-                  <ElementEditor
-                    field={field}
-                    closure={closure}
-                    depth={depth}
-                    value={row.value}
-                    keepEmpty
-                    onChange={(next) => update(rows.map((current) => (current.id === row.id ? { ...current, value: next ?? defaultElement(field, closure) } : current)))}
-                  />
-                </div>
-                <RemoveButton label={`Remove ${row.key || "entry"}`} onClick={remove} />
-              </>
-            )}
-          </PresenceItem>
+          <PresenceRow key={key} className="flex items-start gap-2" exiting={exiting} onExited={() => onExited(key)}>
+            <input
+              className={cn(inputClass, "w-40 shrink-0 font-mono text-[13px]", duplicate && "border-destructive")}
+              value={row.key}
+              placeholder={`key (${field.mapKey})`}
+              title={duplicate ? "Duplicate key: only the first entry is sent" : undefined}
+              spellCheck={false}
+              onChange={(event) => update(rows.map((current) => (current.id === row.id ? { ...current, key: event.target.value } : current)))}
+            />
+            <div className="min-w-0 flex-1">
+              <ElementEditor
+                field={field}
+                closure={closure}
+                depth={depth}
+                value={row.value}
+                keepEmpty
+                onChange={(next) => update(rows.map((current) => (current.id === row.id ? { ...current, value: next ?? defaultElement(field, closure) } : current)))}
+              />
+            </div>
+            <RemoveButton
+              label={`Remove ${row.key || "entry"}`}
+              onClick={() => {
+                remove(key);
+                update(rows.filter((current) => current.id !== row.id));
+              }}
+            />
+          </PresenceRow>
         );
       })}
       <AddButton label="Add entry" onClick={() => update([...rows, { id: nextId.current++, key: "", value: defaultElement(field, closure) }])} />

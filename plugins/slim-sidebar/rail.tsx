@@ -187,6 +187,14 @@ function MoreMenu({
   const anchor = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const rect = useAnchorRect(anchor, presence.mounted);
+  // The exiting menu goes inert, which would drop focus held inside it to
+  // the document body.
+  const closeToTrigger = () => {
+    if (menu.current?.contains(document.activeElement)) {
+      anchor.current?.querySelector("button")?.focus();
+    }
+    setOpen(false);
+  };
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -199,7 +207,7 @@ function MoreMenu({
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeToTrigger();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown, true);
@@ -209,7 +217,7 @@ function MoreMenu({
     };
   }, [open]);
   const choose = (run: () => void) => {
-    setOpen(false);
+    closeToTrigger();
     run();
   };
   return (
@@ -223,6 +231,8 @@ function MoreMenu({
               ref={menu}
               role="menu"
               aria-label="More navigation"
+              aria-hidden={presence.exiting || undefined}
+              inert={presence.exiting}
               className={cx(
                 "fixed z-[70] min-w-44 rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg",
                 presence.exiting ? exit.fade : cx(enter.scale, speed.fast),
