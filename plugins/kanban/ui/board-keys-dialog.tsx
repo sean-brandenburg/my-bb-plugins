@@ -1,10 +1,21 @@
+import { useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { KEY_HELP } from "./board-nav";
 
 export function BoardKeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  // Opened by `?`, the dialog has no trigger to hand focus back to, so it would land on the page body.
+  const opener = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  if (open && !wasOpen.current) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  wasOpen.current = open;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onAfterCloseAutoFocus={() => {
+          if (opener.current?.isConnected === true) opener.current.focus({ preventScroll: true });
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Work anywhere on the board or an open card outside a text box.</DialogDescription>
