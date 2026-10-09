@@ -36,6 +36,8 @@ export const findingSchema = z.object({
   importance: z.number().int().min(1).max(5).nullable().default(null),
   /** 1–5: how well the fix stays inside the PR's scope (1 = separate piece of work). */
   scopeFit: z.number().int().min(1).max(5).nullable().default(null),
+  /** `<reviewId>/<findingId>` of the earlier finding a re-review found still unaddressed and carried forward. */
+  carriedFrom: z.string().nullable().default(null),
 });
 export type Finding = z.infer<typeof findingSchema>;
 
@@ -59,6 +61,10 @@ export const reviewReportSchema = z.object({
   skippedReviewers: z.array(z.object({ name: z.string(), reason: z.string().default("") })).default([]),
   skippedFiles: z.array(z.string()).default([]),
   findings: z.array(findingSchema),
+  /** Set by re-reviews: `findings` also holds every earlier finding still open, so older reviews are superseded. */
+  carriesForward: z.boolean().default(false),
+  /** Earlier findings (`<reviewId>/<findingId>`) a re-review found addressed at the reviewed commit. */
+  resolved: z.array(z.object({ id: z.string(), title: z.string().default(""), note: z.string().default("") })).default([]),
 });
 export type ReviewReport = z.infer<typeof reviewReportSchema>;
 

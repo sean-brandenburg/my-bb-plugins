@@ -84,7 +84,12 @@ its PR is reviewed and its review findings and comments are handed to agents.
   ones follow the setting).
 - **Persisted reviews**: when the review thread finishes, its compiled findings
   and the reviewed commit are stored on the card. "Review since <sha>" reviews
-  only the commits pushed after the last review; "Full review" starts over.
+  the commits pushed after the last review and re-checks every earlier finding
+  at the new head: the ones still open carry forward into the new review
+  (tagged "carried", keeping your include/exclude choice), and the ones fixed
+  are listed under "Resolved since the last review". The latest review then
+  stands for the whole PR, so applying it never drops an unaddressed finding.
+  "Full review" starts over, without carry-over.
   "Show findings" renders every stored review. The `code-review` skill ends its
   report with a ```` ```json review-findings ```` block; the board parses it
   into findings grouped by severity (id, title, file:line, fix, reviewers) and
@@ -147,8 +152,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   "Re-review the delta", which runs the code-review skill incrementally from
   the last reviewed commit. Viewed marks carry over for files the push did
   not touch; changed lines get a blue edge in the gutter and changed files a
-  "changed" chip in the tree. Findings from the latest full review plus every
-  incremental review after it are shown together, tagged "new" or "touched".
+  "changed" chip in the tree. Findings from the latest review are shown,
+  tagged "new", "carried" or "touched" (re-reviews made before carry-over
+  stack on the latest full review instead).
 - **Risk heat**: the tour scores each file 1–5 for review attention; the file
   tree tints rows from green to red accordingly (viewed files lose the tint),
   falling back to the worst finding severity in the file when there is no tour.

@@ -163,6 +163,15 @@ describe("activeReviews", () => {
     expect(activeReviews(reviews).map((entry) => entry.id)).toEqual(["full", "inc"]);
   });
 
+  it("stops at a re-review that carried every open finding forward", () => {
+    const reviews = [
+      review("full", 1, []),
+      review("carried", 2, [], { sinceCommitSha: "a", report: { findings: [], carriesForward: true } }),
+      review("inc", 3, [], { sinceCommitSha: "b" }),
+    ];
+    expect(activeReviews(reviews).map((entry) => entry.id)).toEqual(["carried", "inc"]);
+  });
+
   it("keeps every completed review when none is full", () => {
     expect(activeReviews([review("b", 2, [], { sinceCommitSha: "x" }), review("a", 1, [], { sinceCommitSha: "y" })]).map((entry) => entry.id)).toEqual(["a", "b"]);
   });
@@ -183,6 +192,18 @@ describe("inlineFindingsByPath", () => {
     const f1 = byPath.get("a.ts")![0]!.item;
     expect(f1).toMatchObject({ selected: true, overridden: true, edited: false });
     expect(byPath.get("a.ts")![1]!.item).toMatchObject({ selected: false, overridden: false, edited: true });
+  });
+});
+
+describe("inlineFindingsByPath carry-over", () => {
+  it("does not call a carried finding new, and names the earlier finding it came from", () => {
+    const carried = { ...finding("F1", [{ file: "a.ts", startLine: 1, endLine: 1 }]), carriedFrom: "r0/F3" };
+    const fresh = finding("F2", [{ file: "a.ts", startLine: 9, endLine: 9 }]);
+    const byPath = inlineFindingsByPath([review("inc", 2, [carried, fresh], { sinceCommitSha: "a", report: { findings: [carried, fresh], carriesForward: true } })], null);
+    expect(byPath.get("a.ts")!.map(({ item }) => ({ id: item.finding.id, isNew: item.isNew, carriedFrom: item.carriedFrom }))).toEqual([
+      { id: "F1", isNew: false, carriedFrom: "F3" },
+      { id: "F2", isNew: true, carriedFrom: null },
+    ]);
   });
 });
 

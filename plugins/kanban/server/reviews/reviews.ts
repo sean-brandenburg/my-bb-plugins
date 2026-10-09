@@ -9,7 +9,7 @@ import type { KanbanContext } from "../context";
 import { rowToReview, type ReviewRow } from "../db/rows";
 import { prShortName } from "../github";
 import type { Projects } from "../projects";
-import { parseFindingEdits, selectedFindingsBody } from "./findings";
+import { earlierFindings, parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
 import { shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
@@ -20,7 +20,7 @@ const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
  * in its own worktree and checks the PR out detached, so it never touches the
  * branch checked out in the main project directory.
  */
-function reviewPrompt(ticket: Ticket, since: Review | null): string {
+function reviewPrompt(ticket: Ticket, since: Review | null, standing: Review[]): string {
   if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
   const { repo, number, url } = ticket.pr;
   const sinceSha = since?.commitSha ?? null;
@@ -28,7 +28,7 @@ function reviewPrompt(ticket: Ticket, since: Review | null): string {
   return [
     sinceSha === null
       ? `Run a full code review of pull request ${repo}#${number}: "${ticket.title}" (${url}).`
-      : `Review the new commits on pull request ${repo}#${number}: "${ticket.title}" (${url}). The previous review covered commit ${sinceSha}; only review what changed since then.`,
+      : `Re-review pull request ${repo}#${number}: "${ticket.title}" (${url}). The previous review covered commit ${sinceSha}. Review what changed since then, and re-check the earlier findings listed at the end of this prompt so every one still unaddressed carries forward into this review.`,
     "",
     "Setup (this worktree is disposable; do not touch any other checkout). The `gh` and `git fetch` steps need your GitHub credentials, which the sandbox hides; running them with the sandbox disabled is expected and authorized here, so do that rather than stopping to ask.",
     `1. \`BASE=$(gh pr view ${number} --repo ${repo} --json baseRefName --jq .baseRefName)\` and \`HEAD_REF=$(gh pr view ${number} --repo ${repo} --json headRefName --jq .headRefName)\``,
@@ -36,14 +36,50 @@ function reviewPrompt(ticket: Ticket, since: Review | null): string {
     "3. `git checkout --detach FETCH_HEAD`",
     '4. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "$BASE" --head "$HEAD_REF"` so the board knows which commit this review covers.',
     "",
-    sinceSha === null
-      ? `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) so it reviews exactly the PR's changes. Let it spawn every applicable reviewer in parallel and compile the findings in its standard format.`
-      : `If \`git log ${sinceSha}..HEAD\` is empty, say that nothing changed since the last review and stop. Otherwise invoke the \`code-review\` skill with the range \`${range}\` so it reviews only the new commits, and compile the findings in its standard format.`,
-    "",
-    "Your final message must be the code-review skill's compiled report verbatim, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card and rendered from that JSON.",
+    ...(sinceSha === null
+      ? [
+          `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) so it reviews exactly the PR's changes. Let it spawn every applicable reviewer in parallel and compile the findings in its standard format.`,
+          "",
+          "Your final message must be the code-review skill's compiled report verbatim, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card and rendered from that JSON.",
+        ]
+      : incrementalSteps(range)),
     "Rules: do not change code, and do not post comments or reviews on GitHub; the compiled findings in this thread are the deliverable.",
     `This review belongs to kanban ticket ${ticket.id}.`,
+    ...(sinceSha === null ? [] : ["", ...earlierFindingsSection(standing)]),
   ].join("\n");
+}
+
+/** A re-review is only complete when it also says which earlier findings are still open, so the latest review alone stands for the PR. */
+function incrementalSteps(range: string): string[] {
+  return [
+    `5. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\` and let it spawn its reviewers and compile their findings; that report is an intermediate result, not your final message.`,
+    "6. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem no longer exists) or open (still present; give its current locations, since lines may have moved). Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step 5 found nothing changed, every earlier finding is open as listed and needs no check.",
+    "7. Compile one merged report in the code-review skill's exact format (the markdown sections, the `Reviewed commit:` and `Range:` lines, and the trailing ```json review-findings block), with these additions:",
+    "   - `findings` holds the new findings from step 5 plus every open earlier finding, merged into one where a new finding is the same problem as an earlier one, ordered by severity and renumbered `F1`, `F2`, ….",
+    '   - A carried finding keeps its earlier title, description, fix, severity, scores, flaggedBy and category unless the new commits made them inaccurate, takes its locations at HEAD, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id.',
+    '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`.',
+    `   - \`"range"\` is \`${range}\` and \`"reviewers"\` lists only the reviewers step 5 ran (none when nothing changed).`,
+    "",
+    "Your final message must be that merged report, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card, rendered from that JSON, and replaces the earlier reviews' findings on the board.",
+  ];
+}
+
+function earlierFindingsSection(standing: Review[]): string[] {
+  const findings = earlierFindings(standing);
+  const freeForm = standing.filter((review) => review.report === null && review.body !== null && review.body.trim() !== "");
+  const lines = ["## Earlier findings", ""];
+  if (findings.length === 0 && freeForm.length === 0) return [...lines, "The earlier reviews left no open findings, so `resolved` is empty and every finding is new."];
+  if (findings.length > 0) {
+    lines.push(
+      "Each is keyed by its `handle`; `applyRound` says what the board's apply round did with it.",
+      "",
+      "```json",
+      JSON.stringify(findings, null, 2),
+      "```",
+    );
+  }
+  for (const review of freeForm) lines.push("", `### Free-form review ${review.id}`, "", review.body!.trim());
+  return lines;
 }
 
 function applyPrompt(ticket: Ticket, review: Review, autoApprove: boolean, push: boolean, findingsBody: string): string {
@@ -92,11 +128,12 @@ export function createReviews(
     if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
     const previousRow = mode === "incremental" ? stmts.latestCompletedReview.get(ticket.id) : undefined;
     const previous = previousRow === undefined || previousRow.commit_sha === null ? null : rowToReview(previousRow);
+    const standing = previous === null ? [] : standingReviews(stmts.reviewsForTicket.all(ticket.id).map(rowToReview));
     const shortName = prShortName(ticket.pr);
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: await freshWorktree(projectId),
-      prompt: reviewPrompt(ticket, previous),
+      prompt: reviewPrompt(ticket, previous, standing),
       title: threadTitle(`${previous === null ? "Review" : "Re-review"} ${shortName}: ${ticket.title}`),
       ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
       visibility: await codeReviewThreadVisibility(),
@@ -155,11 +192,36 @@ export function createReviews(
     return getTicket(ticket.id);
   }
 
+  /** A carried finding keeps the apply-round choice the user made on the finding it came from. */
+  function inheritSelections(reviewId: string): void {
+    const row = stmts.reviewById.get(reviewId);
+    const report = row === undefined ? null : parseReviewReport(row.body);
+    if (row === undefined || report === null || !report.carriesForward) return;
+    const overrides = parseSelection(row.selection_overrides);
+    const sourceOverrides = new Map<string, Record<string, boolean>>();
+    let changed = false;
+    for (const finding of report.findings) {
+      if (finding.carriedFrom === null || finding.id in overrides) continue;
+      const [sourceId, sourceFindingId] = finding.carriedFrom.split("/");
+      if (sourceId === undefined || sourceFindingId === undefined) continue;
+      if (!sourceOverrides.has(sourceId)) {
+        const source = stmts.reviewById.get(sourceId);
+        sourceOverrides.set(sourceId, source === undefined || source.ticket_id !== row.ticket_id ? {} : parseSelection(source.selection_overrides));
+      }
+      const inherited = sourceOverrides.get(sourceId)![sourceFindingId];
+      if (inherited === undefined) continue;
+      overrides[finding.id] = inherited;
+      changed = true;
+    }
+    if (changed) stmts.setSelectionOverrides.run(JSON.stringify(overrides), reviewId);
+  }
+
   /** A review recorded from an interim message is superseded by the first later one carrying the report, until an apply round pins it. */
   function supersedeInterimReview(row: ReviewRow, text: string | null): boolean {
     const report = parseReviewReport(text);
     if (report === null || row.apply_thread_id !== null || parseReviewReport(row.body) !== null) return false;
     stmts.completeReview.run(text, report.commit, Date.now(), row.id);
+    inheritSelections(row.id);
     return true;
   }
 
@@ -196,7 +258,10 @@ export function createReviews(
     const commit = report?.commit ?? fromLine ?? row.commit_sha;
     // No report and no commit from any channel means the review never ran (setup failed, agent stopped early).
     if (report === null && commit === null) stmts.failReview.run(lastAssistantText, Date.now(), row.id);
-    else stmts.completeReview.run(lastAssistantText, report?.commit ?? fromLine, Date.now(), row.id);
+    else {
+      stmts.completeReview.run(lastAssistantText, report?.commit ?? fromLine, Date.now(), row.id);
+      inheritSelections(row.id);
+    }
     publish();
     return true;
   }

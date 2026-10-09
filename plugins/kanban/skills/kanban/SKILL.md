@@ -76,10 +76,14 @@ subtask.
 A thread whose instructions say it is a code review for a card runs the
 `code-review` skill in its own worktree against `origin/<base>...HEAD`, or
 against `<last-reviewed-sha>..HEAD` for a re-review. Before reviewing, run
-`bb kanban review-record --commit "$(git rev-parse HEAD)"`. The final message
-is persisted on the card verbatim, so make it the `code-review` skill's
-compiled report unchanged, including its `Reviewed commit:` line and the
-trailing ```` ```json review-findings ```` block the board renders from. Never move the card or post to GitHub.
+`bb kanban review-record --commit "$(git rev-parse HEAD)"`. A re-review also
+re-checks the earlier findings its prompt lists, and its report carries every
+one still open forward (`carriedFrom` set to its handle), lists the fixed ones
+in `resolved`, and sets `carriesForward`, because it replaces the earlier
+reviews on the board. The final message is persisted on the card verbatim, so
+make it the compiled report in the `code-review` skill's format, including its
+`Reviewed commit:` line and the trailing ```` ```json review-findings ````
+block the board renders from. Never move the card or post to GitHub.
 
 ## Diff comments
 

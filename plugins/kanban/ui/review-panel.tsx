@@ -71,6 +71,11 @@ function FindingCard({
             {finding.importance}/{finding.scopeFit}
           </span>
         ) : null}
+        {finding.carriedFrom !== null ? (
+          <span className="shrink-0 text-xs text-muted-foreground" title={`Still open from an earlier review, where it was ${finding.carriedFrom.split("/").pop()}`}>
+            carried
+          </span>
+        ) : null}
         {overridden ? <span className="shrink-0 text-xs text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
       </div>
       {finding.locations.length > 0 ? (
@@ -151,6 +156,24 @@ function StructuredReview({
           </ul>
         </section>
       ))}
+      {report.resolved.length > 0 ? (
+        <section aria-label="Resolved since the last review">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Resolved since the last review <span className="font-normal tabular-nums">{report.resolved.length}</span>
+          </h3>
+          <ul className="flex flex-col gap-1 text-sm">
+            {report.resolved.map((entry) => (
+              <li key={entry.id} className="flex gap-1.5">
+                <Icon name="Check" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="text-muted-foreground line-through">{entry.title === "" ? entry.id.split("/").pop() : entry.title}</span>
+                  {entry.note !== "" ? <span className="text-muted-foreground"> — {entry.note}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {report.skippedFiles.length > 0 ? (
         <p className="text-xs text-muted-foreground">Skipped generated files: {report.skippedFiles.join(", ")}</p>
       ) : null}
@@ -242,7 +265,7 @@ export function ReviewPanel({
               Review changes since {shortSha(review.commitSha)}
             </DropdownMenu.Item>
           ) : null}
-          <DropdownMenu.Item className={MENU_ITEM_CLASS} disabled={!canStart} onSelect={() => startReview("full")}>
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} disabled={!canStart} onSelect={() => startReview("full")} title="Starts over: earlier findings and your choices on them are not carried forward">
             <Icon name="kanban-refresh" className="size-4 text-muted-foreground" />
             Run a full review again
           </DropdownMenu.Item>

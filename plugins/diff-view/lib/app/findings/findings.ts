@@ -10,8 +10,10 @@ export interface InlineFinding {
   selected: boolean;
   overridden: boolean;
   edited: boolean;
-  /** From a review that ran after the reviewer last looked. */
+  /** First reported by a re-review that ran after the reviewer last looked. */
   isNew: boolean;
+  /** Still open from an earlier review; the earlier finding's id. */
+  carriedFrom: string | null;
   /** Its lines changed since the reviewer last looked. */
   touched: boolean;
 }
@@ -23,16 +25,16 @@ export interface PlacedFinding {
 }
 
 /**
- * The reviews whose findings still stand: the latest full review plus every incremental one after it, oldest first.
- * Earlier full reviews are superseded.
+ * The reviews whose findings still stand, oldest first: back from the newest up to and including the latest full review
+ * or the latest re-review that carried every open finding forward. Re-reviews from before carry-over existed stack.
  */
 export function activeReviews(reviews: Review[]): Review[] {
-  const completed = reviews.filter((review) => review.status === "completed" && review.report !== null).sort((a, b) => a.createdAt - b.createdAt);
-  let lastFull = -1;
-  completed.forEach((review, index) => {
-    if (review.sinceCommitSha === null) lastFull = index;
-  });
-  return lastFull === -1 ? completed : completed.slice(lastFull);
+  const active: Review[] = [];
+  for (const review of reviews.filter((entry) => entry.status === "completed").sort((a, b) => b.createdAt - a.createdAt)) {
+    active.push(review);
+    if (review.sinceCommitSha === null || review.report?.carriesForward === true) break;
+  }
+  return active.filter((review) => review.report !== null).reverse();
 }
 
 /** The active reviews' findings by file, once per location; `delta` marks the ones whose lines changed since the last look. */
@@ -54,7 +56,8 @@ export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null)
         selected: review.selection[finding.id] ?? false,
         overridden: finding.id in review.selectionOverrides,
         edited: finding.id in review.findingEdits,
-        isNew: newest !== null && review.id === newest.id && newest.sinceCommitSha !== null,
+        isNew: newest !== null && review.id === newest.id && newest.sinceCommitSha !== null && (finding.carriedFrom ?? null) === null,
+        carriedFrom: finding.carriedFrom?.split("/").pop() ?? null,
         touched,
       };
       for (const location of finding.locations) {

@@ -156,6 +156,8 @@ export interface Finding {
   locations: Array<{ file: string; startLine: number | null; endLine: number | null }>;
   importance: number | null;
   scopeFit: number | null;
+  /** `<reviewId>/<findingId>` of the earlier finding a re-review found still open. */
+  carriedFrom?: string | null;
 }
 
 export interface FindingEdit {
@@ -169,7 +171,8 @@ export interface Review {
   status: "running" | "completed" | "failed";
   /** Commit the previous review ended at, when this was an incremental review. */
   sinceCommitSha: string | null;
-  report: { findings: Finding[] } | null;
+  /** `carriesForward`: a re-review whose findings include every earlier one still open, superseding older reviews. */
+  report: { findings: Finding[]; carriesForward?: boolean } | null;
   /** Effective per-finding selection for the apply round. */
   selection: Record<string, boolean>;
   /** Only the findings the user explicitly toggled. */

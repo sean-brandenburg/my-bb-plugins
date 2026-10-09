@@ -226,7 +226,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           options: {
             ...ticketOption,
             project: { type: "string", description: "Project id to run the review in; defaults to the card's project" },
-            full: { type: "boolean", description: "Review the whole PR even if an earlier review exists (default: only commits since the last review)" },
+            full: { type: "boolean", description: "Review the whole PR even if an earlier review exists (default: the commits since the last review, re-checking its open findings)" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {

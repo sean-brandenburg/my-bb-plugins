@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Finding, Review, ReviewReport } from "../../shared/review";
-import { applyFindingEdits, effectiveSelection, selectedFindingsBody } from "./findings";
+import { applyFindingEdits, earlierFindings, effectiveSelection, selectedFindingsBody, standingReviews } from "./findings";
 
 function finding(id: string, severity: Finding["severity"], overrides: Partial<Finding> = {}): Finding {
   return {
@@ -14,15 +14,16 @@ function finding(id: string, severity: Finding["severity"], overrides: Partial<F
     category: null,
     importance: null,
     scopeFit: null,
+    carriedFrom: null,
     ...overrides,
   };
 }
 
 function report(findings: Finding[]): ReviewReport {
-  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings };
+  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings, carriesForward: false, resolved: [] };
 }
 
-function review(body: string | null, reviewReport: ReviewReport | null, selection: Record<string, boolean>): Review {
+function review(body: string | null, reviewReport: ReviewReport | null, selection: Record<string, boolean>, overrides: Partial<Review> = {}): Review {
   return {
     id: "r1",
     ticketId: "t1",
@@ -40,6 +41,7 @@ function review(body: string | null, reviewReport: ReviewReport | null, selectio
     createdAt: 0,
     completedAt: 0,
     apply: null,
+    ...overrides,
   };
 }
 
@@ -91,5 +93,35 @@ describe("applyFindingEdits", () => {
     expect(edited.findings[0]).toMatchObject({ title: "New title", description: "Description C1", fix: null });
     expect(edited.findings[1]).toMatchObject({ title: "Title M1", description: "Shorter", fix: "Keep me" });
     expect(applyFindingEdits(reviewReport, {})).toBe(reviewReport);
+  });
+});
+
+describe("standingReviews", () => {
+  const at = (id: string, createdAt: number, overrides: Partial<Review> = {}) => review(null, report([]), {}, { id, createdAt, ...overrides });
+
+  it("stacks re-reviews back to the latest full review, oldest first, ignoring unfinished ones", () => {
+    const reviews = [at("full-old", 1), at("full", 2), at("inc-1", 3, { sinceCommitSha: "a" }), at("inc-2", 4, { sinceCommitSha: "b" }), at("running", 5, { status: "running", sinceCommitSha: "c" })];
+    expect(standingReviews(reviews).map((entry) => entry.id)).toEqual(["full", "inc-1", "inc-2"]);
+  });
+
+  it("stops at a re-review that already carried every open finding forward", () => {
+    const reviews = [at("full", 1), at("carried", 2, { sinceCommitSha: "a", report: { ...report([]), carriesForward: true } }), at("inc", 3, { sinceCommitSha: "b" })];
+    expect(standingReviews(reviews).map((entry) => entry.id)).toEqual(["carried", "inc"]);
+  });
+});
+
+describe("earlierFindings", () => {
+  it("keys findings by review and says what the apply round did with each", () => {
+    const applied = review(null, report([finding("F1", "critical"), finding("F2", "minor")]), {}, {
+      id: "r1",
+      apply: { threadId: "thr_a", startedAt: 1, completedAt: 2, pushedCommit: "abcdef0123456789", findingIds: ["F1"], push: true },
+    });
+    const unapplied = review(null, report([finding("F1", "important", { carriedFrom: "r0/F4" })]), {}, { id: "r2" });
+    expect(earlierFindings([applied, unapplied]).map(({ handle, applyRound, title }) => ({ handle, applyRound, title }))).toEqual([
+      { handle: "r1/F1", applyRound: "an apply round committed a fix for it in abcdef0; verify it worked", title: "Title F1" },
+      { handle: "r1/F2", applyRound: "deliberately left out of the apply round", title: "Title F2" },
+      { handle: "r2/F1", applyRound: null, title: "Title F1" },
+    ]);
+    expect(earlierFindings([unapplied])[0]).not.toHaveProperty("carriedFrom");
   });
 });

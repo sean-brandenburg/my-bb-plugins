@@ -169,7 +169,7 @@ function RereviewDeltaButton({ ticket }: { ticket: Ticket }) {
       type="button"
       className={cn("ml-auto rounded border border-border px-1.5 py-0.5 hover:bg-state-hover disabled:opacity-50", PRESS)}
       disabled={reviewing || ticket.latestReview?.status === "running"}
-      title="Run the code-review skill on just the commits since the last completed review"
+      title="Review the commits since the last completed review and re-check its open findings"
       onClick={() => void rereview()}
     >
       {ticket.latestReview?.status === "running" ? "Review running…" : "Re-review the delta"}

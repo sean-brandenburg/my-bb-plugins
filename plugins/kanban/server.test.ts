@@ -899,6 +899,51 @@ describe("persisted reviews", () => {
     expect(String(spawned[3]!.prompt)).not.toContain(`${sha}..HEAD`);
   });
 
+  it("hands a re-review the open findings to re-check and keeps the user's choices on the ones it carries forward", async () => {
+    const card = await reviewedCard();
+    const reportBody = (commit: string, extra: Record<string, unknown>, findings: Array<Record<string, unknown>>) =>
+      ["## Review Findings", `Reviewed commit: ${commit}`, "```json review-findings", JSON.stringify({ version: 1, summary: "x", commit, findings, ...extra }), "```"].join("\n");
+    await current().harness.behavior.runCli(["review-record", "--commit", sha], ctx("thr_2"));
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
+      lastAssistantText: reportBody(sha, {}, [
+        { id: "F1", severity: "important", title: "Leaky handle", locations: [{ file: "a.go", startLine: 3 }] },
+        { id: "F2", severity: "important", title: "Wrong default", locations: [] },
+      ]),
+    });
+    const [first] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    await current().harness.behavior.callRpc("review_set_selection", { reviewId: first!.id, findingId: "F2", selected: false });
+
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    const prompt = String(spawned[2]!.prompt);
+    expect(prompt).toContain("## Earlier findings");
+    expect(prompt).toContain(`"handle": "${first!.id}/F1"`);
+    expect(prompt).toContain(`"handle": "${first!.id}/F2"`);
+    expect(prompt).toContain('"carriesForward": true');
+    expect(prompt).toContain('"carriedFrom"');
+    expect(prompt).toContain(`If \`git log ${sha}..HEAD\` is empty nothing changed`);
+    expect(prompt).toContain("every earlier finding is open as listed");
+
+    await current().harness.behavior.runCli(["review-record", "--commit", newSha], ctx("thr_3"));
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_3", projectId: "proj_acme" }),
+      lastAssistantText: reportBody(newSha, { carriesForward: true, resolved: [{ id: `${first!.id}/F1`, title: "Leaky handle", note: "closed in defer" }] }, [
+        { id: "F1", severity: "important", title: "Wrong default", locations: [], carriedFrom: `${first!.id}/F2` },
+        { id: "F2", severity: "important", title: "New bug", locations: [] },
+      ]),
+    });
+    const [second] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(second!.report).toMatchObject({ carriesForward: true, resolved: [{ title: "Leaky handle" }] });
+    expect(second!.selection).toEqual({ F1: false, F2: true });
+    expect(second!.selectionOverrides).toEqual({ F1: false });
+
+    // The cumulative re-review stands alone, so the next one re-checks only its findings.
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    const next = String(spawned[3]!.prompt);
+    expect(next).toContain(`"handle": "${second!.id}/F1"`);
+    expect(next).not.toContain(`${first!.id}/`);
+  });
+
   it("applies a completed review in the review thread's worktree and records the push", async () => {
     const card = await reviewedCard();
     await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/No completed review/u);

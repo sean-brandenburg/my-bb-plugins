@@ -88,6 +88,36 @@ export function summarize(review: Review): ReviewSummary {
   };
 }
 
+/**
+ * The completed reviews whose findings still stand, oldest first: back from the newest up to and including the latest
+ * full review or the latest re-review that already carried every open finding forward.
+ */
+export function standingReviews(reviews: Review[]): Review[] {
+  const standing: Review[] = [];
+  for (const review of reviews.filter((entry) => entry.status === "completed").sort((a, b) => b.createdAt - a.createdAt)) {
+    standing.push(review);
+    if (review.sinceCommitSha === null || review.report?.carriesForward === true) break;
+  }
+  return standing.reverse();
+}
+
+/** The standing findings a re-review must re-check, keyed by the `<reviewId>/<findingId>` handle it carries them forward under. */
+export function earlierFindings(standing: Review[]): Array<Omit<Finding, "id" | "carriedFrom"> & { handle: string; applyRound: string | null }> {
+  return standing.flatMap((review) =>
+    (review.report?.findings ?? []).map(({ id, carriedFrom: _carriedFrom, ...finding }) => {
+      const apply = review.apply;
+      const handed = apply !== null && (apply.findingIds === null || apply.findingIds.includes(id));
+      const applyRound =
+        apply === null || apply.completedAt === null
+          ? null
+          : handed
+            ? `an apply round committed a fix for it${apply.pushedCommit === null ? "" : ` in ${apply.pushedCommit.slice(0, 7)}`}; verify it worked`
+            : "deliberately left out of the apply round";
+      return { handle: `${review.id}/${id}`, ...finding, applyRound };
+    }),
+  );
+}
+
 /** The review body trimmed to the selected findings, so the apply round never sees deselected ones. */
 export function selectedFindingsBody(review: Review): { body: string; findingIds: string[] | null } {
   const { report } = review;

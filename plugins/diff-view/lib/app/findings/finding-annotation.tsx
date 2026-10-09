@@ -64,6 +64,7 @@ export function FindingAnnotation({
           </span>
         ) : null}
         {item.isNew ? <span className="shrink-0 rounded border border-sky-500/50 px-1 text-[10px] text-sky-700 dark:text-sky-300" title="Reported since you last looked">new</span> : null}
+        {item.carriedFrom !== null ? <span className="shrink-0 text-muted-foreground" title={`Still open from an earlier review, where it was ${item.carriedFrom}`}>carried</span> : null}
         {item.touched ? <span className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-300" title="These lines changed since you last looked">touched</span> : null}
         {item.edited ? <span className="shrink-0 text-muted-foreground" title="You reworded this finding">edited</span> : null}
         {item.overridden ? <span className="shrink-0 text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
