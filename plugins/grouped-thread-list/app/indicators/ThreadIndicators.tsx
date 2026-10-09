@@ -115,10 +115,22 @@ function IndicatorButton({
   const ref = useRef<HTMLButtonElement>(null);
   const hover = useHoverFlyout();
   const presence = usePresence(hover.open);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(
+    null,
+  );
   const host = usePluginPortalHost(presence.mounted);
   useEffect(() => {
-    if (hover.open) setRect(ref.current?.getBoundingClientRect() ?? null);
+    const button = ref.current;
+    if (!hover.open || button === null) return;
+    const rect = button.getBoundingClientRect();
+    // Past the sidebar's edge rather than the button's, which sits inset in the rail.
+    const sidebarRight =
+      button.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect()
+        .right ?? rect.right;
+    setAnchor({
+      left: Math.max(rect.right, sidebarRight) + FLYOUT_GAP_PX,
+      top: rect.top,
+    });
   }, [hover.open]);
   return (
     <>
@@ -139,7 +151,7 @@ function IndicatorButton({
       >
         {face}
       </button>
-      {presence.mounted && rect !== null && host !== null
+      {presence.mounted && anchor !== null && host !== null
         ? createPortal(
             <div
               role="dialog"
@@ -147,12 +159,12 @@ function IndicatorButton({
               aria-hidden={presence.exiting || undefined}
               inert={presence.exiting}
               style={{
-                left: rect.right + FLYOUT_GAP_PX,
-                top: rect.top,
-                maxHeight: `calc(100vh - ${rect.top + VIEWPORT_MARGIN_PX}px)`,
+                left: anchor.left,
+                top: anchor.top,
+                maxHeight: `calc(100vh - ${anchor.top + VIEWPORT_MARGIN_PX}px)`,
               }}
               className={cn(
-                "fixed z-[70] flex w-80 flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg",
+                "fixed z-[70] flex w-96 flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg",
                 presence.exiting ? exit.fade : cn(enter.slideLeft, speed.fast),
               )}
               onMouseEnter={hover.show}
