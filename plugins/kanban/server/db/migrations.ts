@@ -182,5 +182,8 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE pr_comments ADD COLUMN start_side TEXT`,
     // Refetch every PR's comments once so multi-line comments get their start lines.
     `UPDATE tickets SET comments_synced_for = NULL`,
+    `ALTER TABLE tickets ADD COLUMN column_entered_at INTEGER`,
+    // The last update is the best guess at when an existing card reached its column.
+    `UPDATE tickets SET column_entered_at = updated_at`,
   ]);
 }

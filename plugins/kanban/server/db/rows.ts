@@ -39,6 +39,8 @@ export interface TicketRow {
   parent_id: string | null;
   due_date: string | null;
   position: number;
+  /** Null only for rows written before the column existed and not yet migrated. */
+  column_entered_at: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -359,6 +361,7 @@ export function rowToTicket(
           }
         : null,
     position: row.position,
+    columnEnteredAt: row.column_entered_at ?? row.updated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

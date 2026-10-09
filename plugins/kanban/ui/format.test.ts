@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { doneColumnId, todoColumnId } from "../shared/columns";
+import { agedOut, doneColumnId, todoColumnId } from "../shared/columns";
 import { dueStatus, localDay, parseQuickAdd, parseTagList, relativeTime, slugify } from "./format";
 
 describe("parseQuickAdd", () => {
@@ -68,5 +68,19 @@ describe("dueStatus", () => {
 describe("localDay", () => {
   it("formats the local calendar day", () => {
     expect(localDay(new Date(2026, 0, 5, 23, 59).getTime())).toBe("2026-01-05");
+  });
+});
+
+describe("agedOut", () => {
+  const day = 24 * 60 * 60 * 1000;
+
+  it("hides a card once it has been in the column longer than the column's days", () => {
+    expect(agedOut({ hideAfterDays: 7 }, 0, 7 * day)).toBe(false);
+    expect(agedOut({ hideAfterDays: 7 }, 0, 7 * day + 1)).toBe(true);
+  });
+
+  it("keeps every card when the column has no limit", () => {
+    expect(agedOut({}, 0, 1000 * day)).toBe(false);
+    expect(agedOut({ hideAfterDays: null }, 0, 1000 * day)).toBe(false);
   });
 });

@@ -36,7 +36,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   to a column's first or last card, `0`/`$` to the first or last column.
   `H`/`L` move the card to the neighbouring column and `J`/`K` reorder it.
   `o` (or Enter) opens the card, `t` its thread, `d` its changes, `a` adds a
-  card to the current column, and `?` (or Settings → Keyboard shortcuts) lists
+  card to the current column, `za` shows or hides the column's old cards
+  (see Columns), and `?` (or Settings → Keyboard shortcuts) lists
   them all. Arrow keys work as `h`/`j`/`k`/`l`.
   Opening a card from the keyboard puts the keys in the card, which move the
   way it is laid out: `j`/`k` go to the field or button below or above,
@@ -265,6 +266,12 @@ Default columns: `backlog`, `todo`, `in-progress`, `review`, `done`. Edit them
 under Settings → Columns on the page; agents refer to columns by id. New PR cards land in `todo`,
 whether you authored them or were asked to review. Sync never moves an open PR
 card you placed by hand.
+
+Settings → Columns can also hide cards that have been in the Done column for
+more than a number of days; leave it empty to keep them all. The column ends
+with "Show N older cards" (or press `za` on the board) to bring them back for
+the visit. Days count from when the card entered the column; cards already
+there when the setting arrived count from their last change.
 
 ## CLI
 

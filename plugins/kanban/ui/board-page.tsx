@@ -4,7 +4,7 @@ import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/
 import { toast } from "sonner";
 import { SHIMMER, enter, speed, useArrivals } from "bb-motion";
 import type { Ticket } from "../shared/board";
-import { doneColumnId } from "../shared/columns";
+import { agedOut, doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
 import { useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { localDay } from "./format";
@@ -43,21 +43,36 @@ export function BoardPage({ subPath }: { subPath: string }) {
   const columnArrival = useArrivals(board === null ? null : board.columns.map((column) => column.id));
   const ticketArrival = useArrivals(board === null ? null : board.tickets.map((ticket) => ticket.id));
 
-  const ticketsByColumn = useMemo(() => {
-    const map = new Map<string, Ticket[]>();
+  const now = useNow(60_000);
+  // Columns whose aged-out cards the user asked to see again; forgotten when the page closes.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  const { ticketsByColumn, hiddenByColumn } = useMemo(() => {
+    const shown = new Map<string, Ticket[]>();
+    const hidden = new Map<string, number>();
+    const columns = new Map((board?.columns ?? []).map((column) => [column.id, column]));
     for (const ticket of board?.tickets ?? []) {
       if (!showSubtasks && ticket.parentId !== null) continue;
-      const list = map.get(ticket.columnId) ?? [];
+      const column = columns.get(ticket.columnId);
+      if (column !== undefined && !revealed.has(column.id) && agedOut(column, ticket.columnEnteredAt, now)) {
+        hidden.set(ticket.columnId, (hidden.get(ticket.columnId) ?? 0) + 1);
+        continue;
+      }
+      const list = shown.get(ticket.columnId) ?? [];
       list.push(ticket);
-      map.set(ticket.columnId, list);
+      shown.set(ticket.columnId, list);
     }
-    for (const list of map.values()) list.sort(byPosition);
-    return map;
-  }, [board, showSubtasks]);
+    for (const list of shown.values()) list.sort(byPosition);
+    return { ticketsByColumn: shown, hiddenByColumn: hidden };
+  }, [board, showSubtasks, revealed, now]);
+  const toggleHidden = (columnId: string) => {
+    const next = new Set(revealed);
+    if (!next.delete(columnId)) next.add(columnId);
+    setRevealed(next);
+  };
   const layout = useMemo(() => (board?.columns ?? []).map((column) => (ticketsByColumn.get(column.id) ?? []).map((ticket) => ticket.id)), [board, ticketsByColumn]);
 
   const selected = board?.tickets.find((ticket) => ticket.id === selectedId) ?? null;
-  const today = localDay(useNow(60_000));
+  const today = localDay(now);
   const doneId = board === null ? null : doneColumnId(board.columns);
   const sourceTags = useMemo(() => new Set((board?.sources ?? []).flatMap((source) => source.tags)), [board]);
   const appPanel = useAppPanel();
@@ -99,14 +114,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
     const column = board.tickets.filter((entry) => entry.columnId === columnId && entry.id !== ticket.id).sort(byPosition);
     const index = placementIndex(column.map((entry) => entry.id), visible, visibleIndex);
     // Optimistic reorder so the card lands where it was put before the server answers.
-    column.splice(index, 0, { ...ticket, columnId });
-    const positions = new Map(column.map((entry, position) => [entry.id, position + 1]));
-    setBoard({
-      ...board,
-      tickets: board.tickets.map((entry) =>
-        positions.has(entry.id) ? { ...entry, columnId, position: positions.get(entry.id)! } : entry,
-      ),
-    });
+    column.splice(index, 0, { ...ticket, columnId, columnEnteredAt: columnId === ticket.columnId ? ticket.columnEnteredAt : Date.now() });
+    const placed = new Map(column.map((entry, position) => [entry.id, { ...entry, position: position + 1 }]));
+    setBoard({ ...board, tickets: board.tickets.map((entry) => placed.get(entry.id) ?? entry) });
     try {
       await rpc.call("ticket_move", { id: ticket.id, columnId, index });
     } catch (cause) {
@@ -148,6 +158,11 @@ export function BoardPage({ subPath }: { subPath: string }) {
       case "help":
         pageUi.set({ dialog: "keys" });
         return;
+      case "toggle-hidden": {
+        const columnId = ticket?.columnId ?? doneId;
+        if (columnId !== null && board.columns.find((column) => column.id === columnId)?.hideAfterDays != null) toggleHidden(columnId);
+        return;
+      }
     }
   };
   useBoardKeys(boardRef, diffTicketId === null && !proposalsList && proposalId === null && view === "board" && board !== null, runCommand);
@@ -272,6 +287,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
             onReview={(ticket) => void reviewPr(ticket)}
             onOpenDiff={(ticket) => openDiff(ticket.id)}
             onAdd={() => pageUi.set({ dialog: "new", newTicketColumn: column.id })}
+            hiddenCount={hiddenByColumn.get(column.id) ?? 0}
+            revealed={revealed.has(column.id)}
+            onToggleHidden={() => toggleHidden(column.id)}
           />
         ))}
       </div>

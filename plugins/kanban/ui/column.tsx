@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { DragEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { STAGGER, enter, stagger, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
+import { PRESS, STAGGER, enter, stagger, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -36,6 +36,9 @@ export function ColumnView({
   onReview,
   onOpenDiff,
   onAdd,
+  hiddenCount,
+  revealed,
+  onToggleHidden,
 }: {
   index: number;
   arrival: Arrival;
@@ -59,6 +62,10 @@ export function ColumnView({
   onReview: (ticket: Ticket) => void;
   onOpenDiff: (ticket: Ticket) => void;
   onAdd: () => void;
+  /** Cards kept off the board for sitting in the column past its `hideAfterDays`. */
+  hiddenCount: number;
+  revealed: boolean;
+  onToggleHidden: () => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const indexFromPointer = (event: DragEvent<HTMLElement>): number => {
@@ -138,8 +145,18 @@ export function ColumnView({
           </div>
         ))}
         {isTarget && dropTarget.index >= tickets.length ? <div className="h-0.5 rounded bg-primary" /> : null}
-        {tickets.length === 0 && !isTarget ? (
+        {tickets.length === 0 && !isTarget && hiddenCount === 0 ? (
           <p className={cn("px-1 py-3 text-center text-xs text-muted-foreground", enter.fade)}>Drop cards here</p>
+        ) : null}
+        {column.hideAfterDays != null && (hiddenCount > 0 || revealed) ? (
+          <button
+            type="button"
+            onClick={onToggleHidden}
+            title={`Cards in ${column.name} longer than ${column.hideAfterDays} day${column.hideAfterDays === 1 ? "" : "s"} are hidden (za)`}
+            className={cn("rounded px-1 py-1.5 text-center text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", enter.fade, PRESS)}
+          >
+            {revealed ? `Hide cards older than ${column.hideAfterDays} day${column.hideAfterDays === 1 ? "" : "s"}` : `Show ${hiddenCount} older card${hiddenCount === 1 ? "" : "s"}`}
+          </button>
         ) : null}
       </div>
     </section>

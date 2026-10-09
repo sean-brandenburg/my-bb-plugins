@@ -11,7 +11,8 @@ export type BoardCommand =
   | { kind: "thread" }
   | { kind: "diff" }
   | { kind: "add" }
-  | { kind: "help" };
+  | { kind: "help" }
+  | { kind: "toggle-hidden" };
 
 export const KEYMAP: Record<string, BoardCommand> = {
   h: { kind: "cursor", motion: "left" },
@@ -41,6 +42,12 @@ export interface KeyHelpSection {
   keys: readonly { keys: readonly string[]; action: string }[];
 }
 
+/** Two-key commands; their first key does nothing until the second arrives. */
+export const PREFIXED_KEYMAP: Record<string, BoardCommand> = {
+  gg: { kind: "cursor", motion: "top" },
+  za: { kind: "toggle-hidden" },
+};
+
 /** What the shortcuts dialog lists, in display order. */
 export const KEY_HELP: readonly KeyHelpSection[] = [
   {
@@ -56,6 +63,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["t"], action: "Open the card's thread" },
       { keys: ["d"], action: "View the card's changes" },
       { keys: ["a"], action: "New card in this column" },
+      { keys: ["za"], action: "Show / hide cards past the column's hide-after days" },
       { keys: ["?"], action: "Show these shortcuts" },
     ],
   },

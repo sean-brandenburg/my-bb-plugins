@@ -307,6 +307,33 @@ describe("ad hoc tickets", () => {
     expect(current().harness.inspection.realtimeSignals.length).toBeGreaterThan(0);
   });
 
+  it("records when a card enters a column, and keeps it through reorders there", async () => {
+    await load();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const a = (await current().harness.behavior.callRpc("ticket_create", { title: "A" })) as Ticket;
+    const b = (await current().harness.behavior.callRpc("ticket_create", { title: "B" })) as Ticket;
+    expect(a.columnEnteredAt).toBe(1_000);
+
+    now.mockReturnValue(2_000);
+    await current().harness.behavior.callRpc("ticket_move", { id: a.id, columnId: "done" });
+    now.mockReturnValue(3_000);
+    await current().harness.behavior.callRpc("ticket_move", { id: b.id, columnId: "done", index: 0 });
+    const entered = new Map((await board()).tickets.map((ticket) => [ticket.id, ticket.columnEnteredAt]));
+    // a was pushed down a place by b's arrival, which is not a move for a.
+    expect(entered.get(a.id)).toBe(2_000);
+    expect(entered.get(b.id)).toBe(3_000);
+  });
+
+  it("keeps a column's hide-after setting", async () => {
+    await load();
+    const columns = [
+      { id: "todo", name: "To Do" },
+      { id: "done", name: "Done", hideAfterDays: 7 },
+    ];
+    await current().harness.behavior.callRpc("columns_set", { columns });
+    expect((await board()).columns).toEqual(columns);
+  });
+
   it("spawns a thread with the ticket id in plugin metadata when asked", async () => {
     await load();
     const ticket = (await current().harness.behavior.callRpc("ticket_create", {

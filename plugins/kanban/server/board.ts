@@ -150,7 +150,7 @@ export function createBoardStore(ctx: KanbanContext) {
       const at = index === null ? siblings.length : Math.min(index, siblings.length);
       siblings.splice(at, 0, current);
       siblings.forEach((row, position) => {
-        if (row.id === id) stmts.setColumn.run(columnId, position + 1, now, id);
+        if (row.id === id) stmts.setColumn.run({ column_id: columnId, position: position + 1, now, id });
         else if (row.position !== position + 1) stmts.setPosition.run(position + 1, row.id);
       });
     });
@@ -249,7 +249,7 @@ export function createBoardStore(ctx: KanbanContext) {
     const now = Date.now();
     db.transaction(() => {
       for (const column of previous) {
-        if (!ids.has(column.id)) stmts.moveColumn.run(fallback, now, column.id);
+        if (!ids.has(column.id)) stmts.moveColumn.run(fallback, now, now, column.id);
       }
     })();
     await bb.storage.kv.set("columns", columns);

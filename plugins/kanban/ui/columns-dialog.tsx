@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { type Rpc } from "./data";
 import { slugify } from "./format";
+import { doneColumnId } from "../shared/columns";
 import { toastError } from "./actions";
 import { MotionListItem } from "./primitives";
 
@@ -33,6 +34,13 @@ export function ColumnsDialog({
     if (open) setDraft(columns);
   }, [open, columns]);
   const arrival = useArrivals(open ? draft.map((column) => column.id) : null);
+  const done = draft.find((column) => column.id === doneColumnId(draft)) ?? null;
+  const setHideAfterDays = (raw: string) => {
+    if (done === null) return;
+    const days = Number.parseInt(raw, 10);
+    const hideAfterDays = Number.isNaN(days) ? null : Math.min(Math.max(days, 1), 365);
+    setDraft(draft.map((entry) => (entry.id === done.id ? { ...entry, hideAfterDays } : entry)));
+  };
   const rows = usePresenceList(draft, (column) => column.id);
   const move = (index: number, delta: number) => {
     if (index < 0) return;
@@ -102,6 +110,25 @@ export function ColumnsDialog({
             </MotionListItem>
           ))}
         </ul>
+        {done !== null ? (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="min-w-0 flex-1">
+              Hide cards that have been in <span className="font-medium">{done.name}</span> for more than
+            </span>
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              inputMode="numeric"
+              value={done.hideAfterDays ?? ""}
+              placeholder="never"
+              aria-label={`Days before cards in ${done.name} are hidden`}
+              onChange={(event) => setHideAfterDays(event.target.value)}
+              className="h-8 w-20"
+            />
+            <span>days</span>
+          </label>
+        ) : null}
         <form
           className="flex items-center gap-2"
           onSubmit={(event) => {

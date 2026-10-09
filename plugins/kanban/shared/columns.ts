@@ -7,6 +7,13 @@ export const COLUMN = {
   done: "done",
 } as const;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whether a card has sat in a column longer than the column keeps cards on show. */
+export function agedOut(column: { hideAfterDays?: number | null }, enteredAt: number, now: number): boolean {
+  return column.hideAfterDays != null && now - enteredAt > column.hideAfterDays * DAY_MS;
+}
+
 /** Where finished cards go: the `done` column, else the last one. */
 export function doneColumnId(columns: readonly { id: string }[]): string | null {
   return columns.find((column) => column.id === COLUMN.done)?.id ?? columns.at(-1)?.id ?? null;

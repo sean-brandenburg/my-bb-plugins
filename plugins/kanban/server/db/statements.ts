@@ -29,14 +29,18 @@ export function prepareStatements(db: KanbanDatabase) {
       `INSERT INTO tickets (id, title, description, column_id, kind, tags, source_id, thread_id, project_id, parent_id,
          pr_repo, pr_number, pr_url, pr_role, pr_state, pr_author, pr_updated_at,
          jira_key, jira_url, jira_status, jira_status_category, jira_issue_type, jira_priority, jira_assignee, jira_updated_at,
-         due_date, position, created_at, updated_at)
+         due_date, position, column_entered_at, created_at, updated_at)
        VALUES (@id, @title, @description, @column_id, @kind, @tags, @source_id, @thread_id, @project_id, @parent_id,
          @pr_repo, @pr_number, @pr_url, @pr_role, @pr_state, @pr_author, @pr_updated_at,
          @jira_key, @jira_url, @jira_status, @jira_status_category, @jira_issue_type, @jira_priority, @jira_assignee, @jira_updated_at,
-         @due_date, @position, @created_at, @updated_at)`,
+         @due_date, @position, @created_at, @created_at, @updated_at)`,
     ),
-    setColumn: db.prepare<[string, number, number, string]>(
-      `UPDATE tickets SET column_id = ?, position = ?, updated_at = ? WHERE id = ?`,
+    // A reorder within the column keeps the time the card arrived there.
+    setColumn: db.prepare<[{ column_id: string; position: number; now: number; id: string }]>(
+      `UPDATE tickets SET
+         column_entered_at = CASE WHEN column_id = @column_id THEN column_entered_at ELSE @now END,
+         column_id = @column_id, position = @position, updated_at = @now
+       WHERE id = @id`,
     ),
     setPosition: db.prepare<[number, string]>(
       `UPDATE tickets SET position = ? WHERE id = ?`,
@@ -71,8 +75,8 @@ export function prepareStatements(db: KanbanDatabase) {
       `UPDATE tickets SET title = ?, jira_url = ?, jira_status = ?, jira_status_category = ?, jira_issue_type = ?, jira_priority = ?, jira_assignee = ?, jira_updated_at = ?, updated_at = ? WHERE id = ?`,
     ),
     remove: db.prepare<[string]>(`DELETE FROM tickets WHERE id = ?`),
-    moveColumn: db.prepare<[string, number, string]>(
-      `UPDATE tickets SET column_id = ?, updated_at = ? WHERE column_id = ?`,
+    moveColumn: db.prepare<[string, number, number, string]>(
+      `UPDATE tickets SET column_id = ?, column_entered_at = ?, updated_at = ? WHERE column_id = ?`,
     ),
     reviewsForTicket: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE ticket_id = ? ORDER BY created_at DESC, rowid DESC`,

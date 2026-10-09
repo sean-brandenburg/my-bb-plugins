@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { type BoardCommand, KEYMAP } from "./board-nav";
+import { type BoardCommand, KEYMAP, PREFIXED_KEYMAP } from "./board-nav";
 
 const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 // Radix menus and listboxes take letters for typeahead without always claiming them.
@@ -34,7 +34,7 @@ export function useBoardKeys(rootRef: RefObject<HTMLElement | null>, enabled: bo
 
   useEffect(() => {
     if (!enabled) return;
-    let pendingG = 0;
+    let pending: { key: string; at: number } | null = null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       const root = rootRef.current;
@@ -43,18 +43,16 @@ export function useBoardKeys(rootRef: RefObject<HTMLElement | null>, enabled: bo
       if (target !== null && target !== document.body && target.closest(SCOPE) === null) return;
       if (isEditable(target) || target?.closest(OWN_KEYS) != null) return;
       if (document.querySelector(OPEN_DIALOG) !== null) return;
-      let command: BoardCommand | undefined;
-      if (event.key === "g") {
-        if (event.timeStamp - pendingG > PREFIX_TIMEOUT_MS) {
-          pendingG = event.timeStamp;
-          event.preventDefault();
-          return;
-        }
-        command = { kind: "cursor", motion: "top" };
-      } else {
-        command = KEYMAP[event.key];
+      const prefix = pending !== null && event.timeStamp - pending.at <= PREFIX_TIMEOUT_MS ? pending.key : "";
+      pending = null;
+      // A key that doesn't complete the pending prefix counts on its own.
+      let command: BoardCommand | undefined = prefix === "" ? undefined : PREFIXED_KEYMAP[prefix + event.key];
+      if (command === undefined && Object.keys(PREFIXED_KEYMAP).some((keys) => keys.startsWith(event.key))) {
+        pending = { key: event.key, at: event.timeStamp };
+        event.preventDefault();
+        return;
       }
-      pendingG = 0;
+      command ??= KEYMAP[event.key];
       if (command === undefined) return;
       event.preventDefault();
       handler.current(command);

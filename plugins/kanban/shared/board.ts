@@ -6,6 +6,8 @@ import { reviewSummarySchema } from "./review";
 export const columnSchema = z.object({
   id: z.string().min(1).max(40),
   name: z.string().trim().min(1).max(60),
+  /** Cards that have sat in the column longer than this are hidden on the board; unset keeps them all. */
+  hideAfterDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 export type Column = z.infer<typeof columnSchema>;
 
@@ -143,6 +145,8 @@ export const ticketSchema = z.object({
   pr: pullRequestSchema.nullable(),
   jira: jiraIssueSchema.nullable(),
   position: z.number(),
+  /** When the card moved into its current column. */
+  columnEnteredAt: z.number(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
