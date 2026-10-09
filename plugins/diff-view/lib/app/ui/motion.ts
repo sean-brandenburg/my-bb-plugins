@@ -10,6 +10,7 @@ export const enter = {
   slideRight: "bbm-slide-in-right",
   scale: "bbm-scale-in",
   pop: "bbm-pop-in",
+  check: "bbm-check-in",
 } as const;
 
 export const FAST = "bbm-fast";

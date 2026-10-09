@@ -4,7 +4,7 @@ import {
   useComposer,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
-import { cx, enter, exit, POP, speed, STAGGER, stagger, usePresence } from "bb-motion";
+import { cx, enter, exit, POP, speed, STAGGER, stagger, usePresence, NEAR } from "bb-motion";
 import { type AnimationEventHandler, type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Arrival, arrive, type Shown } from "./arrival.js";
@@ -29,7 +29,6 @@ import {
 const RUNNING_REFRESH_MS = 5000;
 
 // The footer's text is 12px, so values move the small distance as they change.
-const NEAR_STYLE = { "--bbm-distance": "var(--bbm-distance-sm)" } as CSSProperties;
 
 type Sdk = ReturnType<typeof useSdk>;
 type LimitNotice = NonNullable<ReturnType<typeof rateLimitNotice>>;
@@ -122,7 +121,7 @@ function useArrival(key: string, rank = 0): Arrival {
 // that rises in when it grows and drops in when it shrinks.
 function valueMotion(arrival: Arrival, index: number): PartMotion {
   if (arrival === "enter") return { className: cx(enter.fade, speed.fast, STAGGER), style: stagger(index) };
-  return { className: cx(arrival === "up" ? enter.rise : enter.drop, speed.fast), style: NEAR_STYLE };
+  return { className: cx(arrival === "up" ? enter.rise : enter.drop, speed.fast, NEAR) };
 }
 
 function ChangingPart(props: {
@@ -160,7 +159,7 @@ function LimitPart(props: { limit: LimitNotice; exiting: boolean; onAnimationEnd
   const motion: PartMotion = props.exiting
     ? { className: exit.fade }
     : arrival === "enter"
-      ? { className: cx(enter.rise, speed.fast), style: NEAR_STYLE }
+      ? { className: cx(enter.rise, speed.fast, NEAR) }
       : { className: arrival === "up" ? POP : cx(enter.fade, speed.fast) };
   return (
     <Part

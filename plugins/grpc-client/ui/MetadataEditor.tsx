@@ -1,10 +1,10 @@
-import { cx, PRESS } from "bb-motion";
+import { cx, PRESS, EntranceScope, useListKeys } from "bb-motion";
 import type { MetadataEntry } from "../contract";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { inputClass } from "./MessageEditor";
-import { EntranceScope, PresenceItem, useListKeys } from "./presence";
+import { PresenceItem } from "./presence";
 
 export interface MetadataRow extends MetadataEntry {
   enabled: boolean;

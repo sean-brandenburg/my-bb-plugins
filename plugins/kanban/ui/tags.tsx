@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { PRESS, enter, exit, speed } from "bb-motion";
+import { PRESS, enter, exit, speed, type Arrival, useArrivals, useEntrance, usePresenceList, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { type Rpc } from "./data";
 import type { RunAction } from "./actions";
-import { POPOVER_MOTION } from "./primitives";
-import { type Arrival, useArrivals, useEntrance, usePresenceList } from "./motion";
+import {  } from "./primitives";
 
 const TAG_TONES = [
   { chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", dot: "bg-sky-500" },

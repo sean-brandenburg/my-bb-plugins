@@ -379,7 +379,7 @@ function ProjectPickerDialog({
         // exit keyframes own the transform outright.
         className={cn(
           "absolute inset-x-0 top-[10vh] mx-auto flex h-[min(680px,84vh)] w-[min(1240px,96vw)] origin-top flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none",
-          exiting ? exit.sink : enter.scale,
+          exiting ? exit.scale : enter.scale,
         )}
       >
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">

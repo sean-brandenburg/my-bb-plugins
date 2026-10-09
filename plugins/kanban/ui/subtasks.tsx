@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { STAGGER, enter, speed, stagger } from "bb-motion";
+import { STAGGER, enter, speed, stagger, type Arrival, useArrivals, useEntrance, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId, todoColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { parseQuickAdd } from "./format";
 import { type Rpc } from "./data";
-import { Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS, POPOVER_MOTION } from "./primitives";
+import { Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
 import type { RunAction } from "./actions";
-import { type Arrival, useArrivals, useEntrance, usePopOnChange } from "./motion";
 
 function SubtaskProgress({ ticket }: { ticket: Ticket }) {
   if (ticket.children.total === 0) return null;

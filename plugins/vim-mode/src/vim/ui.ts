@@ -67,7 +67,7 @@ export class VimUi {
     this.cursorLayer.setAttribute("aria-hidden", "true");
 
     this.bar = document.createElement("div");
-    this.bar.className = "bb-vim-bar bbm-rise-in bbm-fast";
+    this.bar.className = "bb-vim-bar bbm-rise-in bbm-fast bbm-near";
     this.bar.setAttribute(UI_ATTRIBUTE, "");
     this.bar.append(cm.panel);
 

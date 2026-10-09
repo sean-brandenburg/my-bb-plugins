@@ -9,20 +9,8 @@
  * rules only set the longhands they mean to change.
  */
 
-:root {
-  /* Full-width rows give less than compact buttons: 0.97 of a 300px row is a
-   * 9px shrink, which reads as a jump rather than a press. */
-  --bbm-shell-press-row: 0.985;
-  /* Checkmarks swap in from well below full size so the confirmation lands. */
-  --bbm-shell-check-scale: 0.6;
-}
-
 @keyframes bbm-shell-settle {
   from { opacity: 0; transform: translate3d(0, var(--bbm-distance-sm), 0); }
-}
-
-@keyframes bbm-shell-check-in {
-  from { opacity: 0; transform: scale(var(--bbm-shell-check-scale)); }
 }
 
 /* ---------- Tactile press on bb's Button ----------
@@ -45,19 +33,12 @@
   transform: scale(var(--bbm-scale-press));
 }
 [data-sidebar="content"] :is(button, a, [role="button"])[class*="hover:duration-0"]:not(:disabled, [aria-disabled="true"], [role="switch"], [aria-roledescription="sortable"], [draggable="true"], [data-bb-plugin-root] *):active {
-  transform: scale(var(--bbm-shell-press-row));
+  transform: scale(var(--bbm-scale-press-soft));
 }
 
 /* ---------- Radix overlays: menus, popovers, selects, tooltips ----------
- * bb's overlays animate with `data-[state=open]:animate-in`, so motion.css's
- * bare `.animate-in` curve never reaches them. The popper wrapper exposes the
- * trigger-relative origin that every radix popper component (dropdown and
- * context menu, popover, select, tooltip, hover card) copies into its own
- * `--radix-*-transform-origin`; bb never applies it, so overlays zoomed from
- * their own center instead of out of their trigger. */
-[data-radix-popper-content-wrapper] > * {
-  transform-origin: var(--radix-popper-transform-origin);
-}
+ * motion.css supplies their curve and trigger-relative origin; these retime
+ * each kind. */
 [data-radix-popper-content-wrapper] > [data-state="open"][class*="animate-in"] {
   animation-duration: var(--bbm-duration-fast);
   animation-timing-function: var(--bbm-ease-out);
@@ -173,25 +154,11 @@ button[aria-label="Scroll to latest event"]:active:not(.invisible) {
  * Check indicator. An animation starts whenever its selector begins to match,
  * so this fires on the attribute swap even when React reuses the <svg>. */
 :is(button, [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]) [data-icon="Check"]:not([data-bb-plugin-root] *) {
-  animation: bbm-shell-check-in var(--bbm-duration-base) var(--bbm-ease-spring) backwards;
+  animation: bbm-check-in var(--bbm-duration-base) var(--bbm-ease-spring) backwards;
 }
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  :root {
-    --bbm-shell-press-row: 1;
-    --bbm-shell-check-scale: 1;
-  }
-  /* motion.css strips tw-animate's zoom and slide from `.animate-in`, which
-   * bb's state-prefixed overlay classes never match. */
-  :is([data-radix-popper-content-wrapper] > *, [role="dialog"], [role="alertdialog"], [data-bb-portaled-overlay]) {
-    --tw-enter-scale: 1 !important;
-    --tw-enter-translate-x: 0 !important;
-    --tw-enter-translate-y: 0 !important;
-    --tw-exit-scale: 1 !important;
-    --tw-exit-translate-x: 0 !important;
-    --tw-exit-translate-y: 0 !important;
-  }
   /* bb's translate-y-2 isn't token-driven. */
   button[aria-label="Scroll to latest event"] {
     transition-property: opacity, visibility;

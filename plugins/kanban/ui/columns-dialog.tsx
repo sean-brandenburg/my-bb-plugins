@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { POP } from "bb-motion";
+import { POP, useArrivals, usePresenceList } from "bb-motion";
 import type { Column } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,6 @@ import { type Rpc } from "./data";
 import { slugify } from "./format";
 import { toastError } from "./actions";
 import { MotionListItem } from "./primitives";
-import { useArrivals, usePresenceList } from "./motion";
 
 export function ColumnsDialog({
   open,

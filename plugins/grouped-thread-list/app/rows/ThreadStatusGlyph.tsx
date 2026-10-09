@@ -1,7 +1,6 @@
-import { enter } from "bb-motion";
+import { enter, useChangedSinceMount } from "bb-motion";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,

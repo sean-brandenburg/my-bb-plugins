@@ -1,12 +1,11 @@
 import { useState } from "react";
 import type { AnimationEvent, ReactNode } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { CHEVRON, PRESS, STAGGER, TRANSFORM_TRANSITION, enter, exit, speed, stagger, usePresence } from "bb-motion";
+import { CHEVRON, PRESS, STAGGER, TRANSFORM_TRANSITION, enter, exit, speed, stagger, usePresence, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { type ProjectOption } from "./data";
-import { type Arrival, useEntrance, usePopOnChange } from "./motion";
 
 /** GitHub links open in the system browser: an explicit target bypasses bb's in-app routing. */
 export function ExternalLink({ href, className, children, title }: { href: string; className?: string; children: ReactNode; title?: string }) {
@@ -240,10 +239,6 @@ export function Property({ label, children, className }: { label: string; childr
     </>
   );
 }
-
-/** tw-animate entrance and exit for radix menus and popovers; bb-motion retunes their curve. */
-export const POPOVER_MOTION =
-  "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1";
 
 /** A segmented control whose selection pill slides between equal-width options. */
 export function SegmentedTabs<T extends string>({

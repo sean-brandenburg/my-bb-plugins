@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { cx, enter, PRESS, REVEAL, REVEAL_HOST, speed } from "bb-motion";
+import { cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, EntranceScope } from "bb-motion";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { HistoryEntry, rpcContract } from "../server/rpc-contract";
 import { CHANGED_CHANNEL, errorMessage } from "../shared/common";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { EntranceScope, PresenceItem } from "./presence";
+import { PresenceItem } from "./presence";
 
 const HISTORY_LIST_LIMIT = 200;
 

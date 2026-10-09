@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -15,16 +14,7 @@ import {
   experimental_useSidebarNavigation,
   type ExperimentalSidebarNavigationItem,
 } from "@get-bb/plugin-sdk/app";
-import {
-  cx,
-  enter,
-  exit,
-  OPACITY_TRANSITION,
-  PRESS,
-  speed,
-  TRANSFORM_TRANSITION,
-  usePresence,
-} from "bb-motion";
+import { cx, enter, exit, OPACITY_TRANSITION, PRESS, speed, TRANSFORM_TRANSITION, usePresence, NEAR } from "bb-motion";
 import {
   nextIndicator,
   railItemOffset,
@@ -43,11 +33,6 @@ const BUTTON_CLASS = cx(
 // in, or every step would replay the entrance.
 const TOOLTIP_WARM_MS = 300;
 let lastTooltipHiddenAt = Number.NEGATIVE_INFINITY;
-
-// A tooltip sits right beside its button, so it slides the short distance.
-const TOOLTIP_ENTER_STYLE = {
-  "--bbm-distance-lg": "var(--bbm-distance-sm)",
-} as CSSProperties;
 
 function useAnchorRect(
   anchor: RefObject<HTMLElement | null>,
@@ -99,8 +84,8 @@ function Tooltip({
           "flex items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md",
           !warm && enter.slideLeft,
           !warm && speed.fast,
+          !warm && NEAR,
         )}
-        style={warm ? undefined : TOOLTIP_ENTER_STYLE}
       >
         {children}
       </div>

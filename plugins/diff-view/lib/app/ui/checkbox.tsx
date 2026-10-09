@@ -9,14 +9,11 @@ export interface CheckboxProps extends Omit<React.ButtonHTMLAttributes<HTMLButto
   onCheckedChange: (checked: boolean) => void;
 }
 
-// The shared pop starts at 0.94, too faint on a 14px glyph. Reduced motion needs the scale back at 1 because this
-// element-level value outranks the :root override in motion.css.
-const CHECK_POP = `${enter.pop} [--bbm-scale-pop:0.5] motion-reduce:[--bbm-scale-pop:1]`;
 
 /** A check that springs in only when the user ticks it, not when marks arrive from the server. */
 function CheckMark({ clicked }: { clicked: React.RefObject<boolean> }) {
   const [pop] = React.useState(() => clicked.current);
-  return <Icon name="Check" className={cn("size-3.5", pop && CHECK_POP)} />;
+  return <Icon name="Check" className={cn("size-3.5", pop && enter.check)} />;
 }
 
 /** The kanban checkbox's look without @radix-ui/react-checkbox, which bb bundles rather than shims. */

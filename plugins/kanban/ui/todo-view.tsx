@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { PRESS, STAGGER, enter, exit, speed, stagger } from "bb-motion";
+import { PRESS, STAGGER, enter, exit, speed, stagger, type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "bb-motion";
 import type { Board, Column, Ticket } from "../shared/board";
 import { doneColumnId, todoColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import { ThreadStatusDot } from "./primitives";
 import { tagTone, TagBadges } from "./tags";
 import { PrBadges, JiraBadges, ReviewBadge, DueBadge } from "./badges";
 import { toastError } from "./actions";
-import { type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "./motion";
 
 export function TodoView({
   board,

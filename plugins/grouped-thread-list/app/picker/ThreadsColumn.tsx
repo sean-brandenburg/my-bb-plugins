@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { enter, PRESS, speed, STAGGER, stagger } from "bb-motion";
+import { enter, PRESS, speed, STAGGER, stagger, useChangedSinceMount, SOFT } from "bb-motion";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { threadListIndicatorStateForThread } from "../model/thread-activity.js";
@@ -8,7 +8,6 @@ import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import {
   formatAge,
   type LeftEntry,
@@ -32,11 +31,6 @@ function emptyMessage(entry: LeftEntry | undefined): string {
 function showsProjectMonograms(entry: LeftEntry | undefined): boolean {
   return entry?.kind === "pinned" || entry?.kind === "unread";
 }
-
-// Rows here span most of the dialog, where the default press scale would
-// shrink them by tens of pixels.
-const WIDE_ROW_PRESS =
-  "[--bbm-scale-press:0.985] motion-reduce:[--bbm-scale-press:1]";
 
 /** Pops when the row is pinned in view, not when it mounts already pinned. */
 function PinnedMark({ pinned }: { pinned: boolean }) {
@@ -137,7 +131,7 @@ export function ThreadsColumn({
               className={cn(
                 "flex h-8 cursor-pointer select-none items-center gap-2 rounded-md pr-2 text-sm",
                 PRESS,
-                WIDE_ROW_PRESS,
+                SOFT,
                 intro && [enter.rise, speed.fast, STAGGER],
                 selected &&
                   (column === "right"

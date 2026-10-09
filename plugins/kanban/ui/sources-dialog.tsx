@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { OPACITY_TRANSITION, enter } from "bb-motion";
+import { OPACITY_TRANSITION, enter, useArrivals, usePresenceList } from "bb-motion";
 import type { Source, SourceKind } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +12,6 @@ import { type Rpc, type ProjectOption } from "./data";
 import { Badge, MotionListItem, Select } from "./primitives";
 import { TagBadges } from "./tags";
 import { toastError } from "./actions";
-import { useArrivals, usePresenceList } from "./motion";
 
 const SOURCE_KIND_LABELS: Record<SourceKind, string> = { "github-search": "GitHub search", "jira-jql": "Jira (JQL)" };
 

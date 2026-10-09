@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { PRESS, enter } from "bb-motion";
+import { PRESS, enter, usePopOnChange } from "bb-motion";
 import { DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT } from "./primitives";
 import { toastError } from "./actions";
-import { usePopOnChange } from "./motion";
 
 /** Pairs a changes view with the title-bar controls that refresh it. */
 export function diffInstanceKey(subjectId: string): string {

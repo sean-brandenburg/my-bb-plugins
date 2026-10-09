@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { PRESS, enter, speed } from "bb-motion";
+import { PRESS, enter, speed, usePopOnChange } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import { ReviewPanel } from "./review-panel";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
 import { type RunAction, usePendingAction } from "./actions";
-import { usePopOnChange } from "./motion";
 
 function TicketDetails({
   ticket,

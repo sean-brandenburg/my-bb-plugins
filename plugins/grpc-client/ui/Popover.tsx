@@ -1,9 +1,8 @@
 import { useRef } from "react";
 import type { ReactNode } from "react";
-import { enter, exit, speed, usePresence } from "bb-motion";
+import { enter, exit, speed, usePresence, EntranceScope } from "bb-motion";
 import { cn } from "@/lib/utils";
 import { useDismiss } from "./hooks";
-import { EntranceScope } from "./presence";
 
 /** An anchored panel that closes on outside click or Escape. */
 export function Popover({

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { PRESS, STAGGER, enter, exit, speed, stagger } from "bb-motion";
+import { PRESS, STAGGER, enter, exit, speed, stagger, type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import type { CommentApply, PrComment } from "../shared/comments";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { relativeTime, shortSha } from "./format";
 import { type Rpc, usePushPreference, useNow } from "./data";
 import { ExternalLink, PushToggle, Badge, ThreadStatusDot, COMPACT, Group } from "./primitives";
 import { type RunAction, toastError } from "./actions";
-import { type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "./motion";
 
 function commentWhere(comment: PrComment): string {
   if (comment.kind === "review-comment") return `${comment.path ?? "?"}${comment.line === null ? "" : `:${comment.line}`}`;

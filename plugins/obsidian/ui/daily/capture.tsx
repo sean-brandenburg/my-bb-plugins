@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { toast } from "sonner";
-import { NUDGE, enter, exit, usePresence } from "bb-motion";
+import { NUDGE, enter, exit, usePresence, useReplay } from "bb-motion";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
-import { useReplayAnimation } from "@/hooks/useReplayAnimation";
 import { cn } from "@/lib/utils";
 import type { RoutineMode, rpcContract } from "../../rpc-contract";
 import { errorMessage } from "../../shared/errors";
@@ -105,7 +104,7 @@ export function CaptureInput({
   const [loggedCount, setLoggedCount] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const confirmation = usePresence(confirming);
-  const nudge = useReplayAnimation(NUDGE);
+  const nudge = useReplay(NUDGE);
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {

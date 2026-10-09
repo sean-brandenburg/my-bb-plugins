@@ -57,8 +57,6 @@
   font-size: 12px;
   line-height: 16px;
   pointer-events: none;
-  /* The bar is one toolbar row tall; bbm-rise-in's default distance is too far. */
-  --bbm-distance: var(--bbm-distance-sm);
 }
 
 .bb-vim-bar[hidden] {

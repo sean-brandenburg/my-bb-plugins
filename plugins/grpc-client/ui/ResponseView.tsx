@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-import { cx, enter, NUDGE, OPACITY_TRANSITION, PRESS, speed, stagger, STAGGER } from "bb-motion";
+import { cx, enter, NUDGE, OPACITY_TRANSITION, PRESS, speed, stagger, STAGGER, useFlag } from "bb-motion";
 import type { CallResult } from "../contract";
 import { formatResponse } from "../shared/common";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { useFlag } from "./presence";
 
 type Tab = "response" | "headers" | "trailers" | "sent";
 

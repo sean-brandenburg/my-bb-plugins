@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { DragEvent } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { SHIMMER, enter, speed } from "bb-motion";
+import { SHIMMER, enter, speed, useArrivals } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,6 @@ import { SourcesDialog } from "./sources-dialog";
 import { TodoView } from "./todo-view";
 import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
-import { useArrivals } from "./motion";
 
 export function BoardPage({ subPath }: { subPath: string }) {
   const trimmed = subPath.replace(/^\/+|\/+$/gu, "");

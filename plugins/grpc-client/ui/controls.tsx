@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import { cx, enter, PRESS } from "bb-motion";
+import { cx, enter, PRESS, useLateMount } from "bb-motion";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { useLateMount } from "./presence";
 
 export function Centered({ children }: { children: ReactNode }) {
   return (

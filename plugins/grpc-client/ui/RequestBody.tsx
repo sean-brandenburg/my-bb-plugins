@@ -1,11 +1,11 @@
-import { cx, PRESS } from "bb-motion";
+import { cx, PRESS, EntranceScope, useListKeys } from "bb-motion";
 import { errorMessage, isClientStreaming } from "../shared/common";
 import type { MethodInfo, TypeClosure } from "../shared/schema";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "./controls";
 import { MessageEditor } from "./MessageEditor";
-import { EntranceScope, PresenceItem, useListKeys } from "./presence";
+import { PresenceItem } from "./presence";
 import { hasUnsafeIntegers, isObject, type Json } from "./proto-json";
 
 function parseRequest(text: string): { ok: true; value: Json } | { ok: false; error: string } {

@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, stagger, STAGGER } from "bb-motion";
+import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, stagger, STAGGER, EntranceScope, useListKeys } from "bb-motion";
 import type { FieldInfo, ScalarName, TypeClosure } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { Appear, EntranceScope, PresenceItem, useListKeys } from "./presence";
+import { Appear, PresenceItem } from "./presence";
 import {
   defaultElement,
   elementLabel,

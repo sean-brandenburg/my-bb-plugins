@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef } from "react";
-import { enter, POP, PRESS, speed, STAGGER, stagger } from "bb-motion";
+import { enter, POP, PRESS, speed, STAGGER, stagger, useChangedSinceMount } from "bb-motion";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import {
@@ -10,7 +10,6 @@ import { isSidebarProjectThread } from "../model/project-thread-groups.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import type { LeftEntry } from "./picker-model.js";
 
 const ENTRY_ICONS: Record<Exclude<LeftEntry["kind"], "project">, IconName> = {

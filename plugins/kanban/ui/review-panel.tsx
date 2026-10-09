@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { OPACITY_TRANSITION, STAGGER, enter, speed, stagger } from "bb-motion";
+import { OPACITY_TRANSITION, STAGGER, enter, speed, stagger, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
 import type { Finding, FindingSeverity, Review } from "../shared/review";
@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { shortSha } from "./format";
 import { type Rpc, usePushPreference } from "./data";
-import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS, POPOVER_MOTION } from "./primitives";
+import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { NUDGE, cx, enter, speed } from "bb-motion";
+import { NUDGE, cx, enter, speed, useReplay } from "bb-motion";
 import { experimental_useAppPanel, experimental_usePluginId } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useReplayAnimation } from "@/hooks/useReplayAnimation";
 import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
@@ -23,7 +22,7 @@ function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () =>
   const [value, setValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const nudge = useReplayAnimation(NUDGE);
+  const nudge = useReplay(NUDGE);
   const reject = (reason: string | null) => {
     setMessage(reason);
     nudge.play();

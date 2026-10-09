@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { STAGGER, cx, enter, speed, stagger } from "bb-motion";
+import { PRESS, SOFT, STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import { UrlLink, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import type { PluginRpcResult } from "@get-bb/plugin-sdk";
@@ -126,7 +126,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
             <ul className="divide-y divide-border rounded-lg border border-border">
               {data.activity.map((item, index) => (
                 <li key={item.threadId} className={ROW_ENTRANCE} style={stagger(index)}>
-                  <button type="button" className="ob-recent-row ob-row-press flex-col !items-start" onClick={() => navigate.toThread(item.threadId)}>
+                  <button type="button" className={cx("ob-recent-row", PRESS, SOFT, "flex-col !items-start")} onClick={() => navigate.toThread(item.threadId)}>
                     <span className="flex w-full items-center justify-between gap-3">
                       <span className="truncate font-medium">{item.title}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">
@@ -169,7 +169,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           <ul className="divide-y divide-border rounded-lg border border-border">
             {recent.map((file, index) => (
               <li key={file.path} className={ROW_ENTRANCE} style={stagger(index)}>
-                <button type="button" className="ob-recent-row ob-row-press" onClick={() => openNote(file.path)}>
+                <button type="button" className={cx("ob-recent-row", PRESS, SOFT)} onClick={() => openNote(file.path)}>
                   <span className="truncate">{noteTitle(file.path)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{new Date(file.mtimeMs).toLocaleDateString()}</span>
                 </button>

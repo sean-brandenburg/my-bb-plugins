@@ -1,13 +1,12 @@
 import type { DragEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger } from "bb-motion";
+import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus, shortSha, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
-import { type Arrival, useEntrance, usePopOnChange } from "./motion";
 
 export function CardView({
   ticket,

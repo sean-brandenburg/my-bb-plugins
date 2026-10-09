@@ -1,13 +1,12 @@
 import { useRef } from "react";
 import type { DragEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { STAGGER, enter, stagger } from "bb-motion";
+import { STAGGER, enter, stagger, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { CardView } from "./card";
-import { type Arrival, useEntrance, usePopOnChange } from "./motion";
 
 export interface DropTarget {
   columnId: string;

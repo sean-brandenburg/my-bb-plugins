@@ -1,7 +1,7 @@
 import { doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
 import { useBoard } from "./data";
-import { usePopOnChange } from "./motion";
+import { usePopOnChange } from "bb-motion";
 
 /** Live count of cards that are not done, shown beside the sidebar entry. */
 export function OpenCardCount() {

@@ -38,11 +38,17 @@
   --bbm-scale-pop: 0.94;
   --bbm-scale-enter: 0.97;
   --bbm-scale-press: 0.97;
+  /* Full-width rows: 0.97 of a 300px row is a 9px shrink, which reads as a jump. */
+  --bbm-scale-press-soft: 0.985;
+  /* Checkmarks start well below full size so the confirmation lands. */
+  --bbm-scale-check: 0.6;
   --bbm-lift: -1px;
 
   --bbm-stagger-step: 35ms;
   /* Items past this index enter together, so long lists don't drag on. */
   --bbm-stagger-cap: 10;
+  /* Loading placeholders wait this long, so a fast load never flashes them. */
+  --bbm-delay-reveal: 150ms;
 }
 
 /* ---------- Keyframes ---------- */
@@ -75,12 +81,20 @@
   from { opacity: 0; transform: scale(var(--bbm-scale-pop)); }
 }
 
+@keyframes bbm-check-in {
+  from { opacity: 0; transform: scale(var(--bbm-scale-check)); }
+}
+
 @keyframes bbm-pop {
   50% { transform: scale(calc(2 - var(--bbm-scale-pop))); }
 }
 
 @keyframes bbm-fade-out {
   to { opacity: 0; }
+}
+
+@keyframes bbm-scale-out {
+  to { opacity: 0; transform: scale(var(--bbm-scale-enter)); }
 }
 
 @keyframes bbm-sink-out {
@@ -108,7 +122,8 @@
 .bbm-slide-in-left,
 .bbm-slide-in-right,
 .bbm-scale-in,
-.bbm-pop-in {
+.bbm-pop-in,
+.bbm-check-in {
   animation-duration: var(--bbm-duration-base);
   animation-timing-function: var(--bbm-ease-out);
   animation-fill-mode: backwards;
@@ -124,6 +139,10 @@
   animation-name: bbm-pop-in;
   animation-timing-function: var(--bbm-ease-spring);
 }
+.bbm-check-in {
+  animation-name: bbm-check-in;
+  animation-timing-function: var(--bbm-ease-spring);
+}
 
 /* Cascade: set --bbm-index (the `stagger(i)` helper does) on each item. */
 .bbm-stagger {
@@ -134,11 +153,23 @@
 .bbm-fast { animation-duration: var(--bbm-duration-fast); }
 .bbm-slow { animation-duration: var(--bbm-duration-slow); }
 
+/* Short travel for small things and things sitting right next to their
+ * trigger: one-line bars, footer values, tooltips. */
+.bbm-near {
+  --bbm-distance: var(--bbm-distance-sm);
+  --bbm-distance-lg: var(--bbm-distance-sm);
+}
+
+/* Holds an entrance back (the first frame fills backwards), for loading
+ * placeholders that should only show when a load is actually slow. */
+.bbm-delayed { animation-delay: var(--bbm-delay-reveal); }
+
 /* ---------- Exits ----------
  * Pair with `usePresence`, which keeps the element mounted until its exit
  * animation ends. */
 
 .bbm-fade-out,
+.bbm-scale-out,
 .bbm-sink-out {
   animation-duration: var(--bbm-duration-exit);
   animation-timing-function: var(--bbm-ease-in);
@@ -147,6 +178,7 @@
 }
 
 .bbm-fade-out { animation-name: bbm-fade-out; }
+.bbm-scale-out { animation-name: bbm-scale-out; }
 .bbm-sink-out { animation-name: bbm-sink-out; }
 
 /* ---------- Attention ----------
@@ -170,6 +202,9 @@
 .bbm-press:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(var(--bbm-scale-press));
   transition-duration: var(--bbm-duration-instant);
+}
+.bbm-press.bbm-soft:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(var(--bbm-scale-press-soft));
 }
 
 /* Hover lift for cards. The shadow lives on a pseudo-element whose opacity
@@ -235,16 +270,21 @@
     opacity var(--bbm-duration-fast) var(--bbm-ease-out);
 }
 
-/* Disclosure chevron: points right, turns down when the nearest ancestor (or
- * the element) is open. */
-.bbm-chevron {
+/* Disclosure chevron: points right (or down, with `bbm-chevron-flip`) and
+ * turns when it or an ancestor has data-bbm-open="true". It deliberately
+ * ignores aria-expanded and data-state: radix menu triggers set both, so a
+ * chevron inside a row that opens a context menu would turn on right-click. */
+.bbm-chevron,
+.bbm-chevron-flip {
   transition: transform var(--bbm-duration-base) var(--bbm-ease-out);
 }
-[aria-expanded="true"] > .bbm-chevron,
-[data-state="open"] > .bbm-chevron,
 [data-bbm-open="true"] .bbm-chevron,
 .bbm-chevron[data-bbm-open="true"] {
   transform: rotate(90deg);
+}
+[data-bbm-open="true"] .bbm-chevron-flip,
+.bbm-chevron-flip[data-bbm-open="true"] {
+  transform: rotate(180deg);
 }
 
 /* ---------- Loading ----------
@@ -254,28 +294,40 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+  /* Follows the text color, so the sheen shows on light themes too. */
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, currentColor 9%, transparent), transparent);
   animation: bbm-shimmer 1.4s var(--bbm-ease-in-out) infinite;
   pointer-events: none;
 }
 
-/* ---------- bb's tw-animate overlays ----------
- * Dialogs, menus, popovers, and tooltips already animate through tw-animate's
- * `animate-in` / `animate-out`, which read their curve from --tw-ease. These
- * sit in the theme layer so an explicit Tailwind `ease-*` utility still wins. */
+/* ---------- tw-animate overlays ----------
+ * Dialogs, menus, popovers, and tooltips animate through tw-animate's
+ * `animate-in` / `animate-out`, which read their curve from --tw-ease. Most
+ * apply them through a variant (`data-[state=open]:animate-in`), so these
+ * match the class substring rather than the bare class. They sit in the theme
+ * layer so an explicit Tailwind `ease-*` utility still wins. */
 @layer theme {
-  .animate-in {
+  [class*="animate-in"] {
     --tw-ease: var(--bbm-ease-out);
   }
-  .animate-out {
+  [class*="animate-out"] {
     --tw-ease: var(--bbm-ease-in);
   }
+}
+
+/* Radix's popper wrapper exposes the trigger-relative origin that every popper
+ * component (menus, popovers, selects, tooltips, hover cards) copies into its
+ * own --radix-*-transform-origin, but nothing applies it by default, so
+ * overlays zoom from their own center instead of growing out of the trigger. */
+[data-radix-popper-content-wrapper] > * {
+  transform-origin: var(--radix-popper-transform-origin);
 }
 
 /* ---------- Reduced motion ----------
  * Movement goes; short fades stay, so state changes still read. */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --bbm-duration-instant: 60ms;
     --bbm-duration-fast: 80ms;
     --bbm-duration-base: 120ms;
     --bbm-duration-slow: 160ms;
@@ -286,10 +338,13 @@
     --bbm-scale-pop: 1;
     --bbm-scale-enter: 1;
     --bbm-scale-press: 1;
+    --bbm-scale-press-soft: 1;
+    --bbm-scale-check: 1;
     --bbm-lift: 0px;
     --bbm-stagger-step: 0ms;
   }
   .bbm-chevron,
+  .bbm-chevron-flip,
   .bbm-transform {
     transition-duration: 0s;
   }
@@ -297,8 +352,8 @@
   .bbm-nudge {
     animation: none;
   }
-  .animate-in,
-  .animate-out {
+  [class*="animate-in"],
+  [class*="animate-out"] {
     --tw-enter-scale: 1 !important;
     --tw-enter-translate-x: 0 !important;
     --tw-enter-translate-y: 0 !important;

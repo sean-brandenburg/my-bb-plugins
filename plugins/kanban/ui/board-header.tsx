@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
-import { enter } from "bb-motion";
+import { enter, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import { DiffDisplayControls, DiffRefreshButton } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
@@ -14,8 +14,7 @@ import { cn } from "@/lib/utils";
 import { relativeTime, shortSha } from "./format";
 import { useBoard, useOpenThread, useNow } from "./data";
 import { pageUi, usePageUi } from "./page-state";
-import { Badge, COMPACT, MENU_ITEM_CLASS, POPOVER_MOTION, SegmentedTabs } from "./primitives";
-import { usePopOnChange } from "./motion";
+import { Badge, COMPACT, MENU_ITEM_CLASS, SegmentedTabs } from "./primitives";
 import { diffInstanceKey, diffSubjectFromSubPath, findDiffSubjectTicket } from "./diff-page";
 import { toastError } from "./actions";
 
