@@ -6,11 +6,20 @@ description: "Inspect or change the Project switcher plugin: its double-Shift pr
 # Project switcher
 
 The Project switcher plugin (id `grouped-thread-list`) owns bb's sidebar
-thread-list slot and leaves it empty. Projects and threads live in a picker
-opened by tapping Shift twice (through the Double Shift plugin, which falls
-back to bb's quick palette when this plugin is off) or by the "Switch project"
-command, which has no default shortcut and can be bound in bb's keyboard
-settings.
+thread-list slot. Instead of a thread list it shows two indicators under the
+sidebar navigation: an inbox button with the number of threads that need you
+(the picker's Unread "Needs you" group, in a filled pill) over the number
+running (its "Running" group), and a pin button with the number of pinned
+threads (Pinned's roots). Zero counts are hidden. Hovering a button lists up to
+eight threads per group with their status glyph, project monogram, and age;
+clicking a row opens that thread (Cmd/Ctrl+Click in a split), and the check on
+an unread row marks it read. Clicking a button opens the picker on Unread or
+Pinned with the threads column focused on the first row; the "Show threads
+that need you" and "Show pinned threads" commands do the same and have no
+default shortcut. Projects and threads live in a picker opened by tapping
+Shift twice (through the Double Shift plugin, which falls back to bb's quick
+palette when this plugin is off) or by the "Switch project" command, which has
+no default shortcut and can be bound in bb's keyboard settings.
 
 The picker's left column lists Open folder…, Unassociated (bb's
 built-in personal project), Pinned, and Unread (finished threads you haven't opened

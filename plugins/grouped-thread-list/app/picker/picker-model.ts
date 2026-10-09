@@ -40,6 +40,20 @@ export type LeftEntry = LeftEntryBase &
     | { kind: "browse"; key: "browse" }
   );
 
+export const PINNED_ENTRY: LeftEntry = {
+  kind: "pinned",
+  key: "pinned",
+  label: "Pinned",
+  group: "nav",
+};
+
+export const UNREAD_ENTRY: LeftEntry = {
+  kind: "unread",
+  key: "unread",
+  label: "Unread",
+  group: "nav",
+};
+
 /** Root threads are grouped under these, in this order; children follow their root. */
 export type ThreadSection =
   | "attention"
@@ -160,8 +174,7 @@ export function buildLeftEntries({
         group: "nav",
       });
     }
-    entries.push({ kind: "pinned", key: "pinned", label: "Pinned", group: "nav" });
-    entries.push({ kind: "unread", key: "unread", label: "Unread", group: "nav" });
+    entries.push(PINNED_ENTRY, UNREAD_ENTRY);
   }
   const current = orderedProjects.find(
     (project) => project.id === currentProjectId,
@@ -219,7 +232,7 @@ export function threadActivityAt(thread: SidebarThread): number {
     : thread.createdAt;
 }
 
-function needsAttention(thread: SidebarThread): boolean {
+export function needsAttention(thread: SidebarThread): boolean {
   return (
     thread.hasPendingInteraction ||
     thread.queuedWork === "failed" ||

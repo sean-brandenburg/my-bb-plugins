@@ -1,8 +1,23 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+/** The left-column entry the picker starts on, and whether it starts in that entry's threads. */
+export interface PickerStart {
+  entry: "unread" | "pinned";
+  inThreads: boolean;
+}
+
+interface PickerState {
+  open: boolean;
+  /** Bumped by every open, so each one mounts a fresh dialog. */
+  generation: number;
+  start: PickerStart;
+}
+
+const DEFAULT_START: PickerStart = { entry: "unread", inThreads: false };
+
 // The sidebar and the picker overlay render in separate React roots, so the
 // open flag lives at module scope rather than in either tree.
-let open = false;
+let state: PickerState = { open: false, generation: 0, start: DEFAULT_START };
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -17,14 +32,20 @@ function subscribe(listener: () => void) {
 }
 
 export function closeProjectPicker() {
-  if (!open) return;
-  open = false;
+  if (!state.open) return;
+  state = { ...state, open: false };
+  emit();
+}
+
+/** Opens on `start`, or restarts there when the picker is already open. */
+export function openProjectPicker(start: PickerStart) {
+  state = { open: true, generation: state.generation + 1, start };
   emit();
 }
 
 export function toggleProjectPicker() {
-  open = !open;
-  emit();
+  if (state.open) closeProjectPicker();
+  else openProjectPicker(DEFAULT_START);
 }
 
 /**
@@ -54,5 +75,14 @@ export function useToggleProjectPickerEvent() {
 }
 
 export function useProjectPickerOpen(): boolean {
-  return useSyncExternalStore(subscribe, () => open);
+  return useSyncExternalStore(subscribe, () => state.open);
+}
+
+export function useProjectPickerState(): PickerState {
+  return useSyncExternalStore(subscribe, () => state);
+}
+
+export function resetProjectPickerForTest() {
+  state = { open: false, generation: 0, start: DEFAULT_START };
+  emit();
 }

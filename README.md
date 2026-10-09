@@ -6,7 +6,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | --- | --- |
 | `kanban` | Kanban board where every card is a thread, with GitHub/Jira sources, PR reviews, diffs, and comments |
 | `obsidian` | Browse, edit, and log to an Obsidian vault from bb |
-| `grouped-thread-list` | Project switcher: a keyboard-first project and thread picker on double Shift that replaces the sidebar's thread list |
+| `grouped-thread-list` | Project switcher: a keyboard-first project and thread picker on double Shift that replaces the sidebar's thread list with counts of threads that need you, are running, or are pinned |
 | `vim-mode` | Vim keybindings for bb's prompt box and other text fields |
 | `browser-automation-pinned` | bb 0.45.0's built-in browser-automation plugin, frozen under its own id |
 | `grpc-client` | gRPC client (method browser, generated request forms, `bb grpc` CLI) on top of grpcurl, with option-driven auth profiles |

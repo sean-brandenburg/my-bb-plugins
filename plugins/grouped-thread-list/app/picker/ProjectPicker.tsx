@@ -17,13 +17,19 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { useActiveProject } from "../model/use-active-project.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import { closeProjectPicker, useProjectPickerOpen } from "./picker-store.js";
+import {
+  closeProjectPicker,
+  useProjectPickerState,
+  type PickerStart,
+} from "./picker-store.js";
 import {
   buildLeftEntries,
   clampIndex,
   entryProjectId,
   searchThreads,
+  PINNED_ENTRY,
   threadRowsForEntry,
+  UNREAD_ENTRY,
   unreadThreads,
   type LeftEntry,
   type PickerColumn,
@@ -32,6 +38,7 @@ import {
 import { buildPinnedThreadTree } from "../model/pinned-sidebar-threads.js";
 import { isSidebarProjectThread } from "../model/project-thread-groups.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
+import type { SidebarProjectIdResolver } from "../model/active-project.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
 import {
   keyName,
@@ -62,19 +69,25 @@ import { undoLastArchive } from "../undo-archive.js";
 
 /**
  * Opens on Unread with the left column focused, so the projects are one j
- * away. The routed thread is pre-highlighted when it is listed there.
+ * away, unless the sidebar's indicators asked for an entry's threads. The
+ * routed thread is pre-highlighted when it is listed there.
  */
 function initialSelection(
+  start: PickerStart,
   routedThreadId: string | null,
   threads: readonly SidebarThread[],
-): { leftKey: string; threadId: string | null } {
+  resolveProjectId: SidebarProjectIdResolver,
+): { leftKey: string; threadId: string | null; column: PickerColumn } {
+  const rows = threadRowsForEntry({
+    entry: start.entry === "pinned" ? PINNED_ENTRY : UNREAD_ENTRY,
+    threads,
+    resolveProjectId,
+  });
+  const routedListed = rows.some((row) => row.thread.id === routedThreadId);
   return {
-    leftKey: "unread",
-    threadId: unreadThreads(threads).some(
-      (thread) => thread.id === routedThreadId,
-    )
-      ? routedThreadId
-      : null,
+    leftKey: start.entry,
+    threadId: routedListed ? routedThreadId : null,
+    column: start.inThreads && rows.length > 0 ? "right" : "left",
   };
 }
 
@@ -155,9 +168,11 @@ function currentProjectIdFor({
 }
 
 function ProjectPickerDialog({
+  start,
   exiting,
   onExitEnd,
 }: {
+  start: PickerStart;
   /** Closed and playing its exit: inert and hidden from assistive tech. */
   exiting: boolean;
   onExitEnd: (event: AnimationEvent) => void;
@@ -176,9 +191,9 @@ function ProjectPickerDialog({
     threads,
   } = useActiveProject();
   const [initial] = useState(() =>
-    initialSelection(routedThreadId, threads),
+    initialSelection(start, routedThreadId, threads, resolveProjectId),
   );
-  const [column, setColumn] = useState<PickerColumn>("left");
+  const [column, setColumn] = useState<PickerColumn>(initial.column);
   const [leftKey, setLeftKey] = useState(initial.leftKey);
   const [threadId, setThreadId] = useState<string | null>(initial.threadId);
   const [query, setQuery] = useState("");
@@ -580,19 +595,14 @@ function ProjectPickerDialog({
 }
 
 export function ProjectPicker() {
-  const open = useProjectPickerOpen();
+  const { open, generation, start } = useProjectPickerState();
   const presence = usePresence(open);
   // Every open mounts a fresh dialog, even one that lands while the previous
   // close is still animating out, so no selection or filter carries over.
-  const [generation, setGeneration] = useState(0);
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) setGeneration((current) => current + 1);
-  }
   return presence.mounted ? (
     <ProjectPickerDialog
       key={generation}
+      start={start}
       exiting={presence.exiting}
       onExitEnd={presence.onAnimationEnd}
     />

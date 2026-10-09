@@ -174,9 +174,10 @@ function webThread(overrides: Parameters<typeof makeSidebarThread>[0] = {}) {
 describe("sidebar thread list", () => {
   it("leaves the sidebar empty of projects and threads", async () => {
     setPreferencesMirrorStorageForTest(null);
-    const { container } = renderList({ activeProject: "proj_app" });
-    await waitFor(() => expect(container.childElementCount).toBe(0));
+    renderList({ activeProject: "proj_app" });
+    await screen.findByRole("button", { name: "1 pinned thread" });
     expect(threadIds()).toEqual([]);
+    expect(document.querySelectorAll("[data-thread-indicator-row]")).toHaveLength(0);
   });
 
   it("keys its slot and preferences mirror by its own plugin id", async () => {
@@ -191,6 +192,139 @@ describe("sidebar thread list", () => {
       ).toBe("proj_web"),
     );
     window.localStorage.clear();
+  });
+});
+
+describe("sidebar thread indicators", () => {
+  const INBOX_THREADS = [
+    ...THREADS,
+    makeSidebarThread({
+      id: "thr_unread",
+      projectId: "proj_web",
+      title: "Finished thread",
+      createdAt: 3,
+      updatedAt: 3,
+      latestAttentionAt: 3,
+      lastReadAt: 1,
+    }),
+    makeSidebarThread({
+      id: "thr_working",
+      projectId: "proj_app",
+      title: "Working thread",
+      providerId: "claude-code",
+      status: "active",
+      runtimeStatus: "active",
+      createdAt: 2,
+      updatedAt: 2,
+      latestAttentionAt: 2,
+      lastReadAt: 2,
+    }),
+  ];
+
+  beforeAll(() => {
+    // jsdom has no layout; the picker scrolls its highlighted rows into view.
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  function renderIndicators() {
+    return renderList(
+      { activeProject: "proj_app" },
+      {
+        sidebarThreads: {
+          projects: PROJECTS,
+          sections: SECTIONS,
+          threads: INBOX_THREADS,
+        },
+      },
+    );
+  }
+
+  function flyoutRows(): string[] {
+    return Array.from(
+      document.querySelectorAll("[data-thread-indicator-row]"),
+      (row) => row.getAttribute("data-thread-indicator-row") ?? "",
+    );
+  }
+
+  afterEach(async () => {
+    const { resetProjectPickerForTest } = await import(
+      "./app/picker/picker-store.js"
+    );
+    act(() => resetProjectPickerForTest());
+  });
+
+  it("counts threads that need you, running threads, and pinned threads", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    renderIndicators();
+    const inbox = await screen.findByRole("button", {
+      name: "1 thread needs you, 1 running",
+    });
+    expect(inbox.textContent).toBe("11");
+    expect(
+      screen.getByRole("button", { name: "1 pinned thread" }).textContent,
+    ).toBe("1");
+  });
+
+  it("lists the threads on hover and opens the one you click", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const { inspection } = renderIndicators();
+    fireEvent.mouseEnter(
+      await screen.findByRole("button", { name: /need/ }),
+    );
+    await screen.findByRole("dialog", { name: /need/ });
+    expect(flyoutRows()).toEqual(["thr_unread", "thr_working"]);
+
+    fireEvent.click(
+      document.querySelector('[data-thread-indicator-row="thr_working"]')!,
+      { metaKey: true },
+    );
+    expect(inspection.sidebarActionCalls).toContainEqual({
+      method: "open",
+      threadId: "thr_working",
+      options: { split: true },
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("marks a thread read from the list without opening it", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const { inspection } = renderIndicators();
+    fireEvent.mouseEnter(
+      await screen.findByRole("button", { name: /need/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Mark Finished thread read" }),
+    );
+    expect(inspection.sidebarActionCalls).toEqual([
+      { method: "setRead", threadId: "thr_unread", read: true },
+    ]);
+  });
+
+  it("opens the picker on the button's threads when clicked", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    renderIndicators();
+    renderSlot(pickerRegistration!, {}, {
+      sidebarThreads: {
+        projects: PROJECTS,
+        sections: SECTIONS,
+        threads: INBOX_THREADS,
+      },
+      rpc: {
+        listPreferences: () => ({ preferences: defaultPreferences() }),
+        setPreference: (input: unknown) => input,
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "1 pinned thread" }),
+    );
+    const pinned = await screen.findByRole("listbox", {
+      name: "Pinned threads",
+    });
+    expect(
+      within(pinned)
+        .getByRole("option", { selected: true })
+        .getAttribute("data-picker-thread-id"),
+    ).toBe("thr_pinned");
   });
 });
 
