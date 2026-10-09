@@ -73,7 +73,7 @@ export function TodoView({
     refetch();
   };
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:my-4 md:rounded-xl md:border md:border-border md:bg-background/75 md:p-5 md:shadow-sm md:backdrop-blur-md">
       <form onSubmit={quickAdd} className="flex items-center gap-2">
         <Input
           value={quick}

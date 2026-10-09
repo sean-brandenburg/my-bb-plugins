@@ -215,7 +215,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative isolate flex h-full min-h-0 flex-col">
+      {/* Aura paints its wallpaper into this layer; without Aura it stays empty. */}
+      <div data-aura-surface="" aria-hidden className="pointer-events-none absolute inset-0 -z-10" />
       {error !== null ? (
         <p role="alert" className={cn("px-4 py-2 text-sm text-destructive", enter.drop)}>
           {error}
@@ -243,56 +245,60 @@ export function BoardPage({ subPath }: { subPath: string }) {
           if (ticketId !== undefined) lastCardId.current = ticketId;
         }}
         // The fade replays each time the board comes back from `hidden` (the todo view).
-        className={cn("flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto p-4 outline-none", enter.fade, speed.fast, view === "todo" && "hidden")}
+        className={cn("flex min-h-0 flex-1 overflow-x-auto p-4 outline-none", enter.fade, speed.fast, view === "todo" && "hidden")}
         onDragLeave={(event) => {
           if (event.currentTarget === event.target) setDropTarget(null);
         }}
       >
-        {board === null && error === null ? <BoardSkeleton /> : null}
-        {board?.columns.map((column, columnIndex) => (
-          <ColumnView
-            key={column.id}
-            index={columnIndex}
-            arrival={columnArrival(column.id)}
-            ticketArrival={ticketArrival}
-            settledId={settledId}
-            onSettled={() => setSettledId(null)}
-            column={column}
-            tickets={ticketsByColumn.get(column.id) ?? []}
-            threads={threads}
-            hiddenTags={sourceTags}
-            today={today}
-            isDone={column.id === doneId}
-            draggingId={draggingId}
-            dropTarget={dropTarget}
-            onDragStart={(ticketId, event) => {
-              event.dataTransfer.setData("text/plain", ticketId);
-              event.dataTransfer.effectAllowed = "move";
-              setDraggingId(ticketId);
-              setSettledId(null);
-            }}
-            onDragEnd={() => {
-              setDraggingId(null);
-              setDropTarget(null);
-            }}
-            onDragOver={(target, event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              if (dropTarget?.columnId !== target.columnId || dropTarget.index !== target.index) {
-                setDropTarget(target);
-              }
-            }}
-            onDrop={(target, event) => void onDrop(target, event)}
-            onOpen={(ticket, viaKeyboard) => showTicket(ticket.id, viaKeyboard)}
-            onOpenThread={openThread}
-            onReview={(ticket) => void reviewPr(ticket)}
-            onOpenDiff={(ticket) => openDiff(ticket.id)}
-            onAdd={() => pageUi.set({ dialog: "new", newTicketColumn: column.id })}
-            hiddenCount={hiddenByColumn.get(column.id) ?? 0}
-            revealed={revealed.has(column.id)}
-            onToggleHidden={() => toggleHidden(column.id)}
-          />
-        ))}
+        {/* Auto margins center the columns and give way to scrolling once they overflow, where justify-center would clip the left edge. */}
+        <div className="mx-auto flex shrink-0 gap-3">
+          {board === null && error === null ? <BoardSkeleton /> : null}
+          {board?.columns.map((column, columnIndex) => (
+            <ColumnView
+              key={column.id}
+              index={columnIndex}
+              arrival={columnArrival(column.id)}
+              ticketArrival={ticketArrival}
+              settledId={settledId}
+              onSettled={() => setSettledId(null)}
+              column={column}
+              tickets={ticketsByColumn.get(column.id) ?? []}
+              threads={threads}
+              hiddenTags={sourceTags}
+              today={today}
+              now={now}
+              isDone={column.id === doneId}
+              draggingId={draggingId}
+              dropTarget={dropTarget}
+              onDragStart={(ticketId, event) => {
+                event.dataTransfer.setData("text/plain", ticketId);
+                event.dataTransfer.effectAllowed = "move";
+                setDraggingId(ticketId);
+                setSettledId(null);
+              }}
+              onDragEnd={() => {
+                setDraggingId(null);
+                setDropTarget(null);
+              }}
+              onDragOver={(target, event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                if (dropTarget?.columnId !== target.columnId || dropTarget.index !== target.index) {
+                  setDropTarget(target);
+                }
+              }}
+              onDrop={(target, event) => void onDrop(target, event)}
+              onOpen={(ticket, viaKeyboard) => showTicket(ticket.id, viaKeyboard)}
+              onOpenThread={openThread}
+              onReview={(ticket) => void reviewPr(ticket)}
+              onOpenDiff={(ticket) => openDiff(ticket.id)}
+              onAdd={() => pageUi.set({ dialog: "new", newTicketColumn: column.id })}
+              hiddenCount={hiddenByColumn.get(column.id) ?? 0}
+              revealed={revealed.has(column.id)}
+              onToggleHidden={() => toggleHidden(column.id)}
+            />
+          ))}
+        </div>
       </div>
       {board !== null ? (
         <>
@@ -353,10 +359,10 @@ export function BoardPage({ subPath }: { subPath: string }) {
 /** Column-shaped placeholders while the board loads; the delay keeps a fast load from flashing them. */
 function BoardSkeleton() {
   return (
-    <div role="status" className={cn("flex gap-3 [animation-delay:150ms]", enter.fade)}>
+    <div role="status" className={cn("flex items-start gap-3 [animation-delay:150ms]", enter.fade)}>
       <span className="sr-only">Loading board…</span>
       {[3, 2, 1].map((cards, index) => (
-        <div key={index} aria-hidden className="flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
+        <div key={index} aria-hidden className="flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-background/75 p-2">
           <div className={cn("relative mx-1 my-1.5 h-3.5 w-24 overflow-hidden rounded bg-muted", SHIMMER)} />
           {Array.from({ length: cards }, (_, card) => (
             <div key={card} className={cn("relative h-[4.5rem] overflow-hidden rounded-md border border-border bg-card", SHIMMER)} />
