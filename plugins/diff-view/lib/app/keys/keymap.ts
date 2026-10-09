@@ -22,6 +22,7 @@ export type ReviewCommand =
   | { kind: "openGithub" }
   | { kind: "openThread" }
   | { kind: "toggleFinding" }
+  | { kind: "findingFilter" }
   | { kind: "explain" }
   | { kind: "viewed" }
   | { kind: "target" }
@@ -103,6 +104,7 @@ const SEQUENCES: Record<string, ReviewCommand> = {
   gx: { kind: "openGithub" },
   go: { kind: "openThread" },
   x: { kind: "toggleFinding" },
+  F: { kind: "findingFilter" },
   K: { kind: "explain" },
   v: { kind: "viewed" },
   t: { kind: "target" },
@@ -186,6 +188,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["zR", "zM"], action: "Expand / collapse every file" },
       { keys: ["zr"], action: "Show more unchanged lines around the hunk, or the rest of a long new file (structural)" },
       { keys: ["x"], action: "Include or exclude the review finding under the cursor in the apply round" },
+      { keys: ["F"], action: "Which review findings show: all, important and up, critical only, or none" },
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
       { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },

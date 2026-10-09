@@ -1,7 +1,7 @@
 import type { DiffCommentTarget, LineRange } from "../../types";
 import { checkedLineRange } from "../../line-range";
 import { threadKeyActions, type DiffThread } from "../comments/threads";
-import type { InlineFinding } from "../findings/findings";
+import { FINDING_FILTER_LABEL, nextFindingFilter, type FindingFilter, type InlineFinding } from "../findings/findings";
 import { WHOLE_FILE } from "../patch-annotations";
 import type { ReviewCommand } from "./keymap";
 import {
@@ -58,6 +58,8 @@ export interface ReviewEnv {
   toggleFinding: (item: InlineFinding, selected: boolean) => void;
   explain: ((path: string, side: "old" | "new", startLine: number, endLine: number) => void) | null;
   toggleLayout: () => void;
+  /** Which findings the diff shows; null when there are none to filter. */
+  findingFilter: { value: FindingFilter; set: (filter: FindingFilter) => void } | null;
   refresh: () => void;
   focusSendBar: () => boolean;
   openOverlay: (overlay: "help" | "files") => void;
@@ -119,7 +121,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     if (next === null || (current !== null && next.path === current.path && next.side === current.side && next.line === current.line)) return;
     if (!withinSelection(env, next)) return;
     const first = annotationsAt(env, next)[0];
-    env.keys.set({ cursor: next, focused: first === undefined ? null : focusOf(first) });
+    env.keys.set({ cursor: next, focused: first === undefined ? null : { ...focusOf(first), passive: true } });
     return;
   }
   // A cursor the reader scrolled away from (or whose file a refresh dropped) restarts at the top of the screen, as in vim.
@@ -146,6 +148,11 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       for (let step = 0; step < count; step++) {
         const here = annotationsAt(env, at).map(focusOf);
         const index = focused === null ? -1 : here.findIndex((entry) => entry.kind === focused!.kind && entry.id === focused!.id);
+        // Scrolled onto by hand, it was never opened; the first step down opens it instead of passing it.
+        if (focused?.passive === true && index !== -1 && command.direction === 1) {
+          focused = here[index]!;
+          continue;
+        }
         const next = index === -1 ? -1 : index + command.direction;
         if (next >= 0 && next < here.length) {
           focused = here[next]!;
@@ -384,6 +391,16 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     case "layout":
       env.toggleLayout();
       return;
+    case "findingFilter": {
+      if (env.findingFilter === null) {
+        env.notify("No review findings");
+        return;
+      }
+      const next = nextFindingFilter(env.findingFilter.value);
+      env.findingFilter.set(next);
+      env.notify(next === "off" ? "Review findings hidden" : `Review findings: ${FINDING_FILTER_LABEL[next]}`);
+      return;
+    }
     case "refresh":
       env.refresh();
       return;

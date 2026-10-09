@@ -21,6 +21,12 @@ plugins embed.
   comment to the thread's agent as one message. Hosts whose comments can go to
   GitHub (kanban's PR cards) get a "Comments go to Local / GitHub PR" switch
   above the diff that applies to every new comment and reply.
+- **Review findings** (hosts with reviews, such as kanban) show as one line
+  each under their line: severity, title and the apply-round checkbox. A
+  finding opens to its description, fix and scores on click, Enter, or while
+  the keyboard cursor is on it. The findings chip above the diff, or `F`,
+  cycles which show: all, important and up (the default), critical only, or
+  none; the chip counts the ones hidden.
 - **Viewed marks** remember the file's patch; a mark lapses once the file
   changes again.
 - **Keyboard**: the whole review runs on vim-style keys, sent to the view that
@@ -50,7 +56,8 @@ plugins embed.
   and cancelling an edit of a comment or finding (with the vim-mode plugin,
   Escape twice). `v` marks a file viewed and moves on,
   `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
-  `zr` shows more unchanged lines, `K` asks for an explanation of the hunk,
+  `zr` shows more unchanged lines, `F` cycles which review findings show,
+  `K` asks for an explanation of the hunk,
   `gd` peeks at a symbol on the line, `gl` switches line-diff files between
   split and unified, `R` refreshes, and
   `?` lists every key.

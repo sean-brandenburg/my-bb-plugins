@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { DiffDelta } from "../types";
 import { shortSha } from "./format";
 import type { DiffSource } from "./source";
+import { passesFindingFilter, type FindingFilter, type InlineFinding } from "./findings/findings";
 import { cn } from "./utils";
 import { FAST, PRESS, STAGGER, enter, stagger } from "./ui/motion";
 
@@ -19,16 +20,25 @@ export function useDelta(source: DiffSource, headSha: string | null): DiffDelta 
   return delta;
 }
 
+/** " · 3 new findings (1 hidden)", naming how many the findings filter keeps out of the diff. */
+function findingCount(findings: readonly InlineFinding[], filter: FindingFilter, noun: (count: number) => string): string {
+  if (findings.length === 0) return "";
+  const hidden = findings.filter((item) => !passesFindingFilter(item.finding.severity, filter)).length;
+  return ` · ${findings.length} ${noun(findings.length)}${hidden > 0 ? ` (${hidden} hidden)` : ""}`;
+}
+
 export function DeltaStrip({
   delta,
-  newFindingCount,
-  touchedFindingCount,
+  newFindings,
+  touchedFindings,
+  findingFilter,
   onJump,
   actions,
 }: {
   delta: DiffDelta;
-  newFindingCount: number;
-  touchedFindingCount: number;
+  newFindings: readonly InlineFinding[];
+  touchedFindings: readonly InlineFinding[];
+  findingFilter: FindingFilter;
   onJump: (path: string) => void;
   actions: ReactNode;
 }) {
@@ -38,8 +48,8 @@ export function DeltaStrip({
         <span className="font-medium">Since you last looked</span>
         <span className="text-muted-foreground">
           {shortSha(delta.fromSha)} → {shortSha(delta.toSha)} · {delta.files.length} file{delta.files.length === 1 ? "" : "s"} changed
-          {newFindingCount > 0 ? ` · ${newFindingCount} new finding${newFindingCount === 1 ? "" : "s"}` : ""}
-          {touchedFindingCount > 0 ? ` · ${touchedFindingCount} finding${touchedFindingCount === 1 ? "" : "s"} touched` : ""}
+          {findingCount(newFindings, findingFilter, (count) => `new finding${count === 1 ? "" : "s"}`)}
+          {findingCount(touchedFindings, findingFilter, (count) => `finding${count === 1 ? "" : "s"} touched`)}
         </span>
         {delta.files.slice(0, NAMED_FILES).map((file, index) => (
           <button

@@ -3,6 +3,7 @@ import { cn } from "./utils";
 import { shortSha } from "./format";
 import { useDiffSource } from "./source";
 import { setDiffPreferences } from "./state";
+import { FINDING_FILTER_LABEL, nextFindingFilter, type FindingFilter } from "./findings/findings";
 import { PRESS, TRANSFORM_TRANSITION, enter } from "./ui/motion";
 
 function DiffStats({ files }: { files: readonly DiffFile[] }) {
@@ -49,7 +50,8 @@ export function SummaryBar({
   viewed,
   hasThreads,
   findingTotal,
-  showFindings,
+  findingShown,
+  findingFilter,
   onNextComment,
   onShowKeys,
   commentTarget,
@@ -58,7 +60,8 @@ export function SummaryBar({
   viewed: ReadonlySet<string>;
   hasThreads: boolean;
   findingTotal: number;
-  showFindings: boolean;
+  findingShown: number;
+  findingFilter: FindingFilter;
   onNextComment: () => void;
   onShowKeys: () => void;
   /** Null unless comments can go to GitHub. */
@@ -87,12 +90,15 @@ export function SummaryBar({
       {findingTotal > 0 ? (
         <button
           type="button"
-          aria-pressed={showFindings}
-          className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS, showFindings && "bg-state-active text-foreground")}
-          title={showFindings ? "Hide the review's findings in the diff" : "Show the review's findings in the diff"}
-          onClick={() => setDiffPreferences({ showFindings: !showFindings })}
+          className={cn("rounded border border-border px-1.5 py-0.5 text-xs tabular-nums hover:bg-state-hover", PRESS, findingFilter !== "off" && "bg-state-active text-foreground")}
+          title={`Review findings shown in the diff: ${FINDING_FILTER_LABEL[findingFilter]}. Click (or F) for ${FINDING_FILTER_LABEL[nextFindingFilter(findingFilter)]}; it cycles all → important+ → critical → off.`}
+          onClick={() => setDiffPreferences({ findingFilter: nextFindingFilter(findingFilter) })}
         >
-          {findingTotal} finding{findingTotal === 1 ? "" : "s"}
+          {findingFilter === "off"
+            ? `${findingTotal} finding${findingTotal === 1 ? "" : "s"} hidden`
+            : findingShown === findingTotal
+              ? `${findingTotal} finding${findingTotal === 1 ? "" : "s"}`
+              : `${findingShown} of ${findingTotal} findings · ${FINDING_FILTER_LABEL[findingFilter]}`}
         </button>
       ) : null}
       <span className="ml-auto inline-flex items-center gap-2 tabular-nums">

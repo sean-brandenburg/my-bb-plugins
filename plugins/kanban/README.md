@@ -178,8 +178,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   falling back to the worst finding severity in the file when there is no tour.
 - **Findings in the diff**: the latest completed review's findings render
   inline under the lines their `locations` point at (new side), in both
-  structural and text modes, with severity, scores, and the same apply-round
-  checkbox as the card panel. File-level findings sit under the file header,
+  structural and text modes, as one line each (severity, title, the same
+  apply-round checkbox as the card panel) that opens to the description, fix
+  and scores on click, Enter, or when the keyboard cursor reaches it. The
+  findings chip above the diff (or `F`) cycles which show: all, important and
+  up (the default), critical only, or none. File-level findings sit under the file header,
   the file tree shows a red count per file, and findings appear as amber
   markers on the scroll track.
 - **Review aids**: a per-file "Viewed" checkbox collapses the file and counts

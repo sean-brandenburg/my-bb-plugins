@@ -23,7 +23,7 @@ import { threadIsOpen, type DiffThread } from "./comments/threads";
 import { useComments } from "./comments/use-comments";
 import { useExplanations } from "./explanations/use-explanations";
 import { FileTreeSidebar } from "./file-tree/file-tree-sidebar";
-import { findingAnchorId, inlineFindingsByPath, type PlacedFinding } from "./findings/findings";
+import { distinctFindings, filterFindings, findingAnchorId, inlineFindingsByPath, type PlacedFinding } from "./findings/findings";
 import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
@@ -64,7 +64,6 @@ export interface DiffViewProps {
   toolbar?: ReactNode;
 }
 
-const NO_FINDINGS: ReadonlyMap<string, PlacedFinding[]> = new Map();
 const NO_PLACED_FINDINGS: PlacedFinding[] = [];
 const NO_THREADS: DiffThread[] = [];
 /** How long a focus request (the "Review changes with the keyboard" command) stays good for a view that is still mounting. */
@@ -97,7 +96,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const { tour, busy: tourBusy, generate: generateTour } = useTour(source, refreshSignal);
   const delta = useDelta(source, diff?.headSha ?? null);
   const preferences = useDiffPreferences();
-  const { showFindings } = preferences;
+  const { findingFilter } = preferences;
   const { viewed, collapsed, markViewed, toggleCollapsed, expand, setCollapsedPaths } = useFileMarks(source, diff);
   const [keys] = useState(createReviewKeys);
   const [overlay, setOverlay] = useState<{ kind: "help" } | { kind: "files" } | { kind: "symbols"; names: string[]; pick: (name: string) => void } | null>(null);
@@ -125,10 +124,11 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
 
   const allFindingsByPath = useMemo(() => inlineFindingsByPath(reviews, delta), [reviews, delta]);
-  const findingsByPath = showFindings ? allFindingsByPath : NO_FINDINGS;
-  const allFindings = useMemo(() => [...allFindingsByPath.values()].flat(), [allFindingsByPath]);
-  const newFindingCount = allFindings.filter((entry) => entry.item.isNew).length;
-  const touchedFindingCount = allFindings.filter((entry) => entry.item.touched).length;
+  const findingsByPath = useMemo(() => filterFindings(allFindingsByPath, findingFilter), [allFindingsByPath, findingFilter]);
+  const allFindings = useMemo(() => distinctFindings([...allFindingsByPath.values()].flat()), [allFindingsByPath]);
+  const shownFindingCount = useMemo(() => distinctFindings([...findingsByPath.values()].flat()).length, [findingsByPath]);
+  const newFindings = allFindings.filter((item) => item.isNew);
+  const touchedFindings = allFindings.filter((item) => item.touched);
   const semanticsByPath = useMemo(() => tourSemanticsByPath(tour), [tour]);
   const risk = useMemo(() => riskByPath(tour, allFindingsByPath), [tour, allFindingsByPath]);
   const changedRangesByPath = useMemo(() => new Map((delta?.files ?? []).map((file) => [file.path, file.ranges] as const)), [delta]);
@@ -362,6 +362,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       toggleFinding,
       explain: explainHunk,
       toggleLayout: () => setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" }),
+      findingFilter: allFindings.length === 0 ? null : { value: findingFilter, set: (filter) => setDiffPreferences({ findingFilter: filter }) },
       refresh: () => requestReload(instanceKey),
       focusSendBar: () => {
         // The bar's first action, past any checkbox or toggle that only sets an option for it.
@@ -469,7 +470,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 viewed={viewed}
                 hasThreads={comments.threads.length > 0}
                 findingTotal={allFindings.length}
-                showFindings={showFindings}
+                findingShown={shownFindingCount}
+                findingFilter={findingFilter}
                 onNextComment={() => runCommand({ kind: "thread", direction: 1 }, 1)}
                 onShowKeys={() => setOverlay({ kind: "help" })}
                 commentTarget={source.canPostToGithub === true ? { target: comments.target, onChange: comments.setTarget } : null}
@@ -504,7 +506,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                     <TourPanel tour={tour} busy={tourBusy} onGenerate={() => void generateTour()} onJump={jumpTo} onOpenThread={onOpenThread} files={diff.files} />
                   ) : null}
                   {delta !== null && delta.files.length > 0 ? (
-                    <DeltaStrip delta={delta} newFindingCount={newFindingCount} touchedFindingCount={touchedFindingCount} onJump={jumpTo} actions={deltaActions} />
+                    <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
                   ) : null}
                   {diff === null && error === null ? <SkeletonLines widths={DIFF_SKELETON} label="Loading changes" className="p-4" /> : null}
                   {diff !== null && diff.files.length === 0 ? (

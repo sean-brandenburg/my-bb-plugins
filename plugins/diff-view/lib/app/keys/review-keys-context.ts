@@ -34,6 +34,8 @@ export interface FindingControls {
 export interface FocusedAnnotation {
   kind: "thread" | "finding";
   id: string;
+  /** Reached by scrolling by hand rather than by a key, so it is not opened for reading. */
+  passive?: boolean;
 }
 
 export interface ReviewKeysState {
@@ -109,6 +111,15 @@ export function useIsFocused(kind: FocusedAnnotation["kind"], id: string): boole
   return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => {
     const focused = keys?.get().focused;
     return focused?.kind === kind && focused.id === id;
+  });
+}
+
+/** Focused by a key, not by scrolling past: a folded annotation shows itself while this holds. */
+export function useIsReading(kind: FocusedAnnotation["kind"], id: string): boolean {
+  const keys = useContext(ReviewKeysContext);
+  return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => {
+    const focused = keys?.get().focused;
+    return focused?.kind === kind && focused.id === id && focused.passive !== true;
   });
 }
 

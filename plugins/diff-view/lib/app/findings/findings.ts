@@ -74,3 +74,47 @@ export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null)
   }
   return byPath;
 }
+
+/** The least severe finding shown in the diff, or none at all. */
+export type FindingFilter = "all" | "important" | "critical" | "off";
+
+export const DEFAULT_FINDING_FILTER: FindingFilter = "important";
+
+/** `F` steps through these in order, from showing the most to the least. */
+const FINDING_FILTERS: readonly FindingFilter[] = ["all", "important", "critical", "off"];
+
+export const FINDING_FILTER_LABEL: Record<FindingFilter, string> = { all: "all", important: "important+", critical: "critical", off: "off" };
+
+const SEVERITY_RANK: Record<FindingSeverity, number> = { minor: 1, important: 2, critical: 3 };
+const FILTER_MIN_RANK: Record<FindingFilter, number> = { all: 1, important: 2, critical: 3, off: Number.POSITIVE_INFINITY };
+
+export function nextFindingFilter(filter: FindingFilter): FindingFilter {
+  return FINDING_FILTERS[(FINDING_FILTERS.indexOf(filter) + 1) % FINDING_FILTERS.length]!;
+}
+
+/** The stored filter, or the boolean it replaced: findings someone had hidden stay hidden. */
+export function parseFindingFilter(stored: string | null, legacyShowFindings: string | null): FindingFilter {
+  if (stored !== null && (FINDING_FILTERS as readonly string[]).includes(stored)) return stored as FindingFilter;
+  return legacyShowFindings === "false" ? "off" : DEFAULT_FINDING_FILTER;
+}
+
+export function passesFindingFilter(severity: FindingSeverity, filter: FindingFilter): boolean {
+  return SEVERITY_RANK[severity] >= FILTER_MIN_RANK[filter];
+}
+
+/** The placements whose finding passes the filter; files left with none drop out. */
+export function filterFindings(byPath: ReadonlyMap<string, readonly PlacedFinding[]>, filter: FindingFilter): Map<string, PlacedFinding[]> {
+  const filtered = new Map<string, PlacedFinding[]>();
+  for (const [path, list] of byPath) {
+    const kept = list.filter((entry) => passesFindingFilter(entry.item.finding.severity, filter));
+    if (kept.length > 0) filtered.set(path, kept);
+  }
+  return filtered;
+}
+
+/** Findings placed at several locations count once. */
+export function distinctFindings(placed: Iterable<PlacedFinding>): InlineFinding[] {
+  const byId = new Map<string, InlineFinding>();
+  for (const entry of placed) byId.set(`${entry.item.reviewId}:${entry.item.finding.id}`, entry.item);
+  return [...byId.values()];
+}

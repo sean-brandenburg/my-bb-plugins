@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { parseFindingFilter, type FindingFilter } from "./findings/findings";
 
 /** Every preference the view keeps in localStorage, under `diff-view:<name>`. */
-export type PreferenceName = "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth";
+export type PreferenceName = "findingFilter" | "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth";
 
 /** Reads a preference, falling back to the key kanban stored it under before the diff view became its own plugin. */
 export function readPreference(name: PreferenceName): string | null {
@@ -23,8 +24,8 @@ export function writePreference(name: PreferenceName, value: string): void {
 export interface DiffPreferences {
   /** Layout of files shown as a line diff, the fallback where difftastic cannot diff a file. */
   layout: "unified" | "split";
-  /** Show review findings inline in the diff. */
-  showFindings: boolean;
+  /** Which review findings show inline in the diff. */
+  findingFilter: FindingFilter;
 }
 
 function createStore<T>(initial: T) {
@@ -45,12 +46,12 @@ function createStore<T>(initial: T) {
 
 const preferences = createStore<DiffPreferences>({
   layout: "split",
-  showFindings: readPreference("showFindings") !== "false",
+  findingFilter: parseFindingFilter(readPreference("findingFilter"), readPreference("showFindings")),
 });
 
 export function setDiffPreferences(patch: Partial<DiffPreferences>): void {
   preferences.set({ ...preferences.get(), ...patch });
-  if (patch.showFindings !== undefined) writePreference("showFindings", String(patch.showFindings));
+  if (patch.findingFilter !== undefined) writePreference("findingFilter", patch.findingFilter);
 }
 
 export function useDiffPreferences(): DiffPreferences {

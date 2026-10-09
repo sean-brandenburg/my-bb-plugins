@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiffThreads, localCommentState, threadIsOpen, threadKeyActions } from "./lib/app/comments/threads";
 import { buildFileTree } from "./lib/app/file-tree/build-file-tree";
-import { activeReviews, inlineFindingsByPath } from "./lib/app/findings/findings";
+import { activeReviews, distinctFindings, filterFindings, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
 import { isGeneratedFile } from "./lib/app/generated";
 import { riskByPath } from "./lib/app/risk";
 import { enclosingDefinition } from "./lib/app/structural/enclosing-definition";
@@ -207,6 +207,37 @@ describe("inlineFindingsByPath carry-over", () => {
       { id: "F1", isNew: false, carriedFrom: "F3" },
       { id: "F2", isNew: true, carriedFrom: null },
     ]);
+  });
+});
+
+describe("finding filter", () => {
+  const byPath = inlineFindingsByPath(
+    [review("r", 1, [finding("C", [{ file: "a.ts", startLine: 1, endLine: 1 }, { file: "b.ts", startLine: 4, endLine: 4 }], "critical"), finding("I", [{ file: "a.ts", startLine: 2, endLine: 2 }], "important"), finding("M", [{ file: "c.ts", startLine: 3, endLine: 3 }], "minor")])],
+    null,
+  );
+  const ids = (filter: Parameters<typeof filterFindings>[1]) => Object.fromEntries([...filterFindings(byPath, filter)].map(([path, list]) => [path, list.map((entry) => entry.item.finding.id)]));
+
+  it("keeps findings at or above the threshold and drops files left with none", () => {
+    expect(ids("all")).toEqual({ "a.ts": ["C", "I"], "b.ts": ["C"], "c.ts": ["M"] });
+    expect(ids("important")).toEqual({ "a.ts": ["C", "I"], "b.ts": ["C"] });
+    expect(ids("critical")).toEqual({ "a.ts": ["C"], "b.ts": ["C"] });
+    expect(ids("off")).toEqual({});
+  });
+
+  it("counts a finding placed at several locations once", () => {
+    expect(distinctFindings([...byPath.values()].flat()).map((item) => item.finding.id).sort()).toEqual(["C", "I", "M"]);
+  });
+
+  it("cycles from showing the most to none, then back", () => {
+    expect([nextFindingFilter("all"), nextFindingFilter("important"), nextFindingFilter("critical"), nextFindingFilter("off")]).toEqual(["important", "critical", "off", "all"]);
+  });
+
+  it("reads the stored filter, keeps findings hidden for anyone who had turned them off, and defaults to important and up", () => {
+    expect(parseFindingFilter("critical", "false")).toBe("critical");
+    expect(parseFindingFilter(null, "false")).toBe("off");
+    expect(parseFindingFilter(null, "true")).toBe("important");
+    expect(parseFindingFilter(null, null)).toBe("important");
+    expect(parseFindingFilter("bogus", null)).toBe("important");
   });
 });
 
@@ -530,6 +561,7 @@ describe("review keys", () => {
     expect(parseKeys(["g"])).toEqual({ status: "pending" });
     expect(parseKeys(["3"])).toEqual({ status: "pending" });
     expect(parseKeys(["g", "g"])).toMatchObject({ status: "command", command: { kind: "top" } });
+    expect(parseKeys(["F"])).toMatchObject({ status: "command", command: { kind: "findingFilter" } });
     expect(parseKeys(["]", "c"])).toMatchObject({ status: "command", command: { kind: "change", direction: 1 } });
     expect(parseKeys(["d", "d"])).toMatchObject({ status: "command", command: { kind: "delete" } });
     expect(parseKeys(["g", "j"])).toEqual({ status: "none" });
