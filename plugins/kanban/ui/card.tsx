@@ -209,18 +209,19 @@ function CardSource({ ticket }: { ticket: Ticket }) {
   if (ticket.pr !== null) {
     const { pr } = ticket;
     const stateClass = pr.state === "merged" ? "text-violet-700 dark:text-violet-300" : pr.state === "closed" ? "text-destructive" : "";
-    // On a narrow card the branch gives way first, then the reviewer, and the PR's name last.
+    // On a narrow card the branch gives way first, then the reviewer, and the PR's name last. Any shrinking at all puts
+    // an ellipsis on the name, so it doesn't shrink but is capped at the row; the branch only gets the space left over.
     return (
       <div className={row}>
         {nerdFont ? <PrStateGlyph state={pr.state} /> : <Icon name="GitPullRequest" className="size-3 shrink-0" />}
-        <ExternalLink href={pr.url} title={`Open ${pr.repo}#${pr.number} on GitHub`} className={link}>
+        <ExternalLink href={pr.url} title={`Open ${pr.repo}#${pr.number} on GitHub`} className={cn(link, "max-w-full shrink-0")}>
           {pr.repo.split("/")[1] ?? pr.repo} #{pr.number}
           {!nerdFont && pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
         </ExternalLink>
         {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} /> : null}
-        {pr.headRef !== null ? <BranchName headRef={pr.headRef} nerdFont={nerdFont} className="shrink-[100]" /> : null}
+        {pr.headRef !== null ? <BranchName headRef={pr.headRef} nerdFont={nerdFont} className="flex-1" /> : null}
         {pr.role === "other" ? (
-          <span className="ml-auto min-w-0 shrink-[10] truncate" title={`Your review was requested on @${pr.author}'s PR`}>
+          <span className="ml-auto min-w-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
             reviewing @{pr.author}
           </span>
         ) : null}
