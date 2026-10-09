@@ -11,7 +11,7 @@ import { longLineLabel, shortLineLabel } from "../../line-range";
 import { DiffCommentForm } from "./comment-form";
 import { DiffCommentsContext } from "./context";
 import { isUnsent, localCommentState, threadIsOpen, threadKeyActions, type DiffThread, type LocalCommentState, type ThreadEntry } from "./threads";
-import { returnToDiff, useIsFocusedThread, useThreadControls } from "../keys/review-keys-context";
+import { returnToDiff, useIsFocused, useThreadControls } from "../keys/review-keys-context";
 
 function useNow(intervalMs = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -180,13 +180,13 @@ function ThreadKeyHint({ thread, open }: { thread: DiffThread; open: boolean }) 
   const { canPostToGithub } = useContext(DiffCommentsContext);
   const actions = threadKeyActions(thread, canPostToGithub);
   const hints = [
-    actions.canReply ? "r reply" : null,
+    actions.canReply ? "a reply" : null,
     actions.ownUnsent !== null ? "e edit" : null,
     actions.ownUnsent !== null ? "dd delete" : null,
     actions.moveTo === "github" ? "M move to GitHub" : actions.moveTo === "local" ? "M make local" : null,
     actions.url !== null ? "gx open on GitHub" : null,
     actions.agentThread !== null ? "go open agent thread" : null,
-    open ? "za fold" : "za unfold",
+    open ? "↩ fold" : "↩ unfold",
     "c next",
   ].filter((hint): hint is string => hint !== null);
   return <p className={cn("border-t border-border/60 px-2.5 py-1 font-mono text-[10px] text-muted-foreground", enter.fade, FAST)}>{hints.join(" · ")}</p>;
@@ -199,7 +199,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
   const [open, setOpen] = useState(thread.resolved !== true);
   const [replying, setReplying] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const focused = useIsFocusedThread(thread.id);
+  const focused = useIsFocused("thread", thread.id);
   useThreadControls(thread.id, {
     toggle: () => setOpen((value) => !value),
     reply: () => {

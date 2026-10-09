@@ -1,10 +1,10 @@
 import type { DiffLineAnnotation } from "@pierre/diffs/react";
 import type { DiffSide } from "../../types";
 import type { DiffThread } from "../comments/threads";
-import type { InlineFinding, PlacedFinding } from "../findings/findings";
+import { findingAnchorId, type InlineFinding, type PlacedFinding } from "../findings/findings";
 import type { ComposerAnchor } from "../patch-annotations";
 
-export type AnnotationMeta = { key: string } & ({ kind: "thread"; thread: DiffThread } | { kind: "composer" } | { kind: "finding"; finding: InlineFinding });
+export type AnnotationMeta = { key: string } & ({ kind: "thread"; thread: DiffThread } | { kind: "composer" } | { kind: "finding"; finding: InlineFinding; anchorId: string });
 export type PierreSide = "deletions" | "additions";
 
 export function toPierreSide(side: DiffSide): PierreSide {
@@ -35,9 +35,8 @@ export function buildLineAnnotations(threads: DiffThread[], composer: ComposerAn
   }
   for (const entry of findings) {
     if (entry.line === null) continue;
-    // One finding is placed once per location, so the line is part of its identity.
-    const key = `finding:${entry.item.reviewId}:${entry.item.finding.id}:${entry.line}`;
-    list.push({ side: "additions", lineNumber: entry.line, metadata: { key, kind: "finding", finding: entry.item } });
+    const anchorId = findingAnchorId(entry);
+    list.push({ side: "additions", lineNumber: entry.line, metadata: { key: `finding:${anchorId}`, kind: "finding", finding: entry.item, anchorId } });
   }
   return list;
 }

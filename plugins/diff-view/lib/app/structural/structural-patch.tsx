@@ -16,6 +16,7 @@ import { DiffCommentsContext } from "../comments/context";
 import { FileLevelComments } from "../comments/file-level-comments";
 import { DiffThreadView } from "../comments/thread-view";
 import { FindingAnnotation } from "../findings/finding-annotation";
+import { findingAnchorId } from "../findings/findings";
 import { SymbolHoverCard } from "../symbols/symbol-hover-card";
 import { ExplanationStrip } from "../explanations/explanation-strip";
 import { SymbolPeek } from "../symbols/symbol-peek";
@@ -297,7 +298,7 @@ export function StructuralPatch({
           ))}
           {composing && composer !== null ? <DiffCommentForm path={path} range={composer} onSubmit={onSubmitComposer} onCancel={onCancelComposer} /> : null}
           {lineFindings.map((entry) => (
-            <FindingAnnotation key={`${entry.item.reviewId}:${entry.item.finding.id}`} item={entry.item} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
+            <FindingAnnotation key={`${entry.item.reviewId}:${entry.item.finding.id}`} item={entry.item} anchorId={findingAnchorId(entry)} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
           ))}
         </td>
       </tr>

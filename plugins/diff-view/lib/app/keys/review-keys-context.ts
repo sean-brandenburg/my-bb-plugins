@@ -22,13 +22,25 @@ export interface ThreadControls {
   edit: (commentId: string) => void;
 }
 
+/** What a review finding lets the keyboard do to it. */
+export interface FindingControls {
+  toggle: () => void;
+  edit: () => void;
+}
+
+/** The thread or finding under the cursor that the comment keys act on; several can share a line. */
+export interface FocusedAnnotation {
+  kind: "thread" | "finding";
+  id: string;
+}
+
 export interface ReviewKeysState {
   cursor: Cursor | null;
   /** Where `V` started; the selection runs from here to the cursor, within one file. */
   visual: Cursor | null;
   /** Keys typed toward an unfinished command, for the mode label. */
   pending: string;
-  focusedThread: string | null;
+  focused: FocusedAnnotation | null;
 }
 
 /** The cursor as one file sees it; the same object until the cursor or selection in that file changes. */
@@ -37,7 +49,7 @@ export interface FileCursor {
   visual: Cursor | null;
 }
 
-const INITIAL: ReviewKeysState = { cursor: null, visual: null, pending: "", focusedThread: null };
+const INITIAL: ReviewKeysState = { cursor: null, visual: null, pending: "", focused: null };
 
 /**
  * The view's keyboard state, outside React so moving the cursor re-renders only the file it is in, plus the
@@ -50,6 +62,7 @@ export function createReviewKeys() {
   const models = new Map<string, FileNavModel>();
   const modelListeners = new Set<(path: string) => void>();
   const threads = new Map<string, ThreadControls>();
+  const findings = new Map<string, FindingControls>();
   return {
     get: () => state,
     fileCursor: (path: string) => (state.cursor !== null && state.cursor.path === path ? fileCursor : null),
@@ -74,6 +87,7 @@ export function createReviewKeys() {
       return () => modelListeners.delete(listener);
     },
     threads,
+    findings,
   };
 }
 
@@ -88,9 +102,12 @@ export function useFileCursor(path: string): FileCursor | null {
   return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => keys?.fileCursor(path) ?? null);
 }
 
-export function useIsFocusedThread(id: string): boolean {
+export function useIsFocused(kind: FocusedAnnotation["kind"], id: string): boolean {
   const keys = useContext(ReviewKeysContext);
-  return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => keys?.get().focusedThread === id);
+  return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => {
+    const focused = keys?.get().focused;
+    return focused?.kind === kind && focused.id === id;
+  });
 }
 
 export function useReviewKeysState(): ReviewKeysState {
@@ -132,6 +149,22 @@ export function useThreadControls(id: string, controls: ThreadControls): void {
     });
     return () => {
       keys.threads.delete(id);
+    };
+  }, [keys, id]);
+}
+
+export function useFindingControls(id: string, controls: FindingControls): void {
+  const keys = useContext(ReviewKeysContext);
+  const latest = useRef(controls);
+  latest.current = controls;
+  useEffect(() => {
+    if (keys === null) return;
+    keys.findings.set(id, {
+      toggle: () => latest.current.toggle(),
+      edit: () => latest.current.edit(),
+    });
+    return () => {
+      keys.findings.delete(id);
     };
   }, [keys, id]);
 }

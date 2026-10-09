@@ -11,7 +11,7 @@ export type ReviewCommand =
   | { kind: "thread"; direction: 1 | -1 }
   | { kind: "finding"; direction: 1 | -1 }
   | { kind: "scroll"; block: "center" | "start" | "end" }
-  | { kind: "fold"; action: "toggle" | "open" | "close" | "openAll" | "closeAll" | "moreContext" }
+  | { kind: "fold"; action: "toggle" | "annotation" | "open" | "close" | "openAll" | "closeAll" | "moreContext" }
   | { kind: "visual" }
   | { kind: "comment" }
   | { kind: "commentFile" }
@@ -92,11 +92,9 @@ const SEQUENCES: Record<string, ReviewCommand> = {
   zr: { kind: "fold", action: "moreContext" },
   V: { kind: "visual" },
   i: { kind: "comment" },
-  a: { kind: "comment" },
-  o: { kind: "comment" },
-  "<CR>": { kind: "comment" },
   O: { kind: "commentFile" },
-  r: { kind: "reply" },
+  a: { kind: "reply" },
+  "<CR>": { kind: "fold", action: "annotation" },
   e: { kind: "edit" },
   dd: { kind: "delete" },
   M: { kind: "move" },
@@ -152,7 +150,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["]c", "[c"], action: "Next / previous change" },
       { keys: ["}", "{"], action: "Next / previous hunk" },
       { keys: ["]f", "[f"], action: "Next / previous file" },
-      { keys: ["c", "C"], action: "Next / previous comment thread, one at a time on a shared line" },
+      { keys: ["c", "C"], action: "Next / previous comment or review finding, one at a time on a shared line" },
       { keys: ["]d", "[d"], action: "Next / previous review finding" },
       { keys: ["gg", "G"], action: "First / last line" },
       { keys: ["⌃d", "⌃u"], action: "Half a page down / up (⌃f / ⌃b a whole page)" },
@@ -164,30 +162,29 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
   {
     group: "Comment",
     keys: [
-      { keys: ["i", "↩"], action: "Comment on the line (or the selected lines); on a file header, on the file" },
+      { keys: ["i"], action: "Comment on the line (or the selected lines); on a file header, on the file" },
       { keys: ["V"], action: "Select lines; move, then i to comment on them" },
       { keys: ["O"], action: "Comment on the file" },
-      { keys: ["r"], action: "Reply to the thread on the line" },
-      { keys: ["e"], action: "Edit your unsent comment in that thread" },
+      { keys: ["a"], action: "Reply to the comment thread under the cursor" },
+      { keys: ["↩", "za"], action: "Open or close the comment or finding under the cursor (za on a bare line folds the file)" },
+      { keys: ["e"], action: "Edit your unsent comment in that thread, or the finding's wording" },
       { keys: ["dd"], action: "Delete your unsent comment in that thread" },
       { keys: ["M"], action: "Move that comment between local and the GitHub PR" },
-      { keys: ["za"], action: "Fold or unfold the thread" },
       { keys: ["gx", "go"], action: "Open the thread on GitHub / the agent thread that replied" },
       { keys: ["t"], action: "Switch where new comments go: local or the GitHub PR" },
       { keys: ["s"], action: "Go to the send bar (↩ sends, Tab for the next action)" },
-      { keys: ["⌘↩"], action: "In a comment box: add it" },
-      { keys: ["Esc"], action: "In a comment box: back to the diff (closes it when empty)" },
+      { keys: ["⌘↩"], action: "In a comment box: add it; editing a finding: save" },
+      { keys: ["Esc"], action: "In a comment box or finding edit: back to the diff (an empty new comment closes)" },
     ],
   },
   {
     group: "Review",
     keys: [
       { keys: ["v"], action: "Mark the file viewed (collapses it) or not" },
-      { keys: ["za"], action: "Fold the thread on the line, or else the file" },
       { keys: ["zo", "zc"], action: "Expand / collapse the file" },
       { keys: ["zR", "zM"], action: "Expand / collapse every file" },
       { keys: ["zr"], action: "Show more unchanged lines around the hunk, or the rest of a long new file (structural)" },
-      { keys: ["x"], action: "Select or drop the review finding on the line" },
+      { keys: ["x"], action: "Include or exclude the review finding under the cursor in the apply round" },
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
       { keys: ["gm", "gl"], action: "Text or structural, split or unified" },

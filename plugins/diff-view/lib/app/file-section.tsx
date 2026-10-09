@@ -12,6 +12,7 @@ import { LazyMount } from "./lazy-mount";
 import type { PatchAnnotationProps } from "./patch-annotations";
 import { FileLevelComments } from "./comments/file-level-comments";
 import { FindingAnnotation } from "./findings/finding-annotation";
+import { findingAnchorId } from "./findings/findings";
 import { StructuralPatch } from "./structural/structural-patch";
 import { AnnotatedPatch } from "./text/annotated-patch";
 import { DiffErrorBoundary } from "./text/diff-error-boundary";
@@ -102,7 +103,7 @@ export function FileSection({
             .filter((entry) => entry.line === null)
             .map((entry) => (
               <div key={`${entry.item.reviewId}:${entry.item.finding.id}`} className={cn("px-3", reveal)}>
-                <FindingAnnotation item={entry.item} onToggle={(selected) => annotations.onToggleFinding(entry.item, selected)} onEdit={(edit) => annotations.onEditFinding(entry.item, edit)} />
+                <FindingAnnotation item={entry.item} anchorId={findingAnchorId(entry)} onToggle={(selected) => annotations.onToggleFinding(entry.item, selected)} onEdit={(edit) => annotations.onEditFinding(entry.item, edit)} />
               </div>
             ))}
       {collapsed ? null : (

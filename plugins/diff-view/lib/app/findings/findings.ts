@@ -24,6 +24,11 @@ export interface PlacedFinding {
   line: number | null;
 }
 
+/** One finding is placed once per location, so the line is part of its identity. */
+export function findingAnchorId(entry: PlacedFinding): string {
+  return `${entry.item.reviewId}:${entry.item.finding.id}:${entry.line}`;
+}
+
 /**
  * The reviews whose findings still stand, oldest first: back from the newest up to and including the latest full review
  * or the latest re-review that carried every open finding forward. Re-reviews from before carry-over existed stack.

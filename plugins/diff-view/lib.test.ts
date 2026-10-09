@@ -535,6 +535,10 @@ describe("review keys", () => {
     expect(parseKeys(["g", "j"])).toEqual({ status: "none" });
     expect(parseKeys(["0"])).toEqual({ status: "none" });
     expect(parseKeys(["q"])).toEqual({ status: "none" });
+    expect(parseKeys(["i"])).toMatchObject({ status: "command", command: { kind: "comment" } });
+    expect(parseKeys(["a"])).toMatchObject({ status: "command", command: { kind: "reply" } });
+    expect(parseKeys(["<CR>"])).toMatchObject({ status: "command", command: { kind: "fold", action: "annotation" } });
+    expect(parseKeys(["o"])).toEqual({ status: "none" });
   });
 
   it("names keys as vim does and leaves ⌘ and ⌥ to the app", () => {

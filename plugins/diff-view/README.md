@@ -28,20 +28,24 @@ plugins embed.
   settings) opens the side panel and gives it the keyboard. A cursor moves
   over lines and file headers: `j`/`k` lines (with counts, `5j`), `h`/`l` old
   or new side, `]c`/`[c` changes, `}`/`{` hunks, `]f`/`[f` files, `c`/`C`
-  comment threads (one at a time when several share a line), `]d`/`[d` review findings, `gg`/`G`, Ctrl-D/U/F/B, and
-  `zz`/`zt`/`zb`. `/` searches file names and `n`/`N` step through the files
-  it matched. `i` (or Enter) comments on the cursor's line, or on the file from
-  its header; `V` selects lines for a range comment; `O` comments on the file;
-  `r`, `e` and `dd` reply to, edit or delete your unsent comment in the thread
-  on the line, `M` moves it between local and the GitHub PR, `za` folds the
-  thread, and `gx`/`go` open it on GitHub or open the agent thread that
-  replied (the thread under the cursor lists the keys it takes); `t` switches where new comments go; `s` focuses the send bar.
-  In a comment box ⌘↩ adds it and Escape returns to the diff (closing the box
-  if it is empty; with the vim-mode plugin, Escape twice). `v` marks a file
-  viewed and moves on, `za`/`zo`/`zc`/`zR`/`zM` fold threads and files, `zr`
-  shows more unchanged lines, `x` selects a review finding, `K` asks for an
-  explanation of the hunk, `gd` peeks at a symbol on the line, `gm`/`gl`
-  switch text or structural and split or unified, `R` refreshes, and
+  comment threads and review findings (one at a time when several share a
+  line), `]d`/`[d` findings only, `gg`/`G`, Ctrl-D/U/F/B, and `zz`/`zt`/`zb`.
+  `/` searches file names and `n`/`N` step through the files it matched.
+  `i` comments on the cursor's line, or on the file from its header; `V`
+  selects lines for a range comment; `O` comments on the file. The comment or
+  finding under the cursor is outlined and lists the keys it takes: Enter (or
+  `za`) opens or closes it, `a` replies to a thread, `e` edits your unsent
+  comment or a finding's wording, `dd` deletes your unsent comment, `x`
+  includes or excludes a finding in the apply round, `M` moves a comment
+  between local and the GitHub PR, and `gx`/`go` open a thread on GitHub or
+  the agent thread that replied. `t` switches where new comments go; `s`
+  focuses the send bar. In a comment box or a finding's edit form ⌘↩ saves
+  and Escape returns to the diff (closing an empty new comment; with the
+  vim-mode plugin, Escape twice). `v` marks a file viewed and moves on,
+  `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
+  `zr` shows more unchanged lines, `K` asks for an explanation of the hunk,
+  `gd` peeks at a symbol on the line, `gm`/`gl` switch text or structural and
+  split or unified, `R` refreshes, and
   `?` lists every key.
 
 Settings: hide vendored files (default on) and the `difft` path. Comments and

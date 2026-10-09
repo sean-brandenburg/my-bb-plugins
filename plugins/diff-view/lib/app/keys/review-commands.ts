@@ -23,7 +23,7 @@ import {
   type NavAnchor,
   type NavFile,
 } from "./nav";
-import type { ReviewKeys } from "./review-keys-context";
+import type { FocusedAnnotation, ReviewKeys } from "./review-keys-context";
 
 export type FindingAnchor = NavAnchor & { item: InlineFinding };
 
@@ -69,18 +69,39 @@ export interface ReviewEnv {
   notify: (message: string) => void;
 }
 
-function threadAt(env: ReviewEnv, cursor: Cursor): DiffThread | null {
-  return anchorsAtCursor(env.files, cursor, env.threads)[0] ?? null;
+type Annotation = { kind: "thread"; thread: DiffThread } | { kind: "finding"; finding: FindingAnchor };
+type AnnotationAnchor = NavAnchor & { annotation: Annotation };
+
+const focusOf = (annotation: Annotation): FocusedAnnotation =>
+  annotation.kind === "thread" ? { kind: "thread", id: annotation.thread.id } : { kind: "finding", id: annotation.finding.id };
+
+/** Threads and findings as one list, threads first on a shared line as both views render them; ids are kept apart by kind. */
+function annotationAnchors(env: ReviewEnv): AnnotationAnchor[] {
+  return [
+    ...env.threads.map((thread): AnnotationAnchor => ({ id: `thread:${thread.id}`, path: thread.path, side: thread.side, line: thread.line, annotation: { kind: "thread", thread } })),
+    ...env.findings.map((finding): AnnotationAnchor => ({ id: `finding:${finding.id}`, path: finding.path, side: finding.side, line: finding.line, annotation: { kind: "finding", finding } })),
+  ];
+}
+
+function annotationsAt(env: ReviewEnv, cursor: Cursor): Annotation[] {
+  return anchorsAtCursor(env.files, cursor, annotationAnchors(env)).map((anchor) => anchor.annotation);
+}
+
+/** The annotation the comment keys act on: the one focused on this line, else the line's first. */
+function focusedAnnotation(env: ReviewEnv, cursor: Cursor): Annotation | null {
+  const focused = env.keys.get().focused;
+  const here = annotationsAt(env, cursor);
+  return here.find((annotation) => focused !== null && focusOf(annotation).kind === focused.kind && focusOf(annotation).id === focused.id) ?? here[0] ?? null;
 }
 
 function focusedThread(env: ReviewEnv, cursor: Cursor): DiffThread | null {
-  const id = env.keys.get().focusedThread;
-  return env.threads.find((thread) => thread.id === id) ?? threadAt(env, cursor);
+  const annotation = focusedAnnotation(env, cursor);
+  return annotation?.kind === "thread" ? annotation.thread : null;
 }
 
-
-function go(env: ReviewEnv, cursor: Cursor, options: { block?: "center" | "start" | "end"; thread?: string | null } = {}): void {
-  env.keys.set({ cursor, focusedThread: options.thread !== undefined ? options.thread : (threadAt(env, cursor)?.id ?? null) });
+function go(env: ReviewEnv, cursor: Cursor, options: { block?: "center" | "start" | "end"; focused?: FocusedAnnotation | null } = {}): void {
+  const first = annotationsAt(env, cursor)[0];
+  env.keys.set({ cursor, focused: options.focused !== undefined ? options.focused : first === undefined ? null : focusOf(first) });
   env.reveal(cursor, options.block);
 }
 
@@ -96,7 +117,10 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
   const kept = state.cursor !== null && cursorPosition(env.files, state.cursor) !== null && env.onScreen(state.cursor) !== false ? state.cursor : null;
   const cursor = kept ?? env.seat();
   if (cursor === null) return;
-  if (cursor !== state.cursor) env.keys.set({ cursor, focusedThread: threadAt(env, cursor)?.id ?? null });
+  if (cursor !== state.cursor) {
+    const first = annotationsAt(env, cursor)[0];
+    env.keys.set({ cursor, focused: first === undefined ? null : focusOf(first) });
+  }
   const { files } = env;
   const model = env.keys.models.get(cursor.path) ?? null;
   const row = model === null || cursor.line === null ? -1 : rowIndexOf(model.rows, cursor.side, cursor.line);
@@ -142,16 +166,18 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       move(moveFile(files, cursor, command.direction, count), "start");
       return;
     case "thread": {
-      const thread = nextAnchor(files, cursor, env.threads, command.direction, count, state.focusedThread);
-      if (thread === null) {
-        env.notify(env.threads.length === 0 ? "No comments yet" : command.direction === 1 ? "No more comments below" : "No more comments above");
+      const anchors = annotationAnchors(env);
+      const from = state.focused === null ? null : `${state.focused.kind}:${state.focused.id}`;
+      const anchor = nextAnchor(files, cursor, anchors, command.direction, count, from);
+      if (anchor === null) {
+        env.notify(anchors.length === 0 ? "No comments or findings yet" : command.direction === 1 ? "No more comments below" : "No more comments above");
         return;
       }
-      if (files.find((file) => file.path === thread.path)?.collapsed === true) env.setCollapsed([thread.path], false);
+      if (files.find((file) => file.path === anchor.path)?.collapsed === true) env.setCollapsed([anchor.path], false);
       // The line may not be laid out yet (a collapsed or unmounted file); the view finds it once it is.
-      const next = thread.line === null ? cursorOnAnchor(files, thread, cursor.want) : { path: thread.path, side: thread.side, line: thread.line, want: cursor.want };
+      const next = anchor.line === null ? cursorOnAnchor(files, anchor, cursor.want) : { path: anchor.path, side: anchor.side, line: anchor.line, want: cursor.want };
       env.keys.set({ visual: null });
-      go(env, next, { block: "center", thread: thread.id });
+      go(env, next, { block: "center", focused: focusOf(anchor.annotation) });
       return;
     }
     case "finding": {
@@ -162,7 +188,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       }
       if (files.find((file) => file.path === finding.path)?.collapsed === true) env.setCollapsed([finding.path], false);
       env.keys.set({ visual: null });
-      go(env, finding.line === null ? cursorOnAnchor(files, finding, cursor.want) : { path: finding.path, side: "RIGHT", line: finding.line, want: cursor.want }, { block: "center" });
+      go(env, finding.line === null ? cursorOnAnchor(files, finding, cursor.want) : { path: finding.path, side: "RIGHT", line: finding.line, want: cursor.want }, { block: "center", focused: { kind: "finding", id: finding.id } });
       return;
     }
     case "scroll":
@@ -171,12 +197,16 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     case "fold": {
       const header = { ...cursor, line: null };
       switch (command.action) {
-        case "toggle": {
-          const thread = focusedThread(env, cursor);
-          if (thread !== null) {
-            env.keys.threads.get(thread.id)?.toggle();
+        case "toggle":
+        case "annotation": {
+          const annotation = focusedAnnotation(env, cursor);
+          if (annotation !== null) {
+            if (annotation.kind === "thread") env.keys.threads.get(annotation.thread.id)?.toggle();
+            else env.keys.findings.get(annotation.finding.id)?.toggle();
             return;
           }
+          // Enter folds a file only from its header; on a code line it would be an easy accident.
+          if (command.action === "annotation" && cursor.line !== null) return;
           const collapsed = files.find((file) => file.path === cursor.path)?.collapsed === true;
           env.setCollapsed([cursor.path], !collapsed);
           if (!collapsed) go(env, header);
@@ -225,13 +255,19 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       return;
     case "reply": {
       const thread = focusedThread(env, cursor);
-      if (thread === null) env.notify("No comment thread on this line");
+      if (thread === null) env.notify(focusedAnnotation(env, cursor) === null ? "No comment thread on this line" : "Review findings take no replies; i comments on the line");
       else if (thread.orphaned) env.notify("The comment this thread answers is gone");
       else env.keys.threads.get(thread.id)?.reply();
       return;
     }
     case "edit":
     case "delete": {
+      const annotation = focusedAnnotation(env, cursor);
+      if (annotation?.kind === "finding") {
+        if (command.kind === "edit") env.keys.findings.get(annotation.finding.id)?.edit();
+        else env.notify("Findings can't be deleted; x excludes one from the apply round");
+        return;
+      }
       const thread = focusedThread(env, cursor);
       const id = thread === null ? null : (threadKeyActions(thread, env.canPostToGithub).ownUnsent?.id ?? null);
       if (thread === null || id === null) {
@@ -247,7 +283,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     case "openThread": {
       const thread = focusedThread(env, cursor);
       if (thread === null) {
-        env.notify("No comment thread on this line");
+        env.notify(focusedAnnotation(env, cursor) === null ? "No comment thread on this line" : "That key acts on comment threads, not findings");
         return;
       }
       const actions = threadKeyActions(thread, env.canPostToGithub);
@@ -265,9 +301,15 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       return;
     }
     case "toggleFinding": {
-      const finding = anchorsAtCursor(files, cursor, env.findings)[0];
-      if (finding === undefined) env.notify("No review finding on this line");
-      else env.toggleFinding(finding.item, !finding.item.selected);
+      const annotation = focusedAnnotation(env, cursor);
+      // A thread may hold focus on a line that also has findings; x still means the line's first finding.
+      const finding = annotation?.kind === "finding" ? annotation.finding : anchorsAtCursor(files, cursor, env.findings)[0];
+      if (finding === undefined) {
+        env.notify("No review finding on this line");
+        return;
+      }
+      env.toggleFinding(finding.item, !finding.item.selected);
+      env.keys.set({ focused: { kind: "finding", id: finding.id } });
       return;
     }
     case "explain": {

@@ -166,7 +166,7 @@ export function AnnotatedPatch({
             }
             if (metadata.kind === "finding") {
               const item = metadata.finding;
-              return <FindingAnnotation key={metadata.key} item={item} entrance={!committedKeys.current.has(metadata.key)} onToggle={(selected) => onToggleFinding(item, selected)} onEdit={(edit) => onEditFinding(item, edit)} />;
+              return <FindingAnnotation key={metadata.key} item={item} anchorId={metadata.anchorId} entrance={!committedKeys.current.has(metadata.key)} onToggle={(selected) => onToggleFinding(item, selected)} onEdit={(edit) => onEditFinding(item, edit)} />;
             }
             return <DiffThreadView key={metadata.key} thread={metadata.thread} />;
           }}

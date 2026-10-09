@@ -23,7 +23,7 @@ import { threadIsOpen, type DiffThread } from "./comments/threads";
 import { useComments } from "./comments/use-comments";
 import { useExplanations } from "./explanations/use-explanations";
 import { FileTreeSidebar } from "./file-tree/file-tree-sidebar";
-import { inlineFindingsByPath, type PlacedFinding } from "./findings/findings";
+import { findingAnchorId, inlineFindingsByPath, type PlacedFinding } from "./findings/findings";
 import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
@@ -158,7 +158,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   }, [composer]);
   const parkCursor = (path: string) => {
     const want = keys.get().cursor?.want ?? "RIGHT";
-    keys.set({ cursor: { path, side: want, line: null, want }, visual: null, focusedThread: null });
+    keys.set({ cursor: { path, side: want, line: null, want }, visual: null, focused: null });
   };
   const jumpTo = (path: string) => {
     setActivePath(path);
@@ -245,7 +245,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     return box.bottom > view.top + (cursor.line === null ? 0 : STICKY_HEADER_PX) && box.top < view.bottom;
   };
   const findingAnchors = useMemo(
-    () => [...findingsByPath].flatMap(([path, list]) => list.map((entry): FindingAnchor => ({ id: `${entry.item.reviewId}:${entry.item.finding.id}:${entry.line}`, path, side: "RIGHT", line: entry.line, item: entry.item }))),
+    () => [...findingsByPath].flatMap(([path, list]) => list.map((entry): FindingAnchor => ({ id: findingAnchorId(entry), path, side: "RIGHT", line: entry.line, item: entry.item }))),
     [findingsByPath],
   );
   const notify = (message: string) => toast.message(message, { duration: 1800 });
@@ -272,10 +272,10 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       },
       focusComposer: () => {
         const root = rootRef.current;
-        const focused = keys.get().focusedThread;
+        const focused = keys.get().focused;
         const box =
           root?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ??
-          (focused === null ? null : root?.querySelector<HTMLTextAreaElement>(`[data-thread-id="${CSS.escape(focused)}"] textarea`)) ??
+          (focused?.kind !== "thread" ? null : root?.querySelector<HTMLTextAreaElement>(`[data-thread-id="${CSS.escape(focused.id)}"] textarea`)) ??
           null;
         if (box === null) return false;
         // An empty box moves to the cursor; one holding a draft is finished first, so the draft is never lost.
