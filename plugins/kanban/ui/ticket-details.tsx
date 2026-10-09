@@ -16,7 +16,7 @@ import { focusBoard, requestCardFocus, useCardKeys } from "./card-keys";
 import { ExternalLink, ThreadStatusDot, Select, ProjectSelect, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
-import { BranchName, ChecksMark, JiraGlyph, MarkGlyph, PrStateGlyph } from "./badges";
+import { ChecksMark, JiraStatusGlyph, PrStateGlyph } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
@@ -141,30 +141,33 @@ function TicketDetails({
           </button>
         ) : null}
         <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground" title={`${kindLabel} ${ticket.id} · ${columnName}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground" title={`${kindLabel} ${ticket.id} · ${columnName}`}>
             {ticket.pr !== null ? (
               <>
                 {nerdFont ? <PrStateGlyph state={ticket.pr.state} /> : null}
                 <span className="shrink-0">
                   <ExternalLink href={ticket.pr.url} title={`Open ${ticket.pr.repo}#${ticket.pr.number} on GitHub`} className={LINE_LINK}>
-                    {ticket.pr.repo.split("/")[1]}#{ticket.pr.number}
+                    {ticket.pr.repo.split("/")[1]} #{ticket.pr.number}
                   </ExternalLink>
                   {nerdFont ? null : ` · ${ticket.pr.state}`}
                 </span>
                 {ticket.pr.checks !== null ? <ChecksMark checks={ticket.pr.checks} nerdFont={nerdFont} /> : null}
-                {ticket.pr.headRef !== null ? <BranchName headRef={ticket.pr.headRef} nerdFont={nerdFont} /> : null}
+                {ticket.pr.headRef !== null ? (
+                  <span className="min-w-0 truncate" title={`Branch ${ticket.pr.headRef}`}>
+                    · {ticket.pr.headRef}
+                  </span>
+                ) : null}
               </>
             ) : null}
             {ticket.jira !== null ? (
-              <span className="flex min-w-0 items-center gap-1">
-                {nerdFont ? <JiraGlyph /> : null}
+              <span className="flex min-w-0 items-center gap-1.5">
+                {nerdFont ? <JiraStatusGlyph jira={ticket.jira} /> : null}
                 <span className="truncate">
                   <ExternalLink href={ticket.jira.url} title={`Open ${ticket.jira.key} in Jira`} className={LINE_LINK}>
                     {ticket.jira.key}
                   </ExternalLink>
                   {jiraMark === null ? ` · ${ticket.jira.status || "unknown"}` : null}
                 </span>
-                {jiraMark !== null ? <MarkGlyph mark={jiraMark} /> : null}
               </span>
             ) : null}
             {ticket.pr === null && ticket.jira === null ? <span className="truncate">{parent !== null ? "Subtask" : kindLabel}</span> : null}

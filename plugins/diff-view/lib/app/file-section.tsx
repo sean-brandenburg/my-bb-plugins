@@ -17,7 +17,7 @@ import { StructuralPatch } from "./structural/structural-patch";
 import { AnnotatedPatch } from "./text/annotated-patch";
 import { DiffErrorBoundary } from "./text/diff-error-boundary";
 import { useCursorOnHeader, usePublishNavModel, type FileNavModel } from "./keys/review-keys-context";
-import { FileStatusMark, FileTypeGlyph } from "./file-marks";
+import { FileGlyph } from "./file-marks";
 import { useNerdFont } from "./ui/nerd-font";
 
 const NO_ROWS: FileNavModel = { rows: [], cutToHunk: false, element: () => null };
@@ -79,12 +79,12 @@ export function FileSection({
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
-        {nerdFont ? <FileTypeGlyph path={file.path} className="text-[14px]" /> : null}
+        {nerdFont ? <FileGlyph file={file} className="text-[14px]" /> : null}
         <code className="min-w-0 flex-1 truncate text-xs">
           {file.previousPath !== null ? `${file.previousPath} → ` : ""}
           {file.path}
         </code>
-        {nerdFont ? <FileStatusMark file={file} nerdFont className="text-[14px]" /> : file.status !== "modified" ? <Badge>{file.status}</Badge> : null}
+        {!nerdFont && file.status !== "modified" ? <Badge>{file.status}</Badge> : null}
         {isGeneratedFile(file) ? (
           <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground" title={file.vendored ? "Vendored; collapsed by default and shown as a text diff" : "Looks generated; collapsed by default"}>
             {file.vendored ? "vendored" : "generated"}

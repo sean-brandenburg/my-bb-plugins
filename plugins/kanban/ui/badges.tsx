@@ -1,5 +1,5 @@
 import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
-import type { PullRequest, Ticket } from "../shared/board";
+import type { JiraIssue, PullRequest, Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus } from "./format";
@@ -28,18 +28,10 @@ export function ChecksMark({ checks, nerdFont }: { checks: NonNullable<PullReque
   );
 }
 
-/** The PR's head branch; the name truncates, the icon stays. */
-export function BranchName({ headRef, nerdFont, className }: { headRef: string; nerdFont: boolean; className?: string }) {
-  return (
-    <span className={cn("flex min-w-0 items-center gap-1 overflow-hidden", className)} title={headRef}>
-      {nerdFont ? <Glyph glyph={GLYPH.branch} className={GLYPH_SIZE} /> : <Icon name="kanban-git-branch" className="size-3 shrink-0" />}
-      <span className="truncate">{headRef}</span>
-    </span>
-  );
-}
-
-export function JiraGlyph() {
-  return <Glyph glyph={GLYPH.jira} className={GLYPH_SIZE} />;
+/** The issue's status category, named by its status; the Jira mark when the status has no category. */
+export function JiraStatusGlyph({ jira }: { jira: JiraIssue }) {
+  const mark = jiraStatusMark(jira);
+  return mark === null ? <Glyph glyph={GLYPH.jira} className={GLYPH_SIZE} /> : <MarkGlyph mark={mark} />;
 }
 
 export function PrBadges({ ticket }: { ticket: Ticket }) {
@@ -59,11 +51,6 @@ export function PrBadges({ ticket }: { ticket: Ticket }) {
         </Badge>
       </ExternalLink>
       {!nerdFont && pr.state !== "open" ? <Badge tone={stateTone}>{pr.state}</Badge> : null}
-      {pr.headRef !== null ? (
-        <Badge className="max-w-48">
-          <BranchName headRef={pr.headRef} nerdFont={nerdFont} />
-        </Badge>
-      ) : null}
     </>
   );
 }
@@ -78,9 +65,8 @@ export function JiraBadges({ ticket }: { ticket: Ticket }) {
     <>
       <ExternalLink href={jira.url} title={`Open ${jira.key} in Jira`} className="inline-flex max-w-full">
         <Badge title={jira.issueType}>
-          {nerdFont ? <JiraGlyph /> : <Icon name="kanban-ticket" className="size-3" />}
+          {nerdFont ? <JiraStatusGlyph jira={jira} /> : <Icon name="kanban-ticket" className="size-3" />}
           {jira.key}
-          {statusMark !== null ? <MarkGlyph mark={statusMark} /> : null}
         </Badge>
       </ExternalLink>
       {statusMark === null && jira.status !== "" ? <Badge tone={tone}>{jira.status}</Badge> : null}

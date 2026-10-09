@@ -84,19 +84,19 @@ describe("Glyph", () => {
 
 describe("fileGlyph", () => {
   it("matches well-known names before extensions", () => {
-    expect(fileGlyph("services/api/Dockerfile").glyph).toBe(String.fromCodePoint(0xe650));
-    expect(fileGlyph("package.json").glyph).toBe(String.fromCodePoint(0xe71e));
-    expect(fileGlyph("app/tsconfig.build.json").glyph).toBe(String.fromCodePoint(0xe69d));
+    expect(fileGlyph("services/api/Dockerfile")).toBe(String.fromCodePoint(0xe650));
+    expect(fileGlyph("package.json")).toBe(String.fromCodePoint(0xe71e));
+    expect(fileGlyph("app/tsconfig.build.json")).toBe(String.fromCodePoint(0xe69d));
   });
 
   it("matches by extension, case-insensitively", () => {
-    expect(fileGlyph("src/Main.GO")).toEqual({ glyph: String.fromCodePoint(0xe627), color: "#00add8" });
-    expect(fileGlyph("lib/types.d.ts").glyph).toBe(String.fromCodePoint(0xe628));
+    expect(fileGlyph("src/Main.GO")).toBe(String.fromCodePoint(0xe627));
+    expect(fileGlyph("lib/types.d.ts")).toBe(String.fromCodePoint(0xe628));
   });
 
-  it("falls back to a plain page with the text colour", () => {
-    expect(fileGlyph("README")).toEqual({ glyph: GLYPH.file, color: null });
-    expect(fileGlyph("data/blob.unknownext")).toEqual({ glyph: GLYPH.file, color: null });
+  it("falls back to a plain page", () => {
+    expect(fileGlyph("README")).toBe(GLYPH.file);
+    expect(fileGlyph("data/blob.unknownext")).toBe(GLYPH.file);
   });
 });
 

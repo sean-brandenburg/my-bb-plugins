@@ -15,9 +15,9 @@ plugins embed.
   difftastic cannot diff (`gl` switches those between split, the default, and
   unified), long lines always wrapped, viewed marks, and ⌘-hover and ⌘-click symbol peeks in the
   thread's checkout.
-- **File marks**: added, deleted, renamed and copied files carry a mark in the
-  tree and on their header. With a Nerd Font (see the nerd-font plugin) that is
-  a diff glyph, and every file also gets its file-type icon; without one, the
+- **File marks**: with a Nerd Font (see the nerd-font plugin), each file in the
+  tree and on its header leads with one muted icon: a diff glyph when it was
+  added, deleted, renamed or copied, its file type otherwise. Without one, the
   tree shows git's status letter (A, D, R, C) and the header a status badge.
 - **Comments**: "+" on a line, or the comment icon that appears on a file
   header under the pointer or the cursor, with replies. Drag the "+"

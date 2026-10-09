@@ -10,7 +10,7 @@ import { isGeneratedFile } from "../generated";
 import { RISK_DOT, riskTint } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
 import { keyToken } from "../keys/keymap";
-import { FileStatusMark, FileTypeGlyph } from "../file-marks";
+import { FileGlyph, FileStatusLetter } from "../file-marks";
 import { useNerdFont } from "../ui/nerd-font";
 
 /** Row positions handed out in render order, so a cascade runs top to bottom from wherever it starts. */
@@ -186,7 +186,7 @@ export function FileTree({
         >
           {isViewed ? <Icon name="Check" className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" /> : fileRisk !== null ? <span className={cn("size-1.5 shrink-0 rounded-full", RISK_DOT[fileRisk])} aria-hidden="true" /> : null}
           {changedSince(file.path) ? <span className="shrink-0 rounded border border-sky-500/50 px-1 text-[10px] text-sky-700 dark:text-sky-300" title="Changed since you last looked">changed</span> : null}
-          {nerdFont ? <FileTypeGlyph path={file.path} className={cn("text-[13px]", (isViewed || generated) && "opacity-50")} /> : null}
+          {nerdFont ? <FileGlyph file={file} className={cn("text-[13px]", (isViewed || generated) && "opacity-50")} /> : null}
           <TruncatedName
             text={name}
             full={file.path}
@@ -196,7 +196,7 @@ export function FileTree({
           {generated ? <span className="shrink-0 rounded border border-border px-1 text-[10px] uppercase tracking-wide text-muted-foreground">gen</span> : null}
           {findingCount(file.path) > 0 ? <Badge tone="danger" title="Review findings in this file">{findingCount(file.path)}</Badge> : null}
           {count > 0 ? <Badge tone="warning">{count}</Badge> : null}
-          <FileStatusMark file={file} nerdFont={nerdFont} />
+          {nerdFont ? null : <FileStatusLetter file={file} />}
           <span className="shrink-0 tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
           <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
         </button>

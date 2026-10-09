@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { cardSnippet, dueStatus, shortAge, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
-import { BranchName, ChecksMark, JiraGlyph, MarkGlyph, PrStateGlyph, ReviewBadge } from "./badges";
+import { ChecksMark, JiraStatusGlyph, PrStateGlyph, ReviewBadge } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 
 export function CardView({
@@ -199,8 +199,9 @@ const STATUS_EDGE: Record<"busy" | "input" | "error", string> = {
 };
 
 /**
- * Where the card comes from: `widgets #7`, its state, checks, and branch, and who asked for the review; `PROJ-12`, its
- * status, and priority; or `↳ subtask`. With a Nerd Font the PR state and Jira status are glyphs, otherwise words.
+ * Where the card comes from: `widgets #7`, its state and checks, and who asked for the review; `PROJ-12`, its status,
+ * and priority; or `↳ subtask`. With a Nerd Font the leading glyph is the PR's state or the issue's status, otherwise
+ * they are words. The branch is left to the card's details.
  */
 function CardSource({ ticket }: { ticket: Ticket }) {
   const nerdFont = useNerdFont();
@@ -209,8 +210,8 @@ function CardSource({ ticket }: { ticket: Ticket }) {
   if (ticket.pr !== null) {
     const { pr } = ticket;
     const stateClass = pr.state === "merged" ? "text-violet-700 dark:text-violet-300" : pr.state === "closed" ? "text-destructive" : "";
-    // On a narrow card the branch gives way first, then the reviewer, and the PR's name last. Any shrinking at all puts
-    // an ellipsis on the name, so it doesn't shrink but is capped at the row; the branch only gets the space left over.
+    // Any shrinking at all puts an ellipsis on the name, so it doesn't shrink but is capped at the row, and the reviewer
+    // gives way instead.
     return (
       <div className={row}>
         {nerdFont ? <PrStateGlyph state={pr.state} /> : <Icon name="GitPullRequest" className="size-3 shrink-0" />}
@@ -219,7 +220,6 @@ function CardSource({ ticket }: { ticket: Ticket }) {
           {!nerdFont && pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
         </ExternalLink>
         {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} /> : null}
-        {pr.headRef !== null ? <BranchName headRef={pr.headRef} nerdFont={nerdFont} className="flex-1" /> : null}
         {pr.role === "other" ? (
           <span className="ml-auto min-w-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
             reviewing @{pr.author}
@@ -233,12 +233,11 @@ function CardSource({ ticket }: { ticket: Ticket }) {
     const statusMark = nerdFont ? jiraStatusMark(jira) : null;
     return (
       <div className={row}>
-        {nerdFont ? <JiraGlyph /> : <Icon name="kanban-ticket" className="size-3 shrink-0" />}
+        {nerdFont ? <JiraStatusGlyph jira={jira} /> : <Icon name="kanban-ticket" className="size-3 shrink-0" />}
         <ExternalLink href={jira.url} title={`Open ${jira.key} in Jira`} className={link}>
           {jira.key}
           {statusMark === null && jira.status !== "" ? ` · ${jira.status}` : ""}
         </ExternalLink>
-        {statusMark !== null ? <MarkGlyph mark={statusMark} /> : null}
         {jira.priority !== null ? (
           <span className="ml-auto shrink-0" title="Priority">
             {jira.priority}
