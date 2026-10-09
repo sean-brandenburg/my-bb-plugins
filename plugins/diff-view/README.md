@@ -42,9 +42,10 @@ plugins embed.
   includes or excludes a finding in the apply round, `M` moves a comment
   between local and the GitHub PR, and `gx`/`go` open a thread on GitHub or
   the agent thread that replied. `t` switches where new comments go; `s`
-  focuses the send bar. In a comment box or a finding's edit form ⌘↩ saves
-  and Escape returns to the diff (closing an empty new comment; with the
-  vim-mode plugin, Escape twice). `v` marks a file viewed and moves on,
+  focuses the send bar. In a comment box or an edit ⌘↩ saves; Escape returns
+  to the diff, keeping a new comment's or reply's draft (an empty one closes)
+  and cancelling an edit of a comment or finding (with the vim-mode plugin,
+  Escape twice). `v` marks a file viewed and moves on,
   `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
   `zr` shows more unchanged lines, `K` asks for an explanation of the hunk,
   `gd` peeks at a symbol on the line, `gl` switches line-diff files between

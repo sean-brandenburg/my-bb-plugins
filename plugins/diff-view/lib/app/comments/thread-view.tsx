@@ -155,8 +155,9 @@ function ThreadEntryView({
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void save();
               if (event.key !== "Escape") return;
+              // Escape cancels the edit like the Cancel button; ⌘↩ is the way to keep it.
               returnToDiff(event.currentTarget);
-              if (draft === comment.body) setEditing(false);
+              setEditing(false);
             }}
           />
           <div className="flex gap-2">

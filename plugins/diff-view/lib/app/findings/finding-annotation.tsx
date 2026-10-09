@@ -52,10 +52,12 @@ export function FindingAnnotation({
   };
   const focused = useIsFocused("finding", anchorId);
   useFindingControls(anchorId, { toggle: () => setOpen((value) => !value), edit: beginEdit });
-  // Like a comment box: Escape hands the keyboard back to the diff and keeps the draft, ⌘↩ saves.
+  // Escape cancels the edit like the Cancel button and hands the keyboard back to the diff; ⌘↩ saves.
   const onFieldKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft.title.trim() !== "") void save();
-    if (event.key === "Escape") returnToDiff(event.currentTarget);
+    if (event.key !== "Escape") return;
+    returnToDiff(event.currentTarget);
+    setEditing(false);
   };
   const field = "w-full rounded-md border border-border bg-background px-2 py-1 text-xs";
   const reveal = useOpenedSinceMount(open) ? cn(enter.rise, FAST) : undefined;
