@@ -1,14 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { type BoardCommand, CTRL_KEYMAP, KEYMAP, PREFIXED_KEYMAP } from "./board-nav";
-import { stepMenu } from "./primitives";
+import { KANBAN_MENU, stepMenu } from "./primitives";
 
 const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 // Radix menus and listboxes take letters for typeahead without always claiming them.
 const OWN_KEYS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="combobox"]';
 const OPEN_DIALOG = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
 /** The plugin's own menus; bb's are left alone. */
-const OPEN_MENU = '[data-kanban-menu][data-state="open"]';
+const OPEN_MENU = `.${KANBAN_MENU}[data-state="open"]`;
 /** Marks the board, its header and its card panel: the places a keypress may come from. */
 const SCOPE = "[data-kanban-keys]";
 const PREFIX_TIMEOUT_MS = 500;

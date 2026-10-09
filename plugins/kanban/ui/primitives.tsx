@@ -308,6 +308,9 @@ export function stepMenu(menu: HTMLElement, step: 1 | -1): void {
   items[at === -1 ? (step === 1 ? 0 : items.length - 1) : Math.min(items.length - 1, Math.max(0, at + step))]?.focus();
 }
 
+/** Marks the plugin's own menus so board keys can find them; a class because bb's menu drops data attributes. */
+export const KANBAN_MENU = "kanban-menu";
+
 /** j and k step through a menu's items while focus is inside it. */
 export function menuVimKeys(event: KeyboardEvent<HTMLElement>): void {
   const step = event.key === "j" ? 1 : event.key === "k" ? -1 : 0;

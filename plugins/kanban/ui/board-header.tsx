@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { relativeTime, shortSha } from "./format";
 import { useBoard, useOpenThread, useNow } from "./data";
 import { pageUi, usePageUi } from "./page-state";
-import { Badge, COMPACT, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
+import { Badge, COMPACT, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
 import { diffInstanceKey, diffSubjectFromSubPath, findDiffSubjectTicket } from "./diff-page";
 import { toastError } from "./actions";
 
@@ -60,8 +60,7 @@ function BoardSettingsMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className={cn("z-50 min-w-56 max-w-80 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}
-          data-kanban-menu=""
+          className={cn("z-50 min-w-56 max-w-80 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION, KANBAN_MENU)}
           onKeyDown={menuVimKeys}
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onColumns}>
@@ -191,7 +190,7 @@ function CodeReviewThreadsMenu({ subjectId }: { subjectId: string }) {
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={4} className={cn("z-50 max-h-96 min-w-64 max-w-96 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)} data-kanban-menu="" onKeyDown={menuVimKeys}>
+        <DropdownMenu.Content align="end" sideOffset={4} className={cn("z-50 max-h-96 min-w-64 max-w-96 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION, KANBAN_MENU)} onKeyDown={menuVimKeys}>
           {threads.map((thread) => (
             <DropdownMenu.Item key={`${thread.kind}:${thread.threadId}`} className={MENU_ITEM_CLASS} onSelect={() => openThread(thread.threadId)}>
               <Icon name={CODE_REVIEW_THREAD_ICON[thread.kind]} className="size-4 shrink-0 text-muted-foreground" />
