@@ -30,6 +30,8 @@ export const GLYPH = {
   gauge: glyph(0xf029a),
   gaugeFull: glyph(0xf0874),
   fire: glyph(0xf0238),
+  fireAlert: glyph(0xf15d7),
+  rocketLaunch: glyph(0xf14de),
   crown: glyph(0xf01a5),
   feather: glyph(0xf06d3),
   leaf: glyph(0xf032a),

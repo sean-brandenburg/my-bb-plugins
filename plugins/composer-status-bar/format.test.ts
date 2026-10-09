@@ -123,8 +123,21 @@ describe("compactModel", () => {
 });
 
 describe("effortGlyph", () => {
-  it("fills the gauge along a five-level list and burns at the top", () => {
-    expect([0, 1, 2, 3, 4].map((index) => effortGlyph(index, 5))).toEqual([
+  it("gives the common level ids fixed glyphs wherever the provider lists them", () => {
+    const claude = ["low", "medium", "high", "xhigh", "ultracode", "max"];
+    expect(claude.map((id, index) => effortGlyph(id, index, claude.length))).toEqual([
+      GLYPH.gaugeLow,
+      GLYPH.gauge,
+      GLYPH.gaugeFull,
+      GLYPH.fire,
+      GLYPH.rocketLaunch,
+      GLYPH.fireAlert,
+    ]);
+    expect(effortGlyph("none", 0, 6)).toBe(GLYPH.gaugeEmpty);
+  });
+
+  it("fills the gauge along a five-level list of unknown ids and burns at the top", () => {
+    expect([0, 1, 2, 3, 4].map((index) => effortGlyph(`level-${index}`, index, 5))).toEqual([
       GLYPH.gaugeEmpty,
       GLYPH.gaugeLow,
       GLYPH.gauge,
@@ -134,10 +147,10 @@ describe("effortGlyph", () => {
   });
 
   it("tops out at a full gauge on a short list", () => {
-    expect([0, 1, 2].map((index) => effortGlyph(index, 3))).toEqual([GLYPH.gaugeEmpty, GLYPH.gauge, GLYPH.gaugeFull]);
+    expect([0, 1, 2].map((index) => effortGlyph(`level-${index}`, index, 3))).toEqual([GLYPH.gaugeEmpty, GLYPH.gauge, GLYPH.gaugeFull]);
   });
 
   it("shows a middling gauge for a single level", () => {
-    expect(effortGlyph(0, 1)).toBe(GLYPH.gauge);
+    expect(effortGlyph("only", 0, 1)).toBe(GLYPH.gauge);
   });
 });

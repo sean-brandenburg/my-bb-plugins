@@ -307,7 +307,7 @@ function useEffort(providerId: string | null, level: string | null): Effort | nu
   const levels = providers.find((candidate) => candidate.id === providerId)?.reasoningLevels ?? [];
   const index = levels.findIndex((candidate) => candidate.id === level);
   if (index === -1) return { label: level, glyph: null, rank: 0 };
-  return { label: levels[index].label, glyph: effortGlyph(index, levels.length), rank: index };
+  return { label: levels[index].label, glyph: effortGlyph(level, index, levels.length), rank: index };
 }
 
 interface ThreadUsage {

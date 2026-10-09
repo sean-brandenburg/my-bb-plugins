@@ -10,7 +10,7 @@ One row, ordered by what it describes:
 - **Usage**, on the right: a warning icon with the time to reset when Claude reports a limit as near or reached, then the context chip (`324k` with bb's ring; hover for the window size, click for the breakdown).
 - **The agent**, after a divider at the far right: `Opus 5.5 · High` (the composer's current model and effort, visible even while bb's picker is hidden), then the permission-mode chip, right under the send button.
 
-With a Nerd Font installed (see the nerd-font plugin), the agent shrinks to glyphs: the model family's icon and its version (a crown and `5.5` for Opus 5.5; a feather for Sonnet, a leaf for Haiku, a book for Fable; other providers' models keep their name), then a gauge that fills with the effort level and burns at the top one. The limit warning becomes an hourglass. Hover the agent for the full model and effort.
+With a Nerd Font installed (see the nerd-font plugin), the agent shrinks to glyphs: the model family's icon and its version (a crown and `5.5` for Opus 5.5; a feather for Sonnet, a leaf for Haiku, a book for Fable; other providers' models keep their name), then the effort: a gauge that fills from low to high, a flame for xhigh, a flame with an alert for max, and a rocket for ultracode. The limit warning becomes an hourglass. Hover the agent for the full model and effort.
 
 Every control is an outlined chip; everything else is plain text. Nothing truncates except a long branch name. As the footer narrows, detail drops in this order: the environment, the project's name (its icon stays), the effort, then the model.
 

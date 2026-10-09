@@ -48,8 +48,24 @@ export function compactModel(name: string): { glyph: string; text: string } {
   return { glyph: family[1], text: /\d+(?:\.\d+)*/u.exec(name)?.[0] ?? "" };
 }
 
-/** A gauge that fills with the level's place in the provider's list; the top of a long list burns. */
-export function effortGlyph(index: number, count: number): string {
+const EFFORT_GLYPHS: Record<string, string> = {
+  none: GLYPH.gaugeEmpty,
+  minimal: GLYPH.gaugeEmpty,
+  low: GLYPH.gaugeLow,
+  medium: GLYPH.gauge,
+  high: GLYPH.gaugeFull,
+  xhigh: GLYPH.fire,
+  max: GLYPH.fireAlert,
+  ultracode: GLYPH.rocketLaunch,
+};
+
+/**
+ * The common level ids get fixed glyphs, since providers list different extras around them (Claude puts ultracode
+ * between xhigh and max). Any other level is a gauge filled by its place in the provider's list, burning at the top.
+ */
+export function effortGlyph(id: string, index: number, count: number): string {
+  const known = EFFORT_GLYPHS[id];
+  if (known !== undefined) return known;
   if (count <= 1) return GLYPH.gauge;
   const position = index / (count - 1);
   if (position === 0) return GLYPH.gaugeEmpty;
