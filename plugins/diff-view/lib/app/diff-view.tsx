@@ -179,34 +179,44 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const navFilesRef = useRef(navFiles);
   navFilesRef.current = navFiles;
   // A newly opened diff starts the cursor on its first line, not on whatever line is mid-screen when a key is first
-  // pressed. Until the first open file's rows arrive the cursor waits on its header; a refresh leaves it alone.
-  const placedFor = useRef<string | null>(null);
+  // pressed. Files count as collapsed until their viewed marks load and their rows arrive after that, so this retries
+  // on every render and every published file until the first open file has rows; a refresh leaves the cursor alone.
+  const initialCursor = useRef<{ instanceKey: string; placed: Cursor | null; done: boolean } | null>(null);
+  const placeInitialCursor = () => {
+    const state = initialCursor.current;
+    if (state === null || state.done) return;
+    // The reader got there first.
+    if (state.placed !== null && keys.get().cursor !== state.placed) {
+      state.done = true;
+      return;
+    }
+    const files = navFilesRef.current();
+    const fileIndex = files.findIndex((file) => !file.collapsed);
+    const file = files[fileIndex];
+    // A fold of hidden lines above the first change is not a line to start on.
+    const row = file?.rows?.findIndex((entry) => entry.expander !== true) ?? -1;
+    const next = file === undefined ? firstPosition(files, "RIGHT") : cursorAt(files, { fileIndex, row }, "RIGHT");
+    if (next === null) return;
+    state.done = file !== undefined && file.rows !== null;
+    // Setting the cursor re-renders the view, which runs this again; an unchanged spot must not set it again.
+    const same = state.placed !== null && state.placed.path === next.path && state.placed.side === next.side && state.placed.line === next.line;
+    if (same) return;
+    state.placed = next;
+    keys.set({ cursor: next, visual: null, focused: null });
+  };
+  const placeInitialCursorRef = useRef(placeInitialCursor);
+  placeInitialCursorRef.current = placeInitialCursor;
   const hasFiles = diff !== null && diff.files.length > 0;
   useEffect(() => {
-    if (!hasFiles || placedFor.current === instanceKey) return;
-    placedFor.current = instanceKey;
-    let placed: Cursor | null = null;
-    const place = (): boolean => {
-      const current = keys.get().cursor;
-      // The reader got there first.
-      if (placed !== null && current !== placed) return true;
-      const files = navFilesRef.current();
-      const fileIndex = files.findIndex((file) => !file.collapsed);
-      const file = files[fileIndex];
-      // A fold of hidden lines above the first change is not a line to start on.
-      const row = file?.rows?.findIndex((entry) => entry.expander !== true) ?? -1;
-      placed = file === undefined ? firstPosition(files, "RIGHT") : cursorAt(files, { fileIndex, row }, "RIGHT");
-      keys.set({ cursor: placed, visual: null, focused: null });
-      return file === undefined || file.rows !== null;
-    };
-    if (place()) return;
-    const unsubscribe = keys.onModel(() => {
-      if (place()) unsubscribe();
-    });
+    if (hasFiles && initialCursor.current?.instanceKey !== instanceKey) initialCursor.current = { instanceKey, placed: null, done: false };
+    placeInitialCursorRef.current();
+  });
+  useEffect(() => {
+    const unsubscribe = keys.onModel(() => placeInitialCursorRef.current());
     return () => {
       unsubscribe();
     };
-  }, [hasFiles, instanceKey, keys]);
+  }, [keys]);
   const elementFor = (cursor: Cursor): Element | null => {
     if (cursor.line === null) return sectionRefs.current.get(cursor.path) ?? null;
     const model = keys.models.get(cursor.path);
