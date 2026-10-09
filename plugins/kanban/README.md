@@ -267,11 +267,13 @@ under Settings → Columns on the page; agents refer to columns by id. New PR ca
 whether you authored them or were asked to review. Sync never moves an open PR
 card you placed by hand.
 
-Settings → Columns can also hide cards that have been in the Done column for
-more than a number of days; leave it empty to keep them all. The column ends
-with "Show N older cards" (or press `za` on the board) to bring them back for
-the visit. Days count from when the card entered the column; cards already
-there when the setting arrived count from their last change.
+Each column has options behind its cog in Settings → Columns. "Hide cards
+that have been in this column for more than N days" keeps old cards off the
+board (Done is the usual one); leave it empty to keep them all. A column
+holding cards back ends with "Show N older cards" (or press `za` on the board)
+to bring them back for the visit. Days count from when the card entered the
+column; cards already there when the setting arrived count from their last
+change.
 
 ## CLI
 

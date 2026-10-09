@@ -159,8 +159,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
         pageUi.set({ dialog: "keys" });
         return;
       case "toggle-hidden": {
-        const columnId = ticket?.columnId ?? doneId;
-        if (columnId !== null && board.columns.find((column) => column.id === columnId)?.hideAfterDays != null) toggleHidden(columnId);
+        // With no card under the cursor, the first column holding cards back.
+        const columnId = ticket?.columnId ?? board.columns.find((column) => (hiddenByColumn.get(column.id) ?? 0) > 0 || revealed.has(column.id))?.id;
+        if (columnId !== undefined && board.columns.find((column) => column.id === columnId)?.hideAfterDays != null) toggleHidden(columnId);
         return;
       }
     }

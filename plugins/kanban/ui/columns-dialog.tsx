@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { POP, useArrivals, usePresenceList } from "bb-motion";
+import { POP, enter, speed, useArrivals, usePresenceList } from "bb-motion";
 import type { Column } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { type Rpc } from "./data";
 import { slugify } from "./format";
-import { doneColumnId } from "../shared/columns";
 import { toastError } from "./actions";
 import { MotionListItem } from "./primitives";
 
@@ -34,12 +33,12 @@ export function ColumnsDialog({
     if (open) setDraft(columns);
   }, [open, columns]);
   const arrival = useArrivals(open ? draft.map((column) => column.id) : null);
-  const done = draft.find((column) => column.id === doneColumnId(draft)) ?? null;
-  const setHideAfterDays = (raw: string) => {
-    if (done === null) return;
+  // The column whose options are showing below its row.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const update = (id: string, patch: Partial<Column>) => setDraft(draft.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+  const setHideAfterDays = (id: string, raw: string) => {
     const days = Number.parseInt(raw, 10);
-    const hideAfterDays = Number.isNaN(days) ? null : Math.min(Math.max(days, 1), 365);
-    setDraft(draft.map((entry) => (entry.id === done.id ? { ...entry, hideAfterDays } : entry)));
+    update(id, { hideAfterDays: Number.isNaN(days) ? null : Math.min(Math.max(days, 1), 365) });
   };
   const rows = usePresenceList(draft, (column) => column.id);
   const move = (index: number, delta: number) => {
@@ -81,54 +80,62 @@ export function ColumnsDialog({
               exiting={exiting}
               onExited={() => rows.onExited(key)}
               onAnimationEnd={() => setMovedId((current) => (current === key ? null : current))}
-              className={cn("flex items-center gap-2", movedId === key && POP)}
+              className={cn("flex flex-col gap-2", movedId === key && POP)}
             >
-              <Input
-                value={column.name}
-                aria-label={`Name of column ${column.id}`}
-                onChange={(event) =>
-                  setDraft(draft.map((entry) => (entry.id === column.id ? { ...entry, name: event.target.value } : entry)))
-                }
-              />
-              <code className="w-24 shrink-0 truncate text-xs text-muted-foreground">{column.id}</code>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="Move up" onClick={() => move(draft.indexOf(column), -1)}>
-                <Icon name="ChevronUp" className="size-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="Move down" onClick={() => move(draft.indexOf(column), 1)}>
-                <Icon name="ChevronDown" className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground hover:text-destructive"
-                aria-label={`Remove column ${column.name}`}
-                disabled={draft.length <= 1}
-                onClick={() => setDraft(draft.filter((entry) => entry.id !== column.id))}
-              >
-                <Icon name="X" className="size-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={column.name}
+                  aria-label={`Name of column ${column.id}`}
+                  onChange={(event) => update(column.id, { name: event.target.value })}
+                />
+                <code className="w-24 shrink-0 truncate text-xs text-muted-foreground">{column.id}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("size-7", column.hideAfterDays != null ? "text-primary" : "text-muted-foreground")}
+                  aria-label={`Options for column ${column.name}`}
+                  aria-expanded={expandedId === column.id}
+                  onClick={() => setExpandedId(expandedId === column.id ? null : column.id)}
+                >
+                  <Icon name="Settings" className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-7" aria-label="Move up" onClick={() => move(draft.indexOf(column), -1)}>
+                  <Icon name="ChevronUp" className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-7" aria-label="Move down" onClick={() => move(draft.indexOf(column), 1)}>
+                  <Icon name="ChevronDown" className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-destructive"
+                  aria-label={`Remove column ${column.name}`}
+                  disabled={draft.length <= 1}
+                  onClick={() => setDraft(draft.filter((entry) => entry.id !== column.id))}
+                >
+                  <Icon name="X" className="size-4" />
+                </Button>
+              </div>
+              {expandedId === column.id ? (
+                <label className={cn("flex items-center gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm", enter.rise, speed.fast)}>
+                  <span className="min-w-0 flex-1">Hide cards that have been in this column for more than</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    inputMode="numeric"
+                    value={column.hideAfterDays ?? ""}
+                    placeholder="never"
+                    aria-label={`Days before cards in ${column.name} are hidden`}
+                    onChange={(event) => setHideAfterDays(column.id, event.target.value)}
+                    className="h-8 w-20"
+                  />
+                  <span>days</span>
+                </label>
+              ) : null}
             </MotionListItem>
           ))}
         </ul>
-        {done !== null ? (
-          <label className="flex items-center gap-2 text-sm">
-            <span className="min-w-0 flex-1">
-              Hide cards that have been in <span className="font-medium">{done.name}</span> for more than
-            </span>
-            <Input
-              type="number"
-              min={1}
-              max={365}
-              inputMode="numeric"
-              value={done.hideAfterDays ?? ""}
-              placeholder="never"
-              aria-label={`Days before cards in ${done.name} are hidden`}
-              onChange={(event) => setHideAfterDays(event.target.value)}
-              className="h-8 w-20"
-            />
-            <span>days</span>
-          </label>
-        ) : null}
         <form
           className="flex items-center gap-2"
           onSubmit={(event) => {
