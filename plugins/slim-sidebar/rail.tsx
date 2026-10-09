@@ -20,6 +20,7 @@ import {
   railItemOffset,
   type IndicatorState,
 } from "./indicator.js";
+import { publishRail, railSlotLabel } from "./slots.js";
 
 /** Space between a rail button and the tooltip or menu beside it. */
 const POPOVER_GAP_PX = 8;
@@ -96,14 +97,14 @@ function Tooltip({
 
 function RailButton({
   label,
-  shortcut,
+  shortcuts = [],
   active = false,
   disabled = false,
   onActivate,
   children,
 }: {
   label: string;
-  shortcut?: string | null;
+  shortcuts?: readonly string[];
   active?: boolean;
   disabled?: boolean;
   onActivate: (openInSplit: boolean) => void;
@@ -137,9 +138,11 @@ function RailButton({
       </button>
       <Tooltip anchor={ref} open={hover}>
         <span>{label}</span>
-        {shortcut ? (
-          <kbd className="font-sans text-muted-foreground">{shortcut}</kbd>
-        ) : null}
+        {shortcuts.map((shortcut) => (
+          <kbd key={shortcut} className="font-sans text-muted-foreground">
+            {shortcut}
+          </kbd>
+        ))}
       </Tooltip>
     </>
   );
@@ -147,18 +150,23 @@ function RailButton({
 
 function ItemButton({
   item,
+  slotLabel,
   active,
   onActivate,
 }: {
   item: ExperimentalSidebarNavigationItem;
+  slotLabel: string | null;
   active: boolean;
   onActivate: (openInSplit: boolean) => void;
 }) {
   const Accessory = item.experimental_Accessory;
+  const shortcuts = [item.shortcut?.label, slotLabel].filter(
+    (shortcut): shortcut is string => Boolean(shortcut),
+  );
   return (
     <RailButton
       label={item.label}
-      shortcut={item.shortcut?.label}
+      shortcuts={shortcuts}
       active={active}
       disabled={item.isDisabled || item.isLoading}
       onActivate={onActivate}
@@ -318,16 +326,32 @@ export function SlimNavigation() {
   const hidden = items.filter((item) => !item.isVisible);
   const isActive = (item: ExperimentalSidebarNavigationItem) =>
     item.id === activeItemId && item.action.kind !== "new-thread";
+  const slotKey = visible
+    .map((item) => `${item.id}:${item.isDisabled || item.isLoading ? 0 : 1}`)
+    .join(",");
+  useEffect(
+    () =>
+      publishRail(
+        visible.map((item) => ({
+          id: item.id,
+          enabled: !item.isDisabled && !item.isLoading,
+        })),
+        (itemId) => actions.activate(itemId, { openInSplit: false }),
+      ),
+    // Republish only when the rail's order or enablement changes, not on every render.
+    [slotKey, actions],
+  );
   return (
     <div
       className="relative flex flex-col items-center gap-1 py-2"
       data-testid="slim-sidebar-navigation"
     >
       <ActiveIndicator activeIndex={visible.findIndex(isActive)} />
-      {visible.map((item) => (
+      {visible.map((item, index) => (
         <ItemButton
           key={item.id}
           item={item}
+          slotLabel={railSlotLabel(index, navigator.platform)}
           active={isActive(item)}
           onActivate={(openInSplit) =>
             actions.activate(item.id, { openInSplit })
