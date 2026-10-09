@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Vim Mode",
-    "description": "Vim keybindings (normal, insert, visual modes, operators, text objects, registers, search) in the prompt box and other text boxes.",
+    "description": "Vim keybindings (normal, insert, visual modes, operators, text objects, registers, search) in the prompt box and other text boxes, plus vim keys to scroll and search the conversation.",
     "branding": {
       "icon": "Keyboard"
     },

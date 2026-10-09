@@ -15,8 +15,19 @@ vault editor), and ordinary text fields and textareas.
 - A text box enters insert mode when it gains focus, so typing works as usual.
   Escape switches to normal mode.
 - In normal mode with nothing pending, Enter keeps its bb meaning and sends
-  the prompt. Escape stays in the text box, so an extra press does not blur
-  it, unless "Escape leaves the text box" is on.
+  the prompt, and Escape goes to bb, which leaves the text box (or closes its
+  dialog, or cancels a message edit).
+- Leaving a text box on a thread page enters scroll mode, labelled `SCROLL`
+  where the mode label sits. Its keys act on the thread's conversation:
+  `j`/`k` scroll a few lines, Ctrl-D/Ctrl-U half a screen, `gg`/`G` to the
+  top or bottom. `/` and `?` search forward or backward and `n`/`N` repeat;
+  matches are highlighted, and Escape clears the highlights. `i` returns to
+  the text box that was left (or the thread's prompt box if it is gone) in
+  insert mode. Other keys go to bb. Focusing any text box ends scroll mode.
+- Scroll mode search is case-insensitive unless the pattern has a capital
+  (vim's smartcase), uses JavaScript regex syntax plus `\<` and `\>`, and
+  searches only visible text. It scrolls through the whole conversation,
+  including parts bb has not rendered yet, and wraps at the top or bottom.
 - Ctrl+O and Ctrl+I go to bb (back and forward, from the slim-sidebar
   plugin) instead of vim's jump list, in normal or insert mode, unless a vim
   command is half typed.
@@ -49,7 +60,6 @@ Settings live under Settings → Plugins → Vim Mode, or
 | Enable vim keys | Turns vim editing on or off. |
 | Text boxes | `All text boxes` or `Prompt box only`. |
 | Start in insert mode | Off starts focused boxes in normal mode. |
-| Escape leaves the text box | On lets Escape in idle normal mode blur the box or close its dialog. |
 
 Command palettes, comboboxes, terminals, Monaco editors, and CodeMirror's own
 search panel are always excluded. CodeMirror editors count as "All text boxes",

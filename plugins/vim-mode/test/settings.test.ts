@@ -6,7 +6,7 @@ test("missing or mistyped settings fall back to the defaults", () => {
   expect(optionsFromSettings(undefined)).toEqual(DEFAULT_OPTIONS);
   expect(optionsFromSettings({})).toEqual(DEFAULT_OPTIONS);
   expect(
-    optionsFromSettings({ enabled: "no", startInInsertMode: 0, escapeLeavesTextBox: "yes", scope: 3 }),
+    optionsFromSettings({ enabled: "no", startInInsertMode: 0, scope: 3 }),
   ).toEqual(DEFAULT_OPTIONS);
 });
 
@@ -16,9 +16,8 @@ test("settings map onto options", () => {
       enabled: false,
       scope: SCOPE_COMPOSER,
       startInInsertMode: false,
-      escapeLeavesTextBox: true,
     }),
-  ).toEqual({ enabled: false, scope: "composer", startInInsertMode: false, escapeLeavesTextBox: true });
+  ).toEqual({ enabled: false, scope: "composer", startInInsertMode: false });
   expect(optionsFromSettings({ scope: SCOPE_ALL }).scope).toBe("all");
 });
 

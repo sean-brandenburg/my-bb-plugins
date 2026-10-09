@@ -22,6 +22,62 @@ export function isErrorMessage(text: string): boolean {
   return ERROR_MESSAGE.test(text.trim());
 }
 
+/**
+ * The free stretch of bb's prompt box toolbar row, between the leading
+ * controls (attach, model picker) and the trailing buttons (voice, send).
+ * The indicator and command line live there so they never cover text.
+ */
+export function promptToolbarRow(form: Element): ToolbarRow | null {
+  const formRect = form.getBoundingClientRect();
+  const middle = (formRect.left + formRect.right) / 2;
+  const buttons = Array.from(form.querySelectorAll("button"))
+    .map((button) => button.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.bottom > formRect.bottom - TOOLBAR_ROW_HEIGHT);
+  const trailing = buttons.filter((rect) => rect.left > middle);
+  if (trailing.length === 0) return null;
+  const firstTrailing = trailing.reduce((a, b) => (b.left < a.left ? b : a));
+  const leading = buttons.filter((rect) => rect.right <= middle);
+  const leadingEnd = leading.reduce((end, rect) => Math.max(end, rect.right), formRect.left + 8);
+  return {
+    left: leadingEnd + 12,
+    right: firstTrailing.left - 10,
+    centerY: (firstTrailing.top + firstTrailing.bottom) / 2,
+  };
+}
+
+export type ToolbarRow = { left: number; right: number; centerY: number };
+
+/** Puts the mode indicator in the toolbar row, or else in `box`'s bottom-right corner. */
+export function placeIndicator(indicator: HTMLElement, toolbar: ToolbarRow | null, box: Rect): void {
+  const height = indicator.offsetHeight || INDICATOR_HEIGHT;
+  const right = toolbar ? toolbar.right : box.right - 6;
+  const bottom = toolbar ? toolbar.centerY + height / 2 : box.bottom - 4;
+  indicator.style.right = `${Math.max(VIEWPORT_MARGIN, window.innerWidth - right)}px`;
+  indicator.style.bottom = `${Math.max(VIEWPORT_MARGIN, window.innerHeight - bottom)}px`;
+}
+
+/**
+ * Puts the command line bar in the toolbar row, or else just outside `box`
+ * (below it, or above when there is no room) or inside along its bottom edge.
+ */
+export function placeBar(bar: HTMLElement, toolbar: ToolbarRow | null, box: Rect, where: "outside" | "inside"): void {
+  const height = bar.offsetHeight || BAR_HEIGHT;
+  if (toolbar) {
+    bar.style.left = `${toolbar.left}px`;
+    bar.style.width = `${Math.max(180, toolbar.right - toolbar.left)}px`;
+    bar.style.top = `${toolbar.centerY - height / 2}px`;
+    return;
+  }
+  const gap = 6;
+  const below = box.bottom + gap;
+  let top: number;
+  if (where === "inside") top = box.bottom - height - gap;
+  else top = below + height <= window.innerHeight - VIEWPORT_MARGIN ? below : box.top - height - gap;
+  bar.style.left = `${Math.max(VIEWPORT_MARGIN, box.left + (where === "inside" ? gap : 0))}px`;
+  bar.style.width = `${Math.max(220, box.right - box.left - (where === "inside" ? 2 * gap : 0))}px`;
+  bar.style.top = `${Math.max(VIEWPORT_MARGIN, top)}px`;
+}
+
 interface CursorPlacement {
   left: number;
   top: number;
@@ -147,58 +203,14 @@ export class VimUi {
     this.keysNode.textContent = pending;
     this.keysNode.hidden = !pending;
     const box = this.visibleBox();
-    const toolbar = this.promptToolbarRow();
+    const form = cm.host.element.closest(PROMPTBOX);
+    const toolbar = form ? promptToolbarRow(form) : null;
     const hasPanel = cm.panel.childElementCount > 0;
     // The command line takes over the indicator's spot while it is open.
     this.indicator.hidden = hasPanel || (!label && !pending);
-    if (!this.indicator.hidden) {
-      const height = this.indicator.offsetHeight || INDICATOR_HEIGHT;
-      const right = toolbar ? toolbar.right : box.right - 6;
-      const bottom = toolbar ? toolbar.centerY + height / 2 : box.bottom - 4;
-      this.indicator.style.right = `${Math.max(VIEWPORT_MARGIN, window.innerWidth - right)}px`;
-      this.indicator.style.bottom = `${Math.max(VIEWPORT_MARGIN, window.innerHeight - bottom)}px`;
-    }
-
+    if (!this.indicator.hidden) placeIndicator(this.indicator, toolbar, box);
     this.bar.hidden = !hasPanel;
-    if (!hasPanel) return;
-    const height = this.bar.offsetHeight || BAR_HEIGHT;
-    if (toolbar) {
-      this.bar.style.left = `${toolbar.left}px`;
-      this.bar.style.width = `${Math.max(180, toolbar.right - toolbar.left)}px`;
-      this.bar.style.top = `${toolbar.centerY - height / 2}px`;
-      return;
-    }
-    const gap = 6;
-    const below = box.bottom + gap;
-    const top = below + height <= window.innerHeight - VIEWPORT_MARGIN ? below : box.top - height - gap;
-    this.bar.style.left = `${Math.max(VIEWPORT_MARGIN, box.left)}px`;
-    this.bar.style.width = `${Math.max(220, box.right - box.left)}px`;
-    this.bar.style.top = `${Math.max(VIEWPORT_MARGIN, top)}px`;
-  }
-
-  /**
-   * The free stretch of bb's prompt box toolbar row, between the leading
-   * controls (attach, model picker) and the trailing buttons (voice, send).
-   * The indicator and command line live there so they never cover text.
-   */
-  private promptToolbarRow(): { left: number; right: number; centerY: number } | null {
-    const form = this.cm.host.element.closest(PROMPTBOX);
-    if (!form) return null;
-    const formRect = form.getBoundingClientRect();
-    const middle = (formRect.left + formRect.right) / 2;
-    const buttons = Array.from(form.querySelectorAll("button"))
-      .map((button) => button.getBoundingClientRect())
-      .filter((rect) => rect.width > 0 && rect.bottom > formRect.bottom - TOOLBAR_ROW_HEIGHT);
-    const trailing = buttons.filter((rect) => rect.left > middle);
-    if (trailing.length === 0) return null;
-    const firstTrailing = trailing.reduce((a, b) => (b.left < a.left ? b : a));
-    const leading = buttons.filter((rect) => rect.right <= middle);
-    const leadingEnd = leading.reduce((end, rect) => Math.max(end, rect.right), formRect.left + 8);
-    return {
-      left: leadingEnd + 12,
-      right: firstTrailing.left - 10,
-      centerY: (firstTrailing.top + firstTrailing.bottom) / 2,
-    };
+    if (hasPanel) placeBar(this.bar, toolbar, box, "outside");
   }
 
   /** The editor's on-screen box, clipped to the container that scrolls it. */

@@ -6,6 +6,9 @@ Edit bb's prompt box and other text boxes with vim keybindings.
 - Motions, operators, text objects, counts, registers, marks, macros, `.`
   repeat, `/` search, and `:` ex commands such as `:s`.
 - A block cursor and a quiet mode label in the corner of the focused text box.
+- Scroll mode: Escape from normal mode leaves the prompt box, then `j`/`k`,
+  Ctrl-D/Ctrl-U, `gg`/`G`, and `/` `?` `n` `N` scroll and search the
+  conversation, and `i` goes back to typing.
 
 ## How it works
 

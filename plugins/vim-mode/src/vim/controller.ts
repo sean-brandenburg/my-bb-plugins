@@ -6,6 +6,7 @@ import { logError } from "./log";
 import { handleVimKey, hasNoPendingInput, isAppHistoryKey, isIdleNormalMode, vimState } from "./keys";
 import type { VimModeOptions, VimScope } from "./options";
 import { proseMirrorProvider } from "./prosemirror-host";
+import { isEditable, ScrollMode, threadViewport } from "./scroll-mode";
 import {
   EXCLUDED_CONTAINERS,
   PROMPTBOX,
@@ -81,6 +82,7 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
   // prompt is removed before focus returns, so relatedTarget cannot say so.
   let returningFromPrompt: Session | null = null;
   let lastKey = "";
+  const scrollMode = new ScrollMode(returnToTextBox);
 
   function sessionFor({ element, provider }: AttachTarget): Session | null {
     const owner = provider.editorFor(element);
@@ -200,6 +202,7 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
       returningFromPrompt === session ||
       isOwnUi(relatedTarget) ||
       (relatedTarget === null && lastActive === session);
+    scrollMode.exit();
     active = session;
     lastActive = session;
     returningFromPrompt = null;
@@ -208,7 +211,44 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
   }
 
   function onFocusIn(event: FocusEvent): void {
+    if (!scrollMode.keepsFocus(event.target)) scrollMode.exit();
     guarded(active, () => activate(event.target, event.relatedTarget));
+  }
+
+  /**
+   * Escape in idle normal mode still reaches bb (cancelling a message edit,
+   * say). Afterwards a text box on a thread page is left for scroll mode.
+   */
+  function leaveTextBox(session: Session): void {
+    const { element } = session;
+    setTimeout(() => {
+      if (!element.isConnected || !threadViewport(element)) return;
+      if (document.activeElement === element) element.blur();
+      if (document.activeElement && document.activeElement !== document.body) return;
+      scrollMode.enter(element);
+    }, 0);
+  }
+
+  /** Focuses the text box scroll mode was entered from, or else the page's prompt box, in insert mode. */
+  function returnToTextBox(viewport: HTMLElement): void {
+    const last = lastActive?.element;
+    const target =
+      last?.isConnected && threadViewport(last) === viewport
+        ? last
+        : viewport.querySelector<HTMLElement>(`${PROMPTBOX} [contenteditable="true"]`);
+    if (!target) return;
+    target.focus();
+    const session = active;
+    if (!session || session.element !== target) return;
+    guarded(session, () => {
+      const vim = vimState(session.cm);
+      if (vim && !vim.insertMode) {
+        session.cm.sync();
+        if (vim.visualMode) Vim.exitVisualMode(session.cm as never, false);
+        Vim.handleKey(session.cm as never, "i", "mapping");
+      }
+      session.ui.schedule();
+    });
   }
 
   function onFocusOut(event: FocusEvent): void {
@@ -224,23 +264,23 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     }
   }
 
-  function passThrough(event: KeyboardEvent, session: Session): boolean {
+  /** Where a key goes: vim, bb, or bb and then out of the text box. */
+  function route(event: KeyboardEvent, session: Session): "vim" | "app" | "leave" {
     const vim = vimState(session.cm);
-    if (!vim || event.metaKey) return true;
+    if (!vim || event.metaKey) return "app";
     const promptbox = session.element.closest(PROMPTBOX);
     const popupOpen = !!promptbox?.querySelector(PROMPTBOX_TYPEAHEAD_MENU) || !!session.host.completionOpen?.();
-    if (popupOpen && POPUP_KEYS.has(event.key)) return true;
-    if (event.key === "Escape" && promptbox?.hasAttribute(PROMPTBOX_VOICE_ACTIVE_ATTRIBUTE)) return true;
+    if (popupOpen && POPUP_KEYS.has(event.key)) return "app";
+    if (event.key === "Escape" && promptbox?.hasAttribute(PROMPTBOX_VOICE_ACTIVE_ATTRIBUTE)) return "app";
     // Ctrl+O / Ctrl+I are bb's back and forward (vim's jump list at app scope),
     // so they leave the text box whenever no vim command is half typed.
-    if (isAppHistoryKey(event) && !vim.visualMode && hasNoPendingInput(vim)) return true;
+    if (isAppHistoryKey(event) && !vim.visualMode && hasNoPendingInput(vim)) return "app";
     // With nothing pending, Enter keeps its app meaning (send) instead of
-    // vim's cursor-down. Escape is swallowed by default so a habitual extra
-    // press does not blur the text box.
+    // vim's cursor-down, and Escape leaves the text box.
     const plainKey = !event.shiftKey && !event.ctrlKey && !event.altKey;
-    if (!plainKey || !isIdleNormalMode(vim)) return false;
-    if (event.key === "Enter") return true;
-    return event.key === "Escape" && getOptions().escapeLeavesTextBox;
+    if (!plainKey || !isIdleNormalMode(vim)) return "vim";
+    if (event.key === "Enter") return "app";
+    return event.key === "Escape" ? "leave" : "vim";
   }
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -248,8 +288,10 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     if (!getOptions().enabled) {
       active?.ui.hide();
       active = null;
+      scrollMode.exit();
       return;
     }
+    if (scrollMode.isActive && !isEditable(event.target) && scrollMode.handleKey(event)) return;
     // Focus events can be missed (for example when the window regains focus
     // in Electron), so a key in an unattached text box attaches it.
     if (!active || event.target !== active.element) {
@@ -261,7 +303,9 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     if (!session.host.isEditable()) return;
     guarded(session, () => {
       session.cm.sync();
-      if (passThrough(event, session)) return;
+      const destination = route(event, session);
+      if (destination === "leave") leaveTextBox(session);
+      if (destination !== "vim") return;
       // Like vim, a message stays up only until the next command.
       if (!session.cm.state.dialog?.querySelector("input")) session.cm.state.currentNotificationClose?.();
       if (handleVimKey(session.cm, event)) event.stopImmediatePropagation();
@@ -307,6 +351,7 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     document.removeEventListener("beforeinput", onBeforeInput, true);
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
+    scrollMode.dispose();
     for (const session of [...sessions.values()]) dispose(session);
   };
 }

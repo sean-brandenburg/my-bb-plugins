@@ -86,23 +86,8 @@ test("a key in an editor whose focus event was missed still attaches", () => {
   expect(isNormalMode(prompt.view.dom)).toBe(true);
 });
 
-test("Escape in idle normal mode stays in the text box", () => {
+test("Escape in idle normal mode off a thread page reaches the app", () => {
   mount();
-  const prompt = promptBox("text");
-  prompt.view.dom.focus();
-  press(prompt.view.dom, "Escape");
-  const outer = (event: Event) => {
-    throw new Error(`Escape reached the app: ${event.type}`);
-  };
-  document.addEventListener("keydown", outer);
-  const second = press(prompt.view.dom, "Escape");
-  document.removeEventListener("keydown", outer);
-  expect(second.defaultPrevented).toBe(true);
-  expect(isNormalMode(prompt.view.dom)).toBe(true);
-});
-
-test("Escape in idle normal mode reaches the app when the setting is on", () => {
-  cleanups.push(mountVimMode(() => ({ ...DEFAULT_OPTIONS, escapeLeavesTextBox: true })));
   const prompt = promptBox("text");
   prompt.view.dom.focus();
   press(prompt.view.dom, "Escape");

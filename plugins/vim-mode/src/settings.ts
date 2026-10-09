@@ -26,17 +26,10 @@ export const settingDescriptors = {
       "Text boxes enter insert mode whenever they gain focus, so typing works as usual until you press Escape. Turn off to start in normal mode.",
     default: true,
   },
-  escapeLeavesTextBox: {
-    type: "boolean" as const,
-    label: "Escape leaves the text box",
-    description:
-      "In normal mode with nothing pending, Escape passes to bb, which blurs the text box or closes the dialog. Off keeps focus in the text box.",
-    default: false,
-  },
 };
 
 type SettingValues = Record<string, string | number | boolean>;
-type BooleanOption = "enabled" | "startInInsertMode" | "escapeLeavesTextBox";
+type BooleanOption = "enabled" | "startInInsertMode";
 
 function booleanOption(values: SettingValues, key: BooleanOption): boolean {
   const value = values[key];
@@ -49,6 +42,5 @@ export function optionsFromSettings(values: SettingValues | undefined): VimModeO
     enabled: booleanOption(values, "enabled"),
     scope: values.scope === SCOPE_COMPOSER ? "composer" : "all",
     startInInsertMode: booleanOption(values, "startInInsertMode"),
-    escapeLeavesTextBox: booleanOption(values, "escapeLeavesTextBox"),
   };
 }

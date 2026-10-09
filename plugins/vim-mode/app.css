@@ -151,6 +151,16 @@
   cursor: default;
 }
 
+/* Scroll mode's `/` matches in the conversation. */
+::highlight(bb-vim-search) {
+  background-color: color-mix(in srgb, #facc15 35%, transparent);
+}
+
+::highlight(bb-vim-search-current) {
+  background-color: #facc15;
+  color: #000;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bb-vim-cursor {
     transition: none;
