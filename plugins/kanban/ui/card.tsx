@@ -3,7 +3,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { shortSha, threadStatusText } from "./format";
+import { dueStatus, shortSha, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
 
@@ -11,6 +11,8 @@ export function CardView({
   ticket,
   thread,
   hiddenTags,
+  today,
+  isDone,
   isDragging,
   onOpen,
   onOpenThread,
@@ -24,6 +26,9 @@ export function CardView({
   thread: PluginSidebarThread | null | undefined;
   /** Tags applied by the card's source; every card from that source carries them, so they are noise here. */
   hiddenTags: ReadonlySet<string>;
+  /** The viewer's local day, `YYYY-MM-DD`, that due dates are measured against. */
+  today: string;
+  isDone: boolean;
   isDragging: boolean;
   onOpen: () => void;
   onOpenThread: () => void;
@@ -86,6 +91,7 @@ export function CardView({
         )}
         <CardIdentity ticket={ticket} />
         <span className="ml-auto flex shrink-0 items-center gap-2.5">
+          {ticket.dueDate !== null ? <CardDueDate dueDate={ticket.dueDate} today={today} isDone={isDone} /> : null}
           {ticket.children.total > 0 ? (
             <CardCounter icon="ListTodo" count={`${ticket.children.done}/${ticket.children.total}`} tone={ticket.children.done === ticket.children.total ? "good" : "quiet"} title={`${ticket.children.done} of ${ticket.children.total} subtasks done`} />
           ) : null}
@@ -144,6 +150,13 @@ function CardCounter({ icon, count, tone, title }: { icon: string; count?: numbe
       {count !== undefined ? count : null}
     </span>
   );
+}
+
+function CardDueDate({ dueDate, today, isDone }: { dueDate: string; today: string; isDone: boolean }) {
+  const due = dueStatus(dueDate, today);
+  // A finished card is not late, so only open cards are coloured.
+  const tone = isDone ? "quiet" : due.tone === "overdue" ? "danger" : due.tone === "soon" ? "attention" : "quiet";
+  return <CardCounter icon="kanban-calendar" count={due.label} tone={tone} title={due.title} />;
 }
 
 /** Where the card comes from, as quiet text: `widgets #7 · draft`, `PROJ-12 · In Progress`, or `↳ subtask`. */

@@ -8,11 +8,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { parseQuickAdd } from "./format";
-import { type Rpc } from "./data";
+import { localDay, parseQuickAdd } from "./format";
+import { type Rpc, useNow } from "./data";
 import { ThreadStatusDot } from "./primitives";
 import { tagTone, TagBadges } from "./tags";
-import { PrBadges, JiraBadges, ReviewBadge } from "./badges";
+import { PrBadges, JiraBadges, ReviewBadge, DueBadge } from "./badges";
 import { toastError } from "./actions";
 
 export function TodoView({
@@ -33,6 +33,7 @@ export function TodoView({
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [showDone, setShowDone] = useState(false);
   const [quick, setQuick] = useState("");
+  const today = localDay(useNow(60_000));
   const doneId = doneColumnId(board.columns);
   const todoId = todoColumnId(board.columns);
   const matches = (ticket: Ticket) => (showDone || ticket.columnId !== doneId) && tagFilter.every((tag) => ticket.tags.includes(tag));
@@ -135,6 +136,7 @@ export function TodoView({
                 <div className="hidden flex-wrap items-center gap-1 sm:flex">
                   <PrBadges ticket={ticket} />
                   <JiraBadges ticket={ticket} />
+                  <DueBadge ticket={ticket} today={today} isDone={ticket.columnId === doneId} />
                   <TagBadges tags={ticket.tags} />
                   <ReviewBadge ticket={ticket} />
                 </div>

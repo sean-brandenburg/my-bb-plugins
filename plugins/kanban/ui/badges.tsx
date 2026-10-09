@@ -1,5 +1,6 @@
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
+import { dueStatus } from "./format";
 import { ExternalLink, Badge } from "./primitives";
 
 export function PrBadges({ ticket }: { ticket: Ticket }) {
@@ -59,6 +60,18 @@ export function ReviewBadge({ ticket }: { ticket: Ticket }) {
     >
       {total} finding{total === 1 ? "" : "s"}
       {review.selectedCount !== null ? ` · ${review.selectedCount} to apply` : ""}
+    </Badge>
+  );
+}
+
+export function DueBadge({ ticket, today, isDone }: { ticket: Ticket; today: string; isDone: boolean }) {
+  if (ticket.dueDate === null) return null;
+  const due = dueStatus(ticket.dueDate, today);
+  const tone = isDone ? "neutral" : due.tone === "overdue" ? "danger" : due.tone === "soon" ? "warning" : "neutral";
+  return (
+    <Badge tone={tone} title={due.title}>
+      <Icon name="kanban-calendar" className="size-3" />
+      {due.label}
     </Badge>
   );
 }

@@ -7,7 +7,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
 - **Kanban** page in the sidebar: columns, drag-and-drop cards. Each card shows
   its title, up to three of your own tags (tags applied by a source are hidden
   on cards), and one quiet footer: a thread dot (words only when it is working,
-  errored, or needs you), the PR or Jira id as text, and icon counters for
+  errored, or needs you), the PR or Jira id as text, the due date (red when
+  overdue, amber when due today or tomorrow, never coloured in Done), and icon counters for
   subtasks, review findings, open PR comments, and unsent diff comments,
   coloured only when they need attention. Hover actions overlay the counters. Clicking a card opens it in the page's right-side
   Card panel (a dialog on compact viewports) to edit, tag, move, review, start
@@ -32,7 +33,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   bar holds Back, the card name, the Unified/Split toggle, and Refresh.
 - Card details follow one hierarchy: the title with a quiet meta line (kind,
   id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
-  the count of unsent comments), a property list (Column, Tags, Thread, Author or Jira fields),
+  the count of unsent comments), a property list (Column, Tags, Due, Thread, Author or Jira fields),
   then collapsible groups for Code review, PR comments, and Description or
   Notes. Title and description save when the field loses focus.
 - **Brain dump**: New card → Brain dump. Type or dictate (mic button, transcribed
@@ -56,6 +57,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   their parent in the Todo view.
 - **Tags** on every card, editable in the card dialog or with `#tag` in a
   title; `bb kanban tag` / `untag` for agents.
+- **Due dates** on every card: a calendar day set in the New card dialog or the
+  card panel's Due property, or with `bb kanban due` / `add --due`. Sync never
+  changes them. A card's thread is told its due date.
 - **Todo view** (toggle at the top of the board, or `/plugins/kanban/board/todo`):
   a flat checklist grouped by column with tag filters, quick-add
   (`Fix thing #infra`), and a checkbox that moves a card to Done.
@@ -239,10 +243,11 @@ card you placed by hand.
 bb kanban list [--column <id>] [--tag <tag>] [--parent <id|none>] [--json]
 bb kanban tag <tags...> [--ticket <id>]
 bb kanban untag <tags...> [--ticket <id>]
+bb kanban due <YYYY-MM-DD|none> [--ticket <id>]
 bb kanban sources
 bb kanban columns
 bb kanban show [--ticket <id>]
-bb kanban add "<title>" [--tag <tag>] [--description <md>] [--column <id>] [--project <id>] [--start-thread] [--parent <id>]
+bb kanban add "<title>" [--tag <tag>] [--due <YYYY-MM-DD>] [--description <md>] [--column <id>] [--project <id>] [--start-thread] [--parent <id>]
 bb kanban subtasks [--ticket <id>]
 bb kanban set-parent <ticket-id> <parent-id|none>
 bb kanban start-subtasks [--ticket <id>] [--sequential]

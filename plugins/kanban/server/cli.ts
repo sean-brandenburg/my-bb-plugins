@@ -1,6 +1,6 @@
 import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { tagSchema, type Column, type Ticket } from "../shared/board";
+import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
@@ -11,7 +11,7 @@ import { normalizeTags, shortId } from "./util";
 /** `bb kanban …`: the commands agents and users run against the board. */
 export function registerCli(ctx: KanbanContext, services: Services): void {
   const { bb, stmts, sync, publish } = ctx;
-  const { getTicket, hydrate, getColumns, getSources, createTicket, moveTicket, setParent, setTags } = services.board;
+  const { getTicket, hydrate, getColumns, getSources, createTicket, moveTicket, setParent, setTags, setDueDate } = services.board;
   const { spawnThreadForTicket, linkThread } = services.threads;
   const { projectForTicket, fallbackProject } = services.projects;
   const { spawnReviewForTicket, spawnApplyForReview } = services.reviews;
@@ -29,10 +29,11 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           ? `  ${ticket.jira.key} (${ticket.jira.status})`
           : "";
     const tags = ticket.tags.length === 0 ? "" : `  ${ticket.tags.map((tag) => `#${tag}`).join(" ")}`;
+    const due = ticket.dueDate === null ? "" : `  due ${ticket.dueDate}`;
     const thread = ticket.threadId === null ? "" : `  @thread:${ticket.threadId}`;
     const review = ticket.reviewThreadId === null ? "" : `  review:@thread:${ticket.reviewThreadId}`;
     const nesting = ticket.parentId !== null ? `  ↳ ${ticket.parentId}` : ticket.children.total > 0 ? `  (${ticket.children.done}/${ticket.children.total} subtasks)` : "";
-    return `${ticket.id}  [${column}]  ${ticket.title}${tags}${pr}${thread}${review}${nesting}`;
+    return `${ticket.id}  [${column}]  ${ticket.title}${tags}${due}${pr}${thread}${review}${nesting}`;
   }
 
   function ticketForContext(ticketOption: string | undefined, threadId: string | undefined): Ticket {
@@ -49,6 +50,17 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
       code: "ticket_required",
       hint: "Pass --ticket <id>; run `bb kanban list` to see ids.",
     });
+  }
+
+  function parseDueDate(raw: string): string {
+    const parsed = dueDateSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new PluginCliError(`Invalid due date "${raw}": ${parsed.error.issues[0]?.message ?? "expected YYYY-MM-DD"}`, {
+        code: "invalid_due_date",
+        hint: "Pass a date as YYYY-MM-DD, e.g. 2026-10-31.",
+      });
+    }
+    return parsed.data;
   }
 
   const ticketOption = {
@@ -125,6 +137,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             description: { type: "string", description: "Longer description (markdown)", aliases: ["body"] },
             column: { type: "string", description: "Column id; defaults to backlog" },
             tag: { type: "string", repeatable: true, split: ",", description: "Tag to add (repeatable)" },
+            due: { type: "string", description: "Due date, YYYY-MM-DD" },
             parent: { type: "string", description: "Create the card as a subtask of this ticket id (implies --no-link)" },
             project: { type: "string", description: "Project id for a new thread; implies --start-thread" },
             "start-thread": {
@@ -146,6 +159,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
                 hint: "Run `bb kanban columns`.",
               });
             }
+            const dueDate = options.due === undefined ? null : parseDueDate(options.due);
             const parentRow = options.parent === undefined ? undefined : stmts.byId.get(options.parent);
             if (options.parent !== undefined && parentRow === undefined) {
               throw new PluginCliError(`No ticket with id ${options.parent}`, { code: "unknown_parent", hint: "Run `bb kanban list`." });
@@ -160,6 +174,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               projectId: options.project ?? parentRow?.project_id ?? null,
               pr: null,
               parentId: options.parent ?? null,
+              dueDate,
             });
             publish();
             if (ctx.threadId !== undefined && options.parent === undefined && !options["no-link"] && !options["start-thread"] && options.project === undefined) {
@@ -484,6 +499,17 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             const ticket = ticketForContext(options.ticket, ctx.threadId);
             const remove = new Set(normalizeTags(positionals.tags));
             const updated = setTags(ticket.id, ticket.tags.filter((tag) => !remove.has(tag)));
+            return { exitCode: 0, stdout: options.json ? JSON.stringify(updated) : formatTicket(updated, await getColumns()) };
+          },
+        }),
+        due: cliCommand({
+          summary: "Set or clear a card's due date (defaults to the current thread's card)",
+          positionals: [{ name: "date", description: "Due date as YYYY-MM-DD, or `none` to clear", required: true }],
+          options: { ...ticketOption, json: { type: "boolean", description: "Emit JSON" } },
+          async run({ positionals, options }, ctx) {
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            const dueDate = positionals.date.toLowerCase() === "none" ? null : parseDueDate(positionals.date);
+            const updated = setDueDate(ticket.id, dueDate);
             return { exitCode: 0, stdout: options.json ? JSON.stringify(updated) : formatTicket(updated, await getColumns()) };
           },
         }),

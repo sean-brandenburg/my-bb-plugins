@@ -2,19 +2,20 @@ import { useEffect, useState } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { Column, Ticket } from "../shared/board";
+import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { threadStatusText } from "./format";
-import { type Rpc, type ProjectOption, useBoard, useProjects, useThreadIndex, useOpenThread } from "./data";
+import { dueStatus, localDay, threadStatusText } from "./format";
+import { type Rpc, type ProjectOption, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { collapseRightPanel, TICKET_TAB } from "./page-state";
 import { ExternalLink, ThreadStatusDot, Select, ProjectSelect, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
-import { usePendingAction } from "./actions";
+import { type RunAction, usePendingAction } from "./actions";
 
 function TicketDetails({
   ticket,
@@ -166,6 +167,9 @@ function TicketDetails({
         <Property label="Tags">
           <TagEditor ticket={ticket} rpc={rpc} run={run} suggestions={allTags} />
         </Property>
+        <Property label="Due">
+          <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
+        </Property>
         {ticket.parentId !== null || showParentPicker ? (
           <Property label="Parent">
             <Select
@@ -305,6 +309,56 @@ function TicketDetails({
           Close
         </Button>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Saves when the field loses focus: typing a year fires a change per digit, each one a valid date.
+ * A date input reads empty while any segment is incomplete, so an empty blur reverts; the X button clears.
+ */
+function DueDateEditor({ ticket, isDone, rpc, run }: { ticket: Ticket; isDone: boolean; rpc: Rpc; run: RunAction }) {
+  const [value, setValue] = useState(ticket.dueDate ?? "");
+  const today = localDay(useNow(60_000));
+  useEffect(() => setValue(ticket.dueDate ?? ""), [ticket.id, ticket.dueDate]);
+  const save = (next: string) => {
+    const dueDate = next === "" ? null : next;
+    if (dueDate === ticket.dueDate) return;
+    void run(() => rpc.call("ticket_set_due_date", { id: ticket.id, dueDate }));
+  };
+  const due = ticket.dueDate === null ? null : dueStatus(ticket.dueDate, today);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <input
+        type="date"
+        aria-label="Due date"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={() => (value === "" ? setValue(ticket.dueDate ?? "") : save(value))}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+        }}
+        className="h-7 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      {ticket.dueDate !== null ? (
+        <button
+          type="button"
+          aria-label="Clear due date"
+          title="Clear due date"
+          className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          onClick={() => {
+            setValue("");
+            save("");
+          }}
+        >
+          <Icon name="X" className="size-3.5" />
+        </button>
+      ) : null}
+      {due !== null ? (
+        <span className={cn("text-xs text-muted-foreground", !isDone && due.tone === "overdue" && "text-destructive", !isDone && due.tone === "soon" && "text-amber-700 dark:text-amber-300")}>
+          {due.relative}
+        </span>
+      ) : null}
     </div>
   );
 }

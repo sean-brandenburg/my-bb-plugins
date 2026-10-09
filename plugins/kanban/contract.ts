@@ -1,6 +1,6 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { boardSchema, columnSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
+import { boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
@@ -20,6 +20,7 @@ export const rpcContract = defineRpcContract({
         startThread: z.boolean().default(false),
         /** Create the card as a subtask of this card. */
         parentId: z.string().nullable().default(null),
+        dueDate: dueDateSchema.nullable().default(null),
       })
       .strict(),
     output: ticketSchema,
@@ -70,6 +71,11 @@ export const rpcContract = defineRpcContract({
   },
   ticket_set_tags: {
     input: z.object({ id: z.string(), tags: z.array(tagSchema).max(20) }).strict(),
+    output: ticketSchema,
+  },
+  /** `null` clears the due date. */
+  ticket_set_due_date: {
+    input: z.object({ id: z.string(), dueDate: dueDateSchema.nullable() }).strict(),
     output: ticketSchema,
   },
   sources_set: {

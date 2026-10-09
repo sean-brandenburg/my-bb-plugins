@@ -20,6 +20,16 @@ export const tagSchema = z
   .max(40)
   .regex(/^[a-z0-9][a-z0-9._-]*$/u, "Tags are lowercase letters, digits, dots, dashes, underscores");
 
+/** A calendar day, `YYYY-MM-DD`, with no time or zone: a card is due on a day wherever you are. */
+export const dueDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u, "Due dates are YYYY-MM-DD")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
+  }, "Not a real calendar date");
+
 /**
  * Where tickets come from automatically. Every item a source returns becomes a
  * card tagged with the source's tags; a card can be fed by several sources.
@@ -120,6 +130,7 @@ export const ticketSchema = z.object({
   comments: z.object({ total: z.number().int(), open: z.number().int(), selected: z.number().int() }).nullable(),
   /** Parent card when this is a subtask; null for top-level cards. */
   parentId: z.string().nullable(),
+  dueDate: z.string().nullable(),
   /** Subtask progress: how many children exist and how many are in the done column. */
   children: z.object({ total: z.number().int(), done: z.number().int(), withThread: z.number().int() }),
   /** Comments the user left on the card's diff that have not been submitted for addressing yet. */

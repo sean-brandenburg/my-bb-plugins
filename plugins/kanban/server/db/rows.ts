@@ -37,6 +37,7 @@ export interface TicketRow {
   jira_updated_at: string | null;
   comments_synced_for: string | null;
   parent_id: string | null;
+  due_date: string | null;
   position: number;
   created_at: number;
   updated_at: number;
@@ -324,6 +325,7 @@ export function rowToTicket(
     latestReview: latestReview === null ? null : summarize(latestReview),
     comments,
     parentId: row.parent_id,
+    dueDate: row.due_date,
     children: extras.children,
     pendingDiffComments: extras.pendingDiffComments,
     canPostToGithub: extras.canPostToGithub,

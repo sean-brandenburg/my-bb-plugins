@@ -122,6 +122,13 @@ export function createBoardStore(ctx: KanbanContext) {
     return getTicket(id);
   }
 
+  function setDueDate(id: string, dueDate: string | null): Ticket {
+    getTicket(id);
+    stmts.setDueDate.run(dueDate, Date.now(), id);
+    publish();
+    return getTicket(id);
+  }
+
   function getTicket(id: string): Ticket {
     const row = stmts.byId.get(id);
     if (row === undefined) throw new Error(`No ticket with id ${id}`);
@@ -164,6 +171,7 @@ export function createBoardStore(ctx: KanbanContext) {
     pr: PullRequest | null;
     jira?: JiraIssue | null;
     parentId?: string | null;
+    dueDate?: string | null;
   }): Ticket {
     const now = Date.now();
     const id = shortId();
@@ -193,6 +201,7 @@ export function createBoardStore(ctx: KanbanContext) {
       jira_priority: input.jira?.priority ?? null,
       jira_assignee: input.jira?.assignee ?? null,
       jira_updated_at: input.jira?.updatedAt ?? null,
+      due_date: input.dueDate ?? null,
       position: nextPosition(input.columnId),
       created_at: now,
       updated_at: now,
@@ -257,6 +266,7 @@ export function createBoardStore(ctx: KanbanContext) {
     deleteTicket,
     setParent,
     setTags,
+    setDueDate,
     allTags,
     getColumns,
     setColumns,

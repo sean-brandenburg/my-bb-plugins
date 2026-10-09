@@ -35,6 +35,7 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban set-parent <ticket-id> <parent-id\|none>` | Nest a card under another, or make it top-level. |
 | `bb kanban start-subtasks [--ticket <id>] [--sequential]` | Start agents on the open subtasks (one thread each, or one in order). |
 | `bb kanban tag <tags...> [--ticket <id>]` / `bb kanban untag <tags...> [--ticket <id>]` | Add or remove tags. Tags are lowercase letters, digits, `.`, `-`, `_`. |
+| `bb kanban due <YYYY-MM-DD\|none> [--ticket <id>]` | Set or clear a card's due date (a calendar day). `bb kanban add` takes `--due <YYYY-MM-DD>` too. |
 | `bb kanban sources` | List the configured sources and the tags they apply. Edit them on the board page. |
 | `bb kanban link <ticket-id> [--thread <id>]` | Link an existing card to a thread. |
 | `bb kanban remove <ticket-id>` | Delete a card. The thread is kept. |

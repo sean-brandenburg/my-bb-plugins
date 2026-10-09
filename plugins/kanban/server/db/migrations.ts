@@ -175,5 +175,6 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE pr_comments ADD COLUMN resolved INTEGER`,
     // Refetch every PR's comments once so the new thread columns fill in and earlier posts link to their synced copies.
     `UPDATE tickets SET comments_synced_for = NULL`,
+    `ALTER TABLE tickets ADD COLUMN due_date TEXT`,
   ]);
 }

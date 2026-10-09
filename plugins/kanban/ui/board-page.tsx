@@ -3,8 +3,10 @@ import type { DragEvent } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { Ticket } from "../shared/board";
+import { doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
-import { useBoard, useProjects, useThreadIndex, useOpenThread } from "./data";
+import { useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
+import { localDay } from "./format";
 import { pageUi, usePageUi, TICKET_TAB } from "./page-state";
 import { KanbanDiffView, diffSubjectFromSubPath } from "./diff-page";
 import { type DropTarget, ColumnView } from "./column";
@@ -45,6 +47,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
   }, [board, showSubtasks]);
 
   const selected = board?.tickets.find((ticket) => ticket.id === selectedId) ?? null;
+  const today = localDay(useNow(60_000));
+  const doneId = board === null ? null : doneColumnId(board.columns);
   const sourceTags = useMemo(() => new Set((board?.sources ?? []).flatMap((source) => source.tags)), [board]);
   const appPanel = useAppPanel();
   const showTicket = (ticketId: string) => {
@@ -152,6 +156,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
             tickets={ticketsByColumn.get(column.id) ?? []}
             threads={threads}
             hiddenTags={sourceTags}
+            today={today}
+            isDone={column.id === doneId}
             draggingId={draggingId}
             dropTarget={dropTarget}
             onDragStart={(ticketId, event) => {

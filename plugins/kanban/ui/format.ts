@@ -65,3 +65,29 @@ export function slugify(name: string, fallback: string): string {
 export function parseTagList(text: string): string[] {
   return parseQuickAdd(text.split(/[\s,]+/u).filter(Boolean).map((tag) => (tag.startsWith("#") ? tag : `#${tag}`)).join(" ")).tags;
 }
+
+/** The viewer's local calendar day as `YYYY-MM-DD`, the form due dates are stored in. */
+export function localDay(epochMs: number): string {
+  const date = new Date(epochMs);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function dayNumber(day: string): number {
+  return Date.parse(`${day}T00:00:00Z`) / 86_400_000;
+}
+
+export type DueTone = "overdue" | "soon" | "later";
+
+/** How a due date reads against `today`: a short label, how far off it is, a tooltip sentence, and whether it needs attention. */
+export function dueStatus(dueDate: string, today: string): { label: string; relative: string; title: string; tone: DueTone } {
+  const days = dayNumber(dueDate) - dayNumber(today);
+  // Formatting in UTC keeps the stored day from shifting under the viewer's offset.
+  const at = new Date(`${dueDate}T00:00:00Z`);
+  const sameYear = dueDate.slice(0, 4) === today.slice(0, 4);
+  const short = at.toLocaleDateString(undefined, { timeZone: "UTC", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+  const long = at.toLocaleDateString(undefined, { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const label = days === 0 ? "Today" : days === 1 ? "Tomorrow" : days === -1 ? "Yesterday" : short;
+  const relative =
+    days === 0 ? "today" : days === 1 ? "tomorrow" : days > 0 ? `in ${days} days` : days === -1 ? "1 day overdue" : `${-days} days overdue`;
+  return { label, relative, title: `Due ${long} · ${relative}`, tone: days < 0 ? "overdue" : days <= 1 ? "soon" : "later" };
+}

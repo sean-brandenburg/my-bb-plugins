@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { doneColumnId, todoColumnId } from "../shared/columns";
-import { parseQuickAdd, parseTagList, relativeTime, slugify } from "./format";
+import { dueStatus, localDay, parseQuickAdd, parseTagList, relativeTime, slugify } from "./format";
 
 describe("parseQuickAdd", () => {
   it("pulls #tags out of a title, lowercased and deduplicated", () => {
@@ -45,5 +45,28 @@ describe("column lookups", () => {
     expect(todoColumnId([{ id: "a" }, { id: "b" }])).toBe("a");
     expect(doneColumnId([])).toBeNull();
     expect(todoColumnId([])).toBeNull();
+  });
+});
+
+describe("dueStatus", () => {
+  it("names nearby days, flags overdue and imminent dates, and shows the year only when it differs", () => {
+    expect(dueStatus("2026-10-08", "2026-10-08")).toMatchObject({ label: "Today", tone: "soon" });
+    expect(dueStatus("2026-10-09", "2026-10-08")).toMatchObject({ label: "Tomorrow", tone: "soon" });
+    expect(dueStatus("2026-10-07", "2026-10-08")).toMatchObject({ label: "Yesterday", tone: "overdue" });
+    expect(dueStatus("2026-10-01", "2026-10-08").title).toContain("7 days overdue");
+    expect(dueStatus("2026-10-20", "2026-10-08")).toMatchObject({ tone: "later" });
+    expect(dueStatus("2026-10-20", "2026-10-08").title).toContain("in 12 days");
+    expect(dueStatus("2027-01-05", "2026-10-08").label).toContain("2027");
+    expect(dueStatus("2026-10-20", "2026-10-08").label).not.toContain("2026");
+  });
+
+  it("counts calendar days across a daylight saving change", () => {
+    expect(dueStatus("2026-11-02", "2026-10-31").title).toContain("in 2 days");
+  });
+});
+
+describe("localDay", () => {
+  it("formats the local calendar day", () => {
+    expect(localDay(new Date(2026, 0, 5, 23, 59).getTime())).toBe("2026-01-05");
   });
 });

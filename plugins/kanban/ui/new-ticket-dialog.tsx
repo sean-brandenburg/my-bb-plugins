@@ -85,6 +85,7 @@ export function NewTicketDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [columnId, setColumnId] = useState(initialColumnId ?? columns[0]?.id ?? "");
   const [projectId, setProjectId] = useState("");
   const [startThread, setStartThread] = useState(true);
@@ -110,12 +111,14 @@ export function NewTicketDialog({
         description,
         columnId,
         tags: [...new Set([...parsed.tags, ...extraTags])],
+        dueDate: dueDate === "" ? null : dueDate,
         projectId: projectId === "" ? null : projectId,
         startThread: projectId !== "" && startThread,
       });
       setTitle("");
       setDescription("");
       setTags("");
+      setDueDate("");
       onOpenChange(false);
       onCreated();
     } catch (cause) {
@@ -179,6 +182,10 @@ export function NewTicketDialog({
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 Project
                 <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                Due date
+                <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="Due date" />
               </label>
             </div>
             <label className={cn("flex items-center gap-2 text-sm", projectId === "" && "pointer-events-none opacity-50")}>

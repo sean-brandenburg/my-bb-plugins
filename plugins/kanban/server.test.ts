@@ -993,6 +993,30 @@ describe("tags and sources", () => {
     expect((await board()).tags).toEqual(["infra", "later"]);
   });
 
+  it("sets, shows, and clears due dates from the RPC and the CLI, rejecting dates that do not exist", async () => {
+    await load();
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "Ship it", dueDate: "2026-10-31" })) as Ticket;
+    expect(ticket.dueDate).toBe("2026-10-31");
+    await expect(current().harness.behavior.callRpc("ticket_create", { title: "Bad", dueDate: "2026-02-30" })).rejects.toThrow();
+    await expect(current().harness.behavior.callRpc("ticket_set_due_date", { id: ticket.id, dueDate: "Oct 31" })).rejects.toThrow();
+
+    const moved = (await current().harness.behavior.callRpc("ticket_set_due_date", { id: ticket.id, dueDate: "2026-11-02" })) as Ticket;
+    expect(moved.dueDate).toBe("2026-11-02");
+    const shown = await current().harness.behavior.runCli(["show", "--ticket", ticket.id]);
+    expect(shown.stdout).toContain("due 2026-11-02");
+
+    const cleared = await current().harness.behavior.runCli(["due", "none", "--ticket", ticket.id, "--json"]);
+    expect((JSON.parse(cleared.stdout ?? "") as Ticket).dueDate).toBeNull();
+    const set = await current().harness.behavior.runCli(["due", "2027-01-15", "--ticket", ticket.id, "--json"]);
+    expect((JSON.parse(set.stdout ?? "") as Ticket).dueDate).toBe("2027-01-15");
+    const invalid = await current().harness.behavior.runCli(["due", "2027-13-01", "--ticket", ticket.id]);
+    expect(invalid.exitCode).not.toBe(0);
+    expect(invalid.stderr).toContain("Invalid due date");
+
+    const added = await current().harness.behavior.runCli(["add", "Later", "--due", "2026-12-01", "--no-link", "--json"]);
+    expect((JSON.parse(added.stdout ?? "") as Ticket).dueDate).toBe("2026-12-01");
+  });
+
   it("ships the two GitHub sources by default and applies every matching source's tags", async () => {
     vi.stubGlobal(
       "fetch",

@@ -42,6 +42,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
         projectId: input.projectId ?? parentProject,
         pr: null,
         parentId: input.parentId,
+        dueDate: input.dueDate,
       });
       publish();
       if (input.startThread && input.projectId !== null) {
@@ -57,6 +58,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       board.getTicket(id);
       return board.setTags(id, tags);
     },
+    ticket_set_due_date: ({ id, dueDate }) => board.setDueDate(id, dueDate),
     sources_set: async ({ sources }) => {
       const ids = new Set<string>();
       for (const source of sources) {
