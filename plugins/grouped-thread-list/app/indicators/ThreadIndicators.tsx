@@ -174,9 +174,6 @@ function IndicatorButton({
               <div className="min-h-0 overflow-y-auto p-1">
                 {flyout(hover.close)}
               </div>
-              <div className="flex h-7 shrink-0 items-center border-t border-border px-3 text-[11px] text-muted-foreground">
-                Click the icon for the full list
-              </div>
             </div>,
             host,
           )
@@ -419,7 +416,7 @@ export function ThreadIndicators() {
         }
         flyout={(close) =>
           pinned === 0 ? (
-            <FlyoutEmpty>No pinned threads. Press p in the picker to pin one.</FlyoutEmpty>
+            <FlyoutEmpty>No pinned threads.</FlyoutEmpty>
           ) : (
             <FlyoutSection
               label="Pinned"
