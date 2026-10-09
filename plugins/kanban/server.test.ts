@@ -84,6 +84,9 @@ function stubGithub(options: {
   };
   /** Root review-comment ids of resolved threads, answered from the GraphQL reviewThreads query. */
   resolvedThreads?: number[];
+  /** Head branch and check rollup per `repo#number` for the batched GraphQL query; a missing PR comes back null. */
+  heads?: Record<string, { headRef: string; rollup: string | null }>;
+  failHeads?: boolean;
   failReadBack?: boolean;
 }) {
   const json = (body: unknown) =>
@@ -106,6 +109,20 @@ function stubGithub(options: {
     }
     const method = typeof input === "object" && input !== null && "method" in input ? (input as Request).method : (init?.method ?? "GET");
     if (method === "POST" && url.endsWith("/graphql")) {
+      const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, string | number> };
+      if (request.query.includes("statusCheckRollup")) {
+        if (options.failHeads) return new Response("boom", { status: 502 });
+        const data: Record<string, unknown> = {};
+        for (let index = 0; `owner${index}` in request.variables; index += 1) {
+          const { [`owner${index}`]: owner, [`name${index}`]: name, [`number${index}`]: number } = request.variables;
+          const head = options.heads?.[`${owner}/${name}#${number}`];
+          data[`pr${index}`] =
+            head === undefined
+              ? null
+              : { pullRequest: { headRefName: head.headRef, commits: { nodes: [{ commit: { statusCheckRollup: head.rollup === null ? null : { state: head.rollup } } }] } } };
+        }
+        return json({ data });
+      }
       const roots = new Set(options.resolvedThreads ?? []);
       const nodes = (options.comments?.review ?? [])
         .filter((comment) => comment.replyTo === undefined)
@@ -502,6 +519,65 @@ describe("GitHub sync", () => {
     expect(byNumber.get(1)).toMatchObject({ columnId: "done", pr: { state: "merged" } });
     expect(byNumber.get(2)).toMatchObject({ columnId: "done", pr: { state: "closed" } });
     expect(byNumber.get(4)).toMatchObject({ columnId: "done", pr: { state: "open" } });
+  });
+
+  it("reads open PRs' branches and checks every sync, keeping the last values when the read fails or the PR is finished", async () => {
+    const fetchMock = stubGithub({
+      authored: [searchItem("acme-co/widgets", 1), searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)],
+      heads: {
+        "acme-co/widgets#1": { headRef: "feature/login", rollup: "SUCCESS" },
+        "acme-co/widgets#2": { headRef: "fix-bug", rollup: null },
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const prsOf = async () => new Map((await board()).tickets.map((ticket) => [ticket.pr?.number, ticket.pr]));
+    let prs = await prsOf();
+    expect(prs.get(1)).toMatchObject({ headRef: "feature/login", checks: "passing" });
+    expect(prs.get(2)).toMatchObject({ headRef: "fix-bug", checks: null });
+    // The repository did not answer for #3: nothing known yet.
+    expect(prs.get(3)).toMatchObject({ headRef: null, checks: null });
+    const headQueries = fetchMock.mock.calls.filter(([, init]) => String(init?.body ?? "").includes("statusCheckRollup"));
+    expect(headQueries).toHaveLength(1);
+
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        authored: [searchItem("acme-co/widgets", 1), searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)],
+        heads: {
+          "acme-co/widgets#1": { headRef: "feature/login", rollup: "FAILURE" },
+          "acme-co/widgets#3": { headRef: "chore", rollup: "EXPECTED" },
+        },
+      }),
+    );
+    await current().harness.behavior.callRpc("sync_now", null);
+    prs = await prsOf();
+    expect(prs.get(1)).toMatchObject({ checks: "failing" });
+    expect(prs.get(2)).toMatchObject({ headRef: "fix-bug", checks: null });
+    expect(prs.get(3)).toMatchObject({ headRef: "chore", checks: "pending" });
+
+    vi.stubGlobal("fetch", stubGithub({ authored: [searchItem("acme-co/widgets", 1), searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)], failHeads: true }));
+    const status = (await current().harness.behavior.callRpc("sync_now", null)) as Board["sync"];
+    expect(status.lastError).toBeNull();
+    prs = await prsOf();
+    expect(prs.get(1)).toMatchObject({ headRef: "feature/login", checks: "failing" });
+
+    // #1 merged: it is not asked about again, so it keeps the checks it last had.
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        authored: [searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)],
+        pulls: { "acme-co/widgets#1": { state: "closed", merged: true } },
+        heads: { "acme-co/widgets#1": { headRef: "feature/login", rollup: "SUCCESS" } },
+      }),
+    );
+    await current().harness.behavior.callRpc("sync_now", null);
+    prs = await prsOf();
+    expect(prs.get(1)).toMatchObject({ state: "merged", headRef: "feature/login", checks: "failing" });
+
+    host = await current().harness.lifecycle.reload(plugin);
+    expect((await prsOf()).get(3)).toMatchObject({ headRef: "chore", checks: "pending" });
   });
 
   it("does not override a manual column for a PR that is still open", async () => {

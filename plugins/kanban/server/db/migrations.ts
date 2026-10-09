@@ -185,5 +185,7 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE tickets ADD COLUMN column_entered_at INTEGER`,
     // The last update is the best guess at when an existing card reached its column.
     `UPDATE tickets SET column_entered_at = updated_at`,
+    `ALTER TABLE tickets ADD COLUMN pr_head_ref TEXT`,
+    `ALTER TABLE tickets ADD COLUMN pr_checks TEXT`,
   ]);
 }

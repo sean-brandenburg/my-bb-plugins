@@ -103,6 +103,8 @@ export const jiraIssueSchema = z.object({
 });
 export type JiraIssue = z.infer<typeof jiraIssueSchema>;
 export const prStateSchema = z.enum(["open", "draft", "merged", "closed"]);
+/** The head commit's combined CI status. */
+export const prChecksSchema = z.enum(["passing", "failing", "pending"]);
 
 export const pullRequestSchema = z.object({
   repo: z.string(),
@@ -112,6 +114,10 @@ export const pullRequestSchema = z.object({
   state: prStateSchema,
   author: z.string(),
   updatedAt: z.string(),
+  /** Null until the first sync reads it. */
+  headRef: z.string().nullable(),
+  /** Null when the head commit has no checks, or they have not been read yet. */
+  checks: prChecksSchema.nullable(),
 });
 export type PullRequest = z.infer<typeof pullRequestSchema>;
 

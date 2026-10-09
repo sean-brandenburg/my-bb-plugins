@@ -10,7 +10,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   errored, or needs you), the PR or Jira id as text, the due date (red when
   overdue, amber when due today or tomorrow, never coloured in Done), and icon counters for
   subtasks, review findings, open PR comments, and unsent diff comments,
-  coloured only when they need attention. Hover actions overlay the counters. Clicking a card opens it in the page's right-side
+  coloured only when they need attention. PR cards also show the PR's state,
+  its head commit's CI checks, and its branch; Jira cards their status. These
+  are Nerd Font glyphs when one is installed, and words or outline icons
+  otherwise. Hover actions overlay the counters. Clicking a card opens it in the page's right-side
   Card panel (a dialog on compact viewports) to edit, tag, move, review, start
   or open the thread, or delete. GitHub links open in your system browser.
 - **Sources**: cards are created automatically from searches you configure

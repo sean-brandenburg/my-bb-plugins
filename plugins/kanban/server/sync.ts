@@ -5,7 +5,7 @@ import type { CardThreads } from "./card-threads";
 import type { PrComments } from "./comments/pr-comments";
 import type { KanbanContext } from "./context";
 import type { TicketRow } from "./db/rows";
-import { github, prStateOf, repoFromRepositoryUrl, resolveToken, searchPulls, type GithubPull } from "./github";
+import { fetchPrHeads, github, prStateOf, repoFromRepositoryUrl, resolveToken, searchPulls, type GithubPull } from "./github";
 import { JIRA_FIELDS, adfToText, jira, jiraConfig, searchJira, toJiraIssue, type JiraConfig, type JiraSearchIssue } from "./jira";
 import type { Projects } from "./projects";
 import type { KanbanSettingsValues } from "./settings";
@@ -190,6 +190,8 @@ export function createSourceSync(
         state: prStateOf({ state: item.state, draft: item.draft, merged: item.pull_request?.merged_at != null }),
         author: item.user?.login ?? "",
         updatedAt: item.updated_at,
+        headRef: null,
+        checks: null,
       };
       const sourceTags = itemSources.flatMap((source) => source.tags);
       const existing = stmts.byPr.get(repo, item.number);
@@ -243,6 +245,23 @@ export function createSourceSync(
       const author = pull.user?.login ?? row.pr_author ?? "";
       stmts.setPr.run(pull.title, pull.html_url, state, roleOf(author), author, pull.updated_at, now, row.id);
       finish(pass, row, state === "merged" || state === "closed" || goneFromDoneSource(pass, row));
+    }
+    await syncPrHeads(pass, token);
+  }
+
+  /** Every pass for every open PR: a CI run finishing does not move the PR's updated_at. Merged and closed PRs keep their last values. */
+  async function syncPrHeads(pass: SyncPass, token: string): Promise<void> {
+    const rows = stmts.openPrs.all().filter((row) => row.pr_repo !== null && row.pr_number !== null);
+    const heads = await fetchPrHeads(
+      rows.map((row) => ({ repo: row.pr_repo!, number: row.pr_number! })),
+      token,
+      pass.signal,
+      (message) => bb.log.warn(`could not read PR branches and checks: ${message}`),
+    );
+    for (const row of rows) {
+      const head = heads.get(`${row.pr_repo}#${row.pr_number}`);
+      if (head === undefined || (head.headRef === row.pr_head_ref && head.checks === row.pr_checks)) continue;
+      stmts.setPrHead.run(head.headRef, head.checks, row.id);
     }
   }
 

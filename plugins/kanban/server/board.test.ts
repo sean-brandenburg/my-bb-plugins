@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_COLUMNS, type JiraIssue, type PullRequest } from "../shared/board";
 import { doneColumn, initialColumn } from "./board";
 
-const pr = (state: PullRequest["state"]): PullRequest => ({ repo: "acme/widgets", number: 7, url: "", role: "authored", state, author: "", updatedAt: "" });
+const pr = (state: PullRequest["state"]): PullRequest => ({ repo: "acme/widgets", number: 7, url: "", role: "authored", state, author: "", updatedAt: "", headRef: null, checks: null });
 const jira = (statusCategory: JiraIssue["statusCategory"]): JiraIssue => ({ key: "PROJ-1", url: "", status: "", statusCategory, issueType: "", priority: null, assignee: null, updatedAt: "" });
 
 describe("initialColumn", () => {

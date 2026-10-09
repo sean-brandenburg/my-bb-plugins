@@ -7,6 +7,7 @@ settings:
 overrides:
   bb-diff-view: link:../diff-view/lib
   bb-motion: link:../motion/lib
+  bb-nerd-font: link:../nerd-font/lib
 
 importers:
 
@@ -24,6 +25,9 @@ importers:
       bb-motion:
         specifier: link:../motion/lib
         version: link:../motion/lib
+      bb-nerd-font:
+        specifier: link:../nerd-font/lib
+        version: link:../nerd-font/lib
       zod:
         specifier: ^4.6.5
         version: 4.6.5

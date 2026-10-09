@@ -1,9 +1,49 @@
-import type { Ticket } from "../shared/board";
+import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
+import type { PullRequest, Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import { dueStatus } from "./format";
 import { ExternalLink, Badge } from "./primitives";
+import { CHECKS_MARK, PR_STATE_MARK, jiraStatusMark, type SourceMark } from "./source-marks";
+
+/** Nerd Font Mono glyphs fill a cell, so a point above the 11px text matches the lucide icons' optical size. */
+const GLYPH_SIZE = "text-[12px]";
+
+export function MarkGlyph({ mark }: { mark: SourceMark }) {
+  return <Glyph glyph={GLYPH[mark.glyph]} label={mark.label} title={mark.label} className={cn(GLYPH_SIZE, mark.tone)} />;
+}
+
+export function PrStateGlyph({ state }: { state: PullRequest["state"] }) {
+  return <MarkGlyph mark={PR_STATE_MARK[state]} />;
+}
+
+/** The head commit's CI result. */
+export function ChecksMark({ checks, nerdFont }: { checks: NonNullable<PullRequest["checks"]>; nerdFont: boolean }) {
+  const mark = CHECKS_MARK[checks];
+  if (nerdFont) return <MarkGlyph mark={mark} />;
+  return (
+    <span role="img" aria-label={mark.label} title={mark.label} className={cn("inline-flex shrink-0", mark.tone)}>
+      <Icon name={mark.icon} className="size-3" />
+    </span>
+  );
+}
+
+/** The PR's head branch; the name truncates, the icon stays. */
+export function BranchName({ headRef, nerdFont, className }: { headRef: string; nerdFont: boolean; className?: string }) {
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1 overflow-hidden", className)} title={headRef}>
+      {nerdFont ? <Glyph glyph={GLYPH.branch} className={GLYPH_SIZE} /> : <Icon name="kanban-git-branch" className="size-3 shrink-0" />}
+      <span className="truncate">{headRef}</span>
+    </span>
+  );
+}
+
+export function JiraGlyph() {
+  return <Glyph glyph={GLYPH.jira} className={GLYPH_SIZE} />;
+}
 
 export function PrBadges({ ticket }: { ticket: Ticket }) {
+  const nerdFont = useNerdFont();
   if (ticket.pr === null) return null;
   const { pr } = ticket;
   const repoName = pr.repo.split("/")[1] ?? pr.repo;
@@ -13,28 +53,37 @@ export function PrBadges({ ticket }: { ticket: Ticket }) {
     <>
       <ExternalLink href={pr.url} title={`Open ${pr.repo}#${pr.number} on GitHub`} className="inline-flex max-w-full">
         <Badge title={pr.repo}>
-          <Icon name="GitPullRequest" className="size-3" />
+          {nerdFont ? <PrStateGlyph state={pr.state} /> : <Icon name="GitPullRequest" className="size-3" />}
           {repoName}#{pr.number}
+          {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} /> : null}
         </Badge>
       </ExternalLink>
-      {pr.state !== "open" ? <Badge tone={stateTone}>{pr.state}</Badge> : null}
+      {!nerdFont && pr.state !== "open" ? <Badge tone={stateTone}>{pr.state}</Badge> : null}
+      {pr.headRef !== null ? (
+        <Badge className="max-w-48">
+          <BranchName headRef={pr.headRef} nerdFont={nerdFont} />
+        </Badge>
+      ) : null}
     </>
   );
 }
 
 export function JiraBadges({ ticket }: { ticket: Ticket }) {
+  const nerdFont = useNerdFont();
   if (ticket.jira === null) return null;
   const { jira } = ticket;
   const tone = jira.statusCategory === "done" ? "success" : jira.statusCategory === "indeterminate" ? "accent" : "neutral";
+  const statusMark = nerdFont ? jiraStatusMark(jira) : null;
   return (
     <>
       <ExternalLink href={jira.url} title={`Open ${jira.key} in Jira`} className="inline-flex max-w-full">
         <Badge title={jira.issueType}>
-          <Icon name="kanban-ticket" className="size-3" />
+          {nerdFont ? <JiraGlyph /> : <Icon name="kanban-ticket" className="size-3" />}
           {jira.key}
+          {statusMark !== null ? <MarkGlyph mark={statusMark} /> : null}
         </Badge>
       </ExternalLink>
-      {jira.status !== "" ? <Badge tone={tone}>{jira.status}</Badge> : null}
+      {statusMark === null && jira.status !== "" ? <Badge tone={tone}>{jira.status}</Badge> : null}
       {jira.priority !== null ? <Badge title="Priority">{jira.priority}</Badge> : null}
     </>
   );

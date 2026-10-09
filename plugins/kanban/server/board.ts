@@ -193,6 +193,8 @@ export function createBoardStore(ctx: KanbanContext) {
       pr_state: input.pr?.state ?? null,
       pr_author: input.pr?.author ?? null,
       pr_updated_at: input.pr?.updatedAt ?? null,
+      pr_head_ref: input.pr?.headRef ?? null,
+      pr_checks: input.pr?.checks ?? null,
       jira_key: input.jira?.key ?? null,
       jira_url: input.jira?.url ?? null,
       jira_status: input.jira?.status ?? null,

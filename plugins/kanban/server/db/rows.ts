@@ -27,6 +27,8 @@ export interface TicketRow {
   pr_state: PullRequest["state"] | null;
   pr_author: string | null;
   pr_updated_at: string | null;
+  pr_head_ref: string | null;
+  pr_checks: PullRequest["checks"];
   jira_key: string | null;
   jira_url: string | null;
   jira_status: string | null;
@@ -325,6 +327,8 @@ export function rowToTicket(
           state: row.pr_state,
           author: row.pr_author ?? "",
           updatedAt: row.pr_updated_at ?? "",
+          headRef: row.pr_head_ref,
+          checks: row.pr_checks,
         }
       : null;
   return {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
+import { useNerdFont } from "bb-nerd-font";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ import { focusBoard, requestCardFocus, useCardKeys } from "./card-keys";
 import { ExternalLink, ThreadStatusDot, Select, ProjectSelect, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
+import { BranchName, ChecksMark, JiraGlyph, MarkGlyph, PrStateGlyph } from "./badges";
+import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
 import { type RunAction, usePendingAction } from "./actions";
@@ -92,6 +95,8 @@ function TicketDetails({
   collect(ticket.id);
   const parentOptions = tickets.filter((entry) => entry.id !== ticket.id && !descendants.has(entry.id));
   const pendingPop = usePopOnChange(ticket.pendingDiffComments);
+  const nerdFont = useNerdFont();
+  const jiraMark = nerdFont && ticket.jira !== null ? jiraStatusMark(ticket.jira) : null;
   const rootRef = useRef<HTMLDivElement>(null);
   const keys = useCardKeys(rootRef, ticket.id, focusOnMount, {
     onThread: () => {
@@ -136,25 +141,34 @@ function TicketDetails({
           </button>
         ) : null}
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={`${kindLabel} ${ticket.id} · ${columnName}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground" title={`${kindLabel} ${ticket.id} · ${columnName}`}>
             {ticket.pr !== null ? (
               <>
-                <ExternalLink href={ticket.pr.url} title={`Open ${ticket.pr.repo}#${ticket.pr.number} on GitHub`} className={LINE_LINK}>
-                  {ticket.pr.repo.split("/")[1]}#{ticket.pr.number}
-                </ExternalLink>
-                {` · ${ticket.pr.state}`}
+                {nerdFont ? <PrStateGlyph state={ticket.pr.state} /> : null}
+                <span className="shrink-0">
+                  <ExternalLink href={ticket.pr.url} title={`Open ${ticket.pr.repo}#${ticket.pr.number} on GitHub`} className={LINE_LINK}>
+                    {ticket.pr.repo.split("/")[1]}#{ticket.pr.number}
+                  </ExternalLink>
+                  {nerdFont ? null : ` · ${ticket.pr.state}`}
+                </span>
+                {ticket.pr.checks !== null ? <ChecksMark checks={ticket.pr.checks} nerdFont={nerdFont} /> : null}
+                {ticket.pr.headRef !== null ? <BranchName headRef={ticket.pr.headRef} nerdFont={nerdFont} /> : null}
               </>
             ) : null}
             {ticket.jira !== null ? (
-              <>
-                <ExternalLink href={ticket.jira.url} title={`Open ${ticket.jira.key} in Jira`} className={LINE_LINK}>
-                  {ticket.jira.key}
-                </ExternalLink>
-                {` · ${ticket.jira.status || "unknown"}`}
-              </>
+              <span className="flex min-w-0 items-center gap-1">
+                {nerdFont ? <JiraGlyph /> : null}
+                <span className="truncate">
+                  <ExternalLink href={ticket.jira.url} title={`Open ${ticket.jira.key} in Jira`} className={LINE_LINK}>
+                    {ticket.jira.key}
+                  </ExternalLink>
+                  {jiraMark === null ? ` · ${ticket.jira.status || "unknown"}` : null}
+                </span>
+                {jiraMark !== null ? <MarkGlyph mark={jiraMark} /> : null}
+              </span>
             ) : null}
-            {ticket.pr === null && ticket.jira === null ? (parent !== null ? "Subtask" : kindLabel) : ""}
-          </p>
+            {ticket.pr === null && ticket.jira === null ? <span className="truncate">{parent !== null ? "Subtask" : kindLabel}</span> : null}
+          </div>
           {ticket.threadId !== null ? (
             <button type="button" className={HEADER_ICON_BUTTON} aria-label="Open thread" title="Open thread" onClick={() => onOpenThread(ticket.threadId!)}>
               <Icon name="MessageSquare" className="size-3.5" />

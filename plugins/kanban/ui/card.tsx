@@ -1,5 +1,6 @@
 import type { DragEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { useNerdFont } from "bb-nerd-font";
 import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
@@ -7,7 +8,8 @@ import { cn } from "@/lib/utils";
 import { cardSnippet, dueStatus, shortAge, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
-import { ReviewBadge } from "./badges";
+import { BranchName, ChecksMark, JiraGlyph, MarkGlyph, PrStateGlyph, ReviewBadge } from "./badges";
+import { jiraStatusMark } from "./source-marks";
 
 export function CardView({
   ticket,
@@ -196,22 +198,29 @@ const STATUS_EDGE: Record<"busy" | "input" | "error", string> = {
   error: "bg-destructive",
 };
 
-/** Where the card comes from: `widgets #7 · draft` and who asked for the review, `PROJ-12 · In Progress` and priority, or `↳ subtask`. */
+/**
+ * Where the card comes from: `widgets #7`, its state, checks, and branch, and who asked for the review; `PROJ-12`, its
+ * status, and priority; or `↳ subtask`. With a Nerd Font the PR state and Jira status are glyphs, otherwise words.
+ */
 function CardSource({ ticket }: { ticket: Ticket }) {
+  const nerdFont = useNerdFont();
   const row = "flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground";
   const link = "min-w-0 truncate hover:text-foreground hover:underline";
   if (ticket.pr !== null) {
     const { pr } = ticket;
     const stateClass = pr.state === "merged" ? "text-violet-700 dark:text-violet-300" : pr.state === "closed" ? "text-destructive" : "";
+    // On a narrow card the branch gives way first, then the reviewer, and the PR's name last.
     return (
       <div className={row}>
-        <Icon name="GitPullRequest" className="size-3 shrink-0" />
+        {nerdFont ? <PrStateGlyph state={pr.state} /> : <Icon name="GitPullRequest" className="size-3 shrink-0" />}
         <ExternalLink href={pr.url} title={`Open ${pr.repo}#${pr.number} on GitHub`} className={link}>
           {pr.repo.split("/")[1] ?? pr.repo} #{pr.number}
-          {pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
+          {!nerdFont && pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
         </ExternalLink>
+        {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} /> : null}
+        {pr.headRef !== null ? <BranchName headRef={pr.headRef} nerdFont={nerdFont} className="shrink-[100]" /> : null}
         {pr.role === "other" ? (
-          <span className="ml-auto min-w-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
+          <span className="ml-auto min-w-0 shrink-[10] truncate" title={`Your review was requested on @${pr.author}'s PR`}>
             reviewing @{pr.author}
           </span>
         ) : null}
@@ -220,13 +229,15 @@ function CardSource({ ticket }: { ticket: Ticket }) {
   }
   if (ticket.jira !== null) {
     const { jira } = ticket;
+    const statusMark = nerdFont ? jiraStatusMark(jira) : null;
     return (
       <div className={row}>
-        <Icon name="kanban-ticket" className="size-3 shrink-0" />
+        {nerdFont ? <JiraGlyph /> : <Icon name="kanban-ticket" className="size-3 shrink-0" />}
         <ExternalLink href={jira.url} title={`Open ${jira.key} in Jira`} className={link}>
           {jira.key}
-          {jira.status !== "" ? ` · ${jira.status}` : ""}
+          {statusMark === null && jira.status !== "" ? ` · ${jira.status}` : ""}
         </ExternalLink>
+        {statusMark !== null ? <MarkGlyph mark={statusMark} /> : null}
         {jira.priority !== null ? (
           <span className="ml-auto shrink-0" title="Priority">
             {jira.priority}
