@@ -1,0 +1,10 @@
+{
+  "name": "bb-nerd-font",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nerd Font glyphs for bb plugins: a once-per-page check for whether the glyphs render, a Glyph component, and the codepoints the plugins here use. Imports only modules bb shims to the host, so it needs no install of its own.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
