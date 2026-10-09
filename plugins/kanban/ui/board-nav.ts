@@ -90,7 +90,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["x"], action: "Mark done / reopen" },
       { keys: ["o", "Enter"], action: "Open the card" },
       { keys: ["t"], action: "Open the card's thread" },
-      { keys: ["i", "a"], action: "Type a new todo; Esc returns to the list" },
+      { keys: ["i", "a"], action: "Type a new todo; Esc (twice with vim-mode) returns to the list" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Scroll half a page" },
       { keys: ["T"], action: "Switch back to the board" },
     ],
