@@ -193,7 +193,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       const files = navFilesRef.current();
       const fileIndex = files.findIndex((file) => !file.collapsed);
       const file = files[fileIndex];
-      placed = file === undefined ? firstPosition(files, "RIGHT") : cursorAt(files, { fileIndex, row: file.rows === null || file.rows.length === 0 ? -1 : 0 }, "RIGHT");
+      // A fold of hidden lines above the first change is not a line to start on.
+      const row = file?.rows?.findIndex((entry) => entry.expander !== true) ?? -1;
+      placed = file === undefined ? firstPosition(files, "RIGHT") : cursorAt(files, { fileIndex, row }, "RIGHT");
       keys.set({ cursor: placed, visual: null, focused: null });
       return file === undefined || file.rows !== null;
     };
