@@ -211,7 +211,7 @@ function CardSource({ ticket }: { ticket: Ticket }) {
           {pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
         </ExternalLink>
         {pr.role === "other" ? (
-          <span className="ml-auto shrink-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
+          <span className="ml-auto min-w-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
             reviewing @{pr.author}
           </span>
         ) : null}

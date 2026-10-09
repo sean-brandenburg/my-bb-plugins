@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { type BoardCommand, KEYMAP, PREFIXED_KEYMAP } from "./board-nav";
+import { type BoardCommand, CTRL_KEYMAP, KEYMAP, PREFIXED_KEYMAP } from "./board-nav";
 
 const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 // Radix menus and listboxes take letters for typeahead without always claiming them.
@@ -36,13 +36,21 @@ export function useBoardKeys(rootRef: RefObject<HTMLElement | null>, enabled: bo
     if (!enabled) return;
     let pending: { key: string; at: number } | null = null;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      if (event.defaultPrevented || event.metaKey || event.altKey || event.isComposing) return;
+      const chord = event.ctrlKey ? (event.shiftKey ? undefined : CTRL_KEYMAP[event.key]) : null;
+      if (chord === undefined) return;
       const root = rootRef.current;
       if (root === null || root.getClientRects().length === 0) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target !== null && target !== document.body && target.closest(SCOPE) === null) return;
       if (isEditable(target) || target?.closest(OWN_KEYS) != null) return;
       if (document.querySelector(OPEN_DIALOG) !== null) return;
+      if (chord !== null) {
+        pending = null;
+        event.preventDefault();
+        handler.current(chord);
+        return;
+      }
       const prefix = pending !== null && event.timeStamp - pending.at <= PREFIX_TIMEOUT_MS ? pending.key : "";
       pending = null;
       // A key that doesn't complete the pending prefix counts on its own.

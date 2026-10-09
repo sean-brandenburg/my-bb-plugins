@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AnimationEvent, ReactNode } from "react";
+import type { AnimationEvent, KeyboardEvent, ReactNode } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { CHEVRON, PRESS, STAGGER, TRANSFORM_TRANSITION, enter, exit, speed, stagger, usePresence, type Arrival, useEntrance, usePopOnChange } from "bb-motion";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -288,13 +288,24 @@ export function SegmentedTabs<T extends string>({
           role="tab"
           aria-selected={option.value === value}
           onClick={() => onChange(option.value)}
-          className={cn("relative rounded text-xs font-medium", PRESS, option.value === value ? "text-foreground" : "text-muted-foreground hover:text-foreground", tabClassName)}
+          className={cn("relative rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", PRESS, option.value === value ? "text-foreground" : "text-muted-foreground hover:text-foreground", tabClassName)}
         >
           {option.label}
         </button>
       ))}
     </div>
   );
+}
+
+/** j and k step through a Radix menu's items, which otherwise answer only to the arrows. */
+export function menuVimKeys(event: KeyboardEvent<HTMLElement>): void {
+  const step = event.key === "j" ? 1 : event.key === "k" ? -1 : 0;
+  if (step === 0 || event.metaKey || event.ctrlKey || event.altKey) return;
+  // Claimed before Radix's typeahead, which would jump to an item starting with the letter.
+  event.preventDefault();
+  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([data-disabled])'));
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  items[at === -1 ? 0 : Math.min(items.length - 1, Math.max(0, at + step))]?.focus();
 }
 
 export const MENU_ITEM_CLASS =

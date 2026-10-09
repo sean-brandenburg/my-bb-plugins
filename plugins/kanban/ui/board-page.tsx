@@ -21,6 +21,7 @@ import { toastError } from "./actions";
 import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 import { useBoardKeys } from "./board-keys";
 import { requestCardFocus } from "./card-keys";
+import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop, scrollHalfPage } from "./stops";
 import { BoardKeysDialog } from "./board-keys-dialog";
 
 export function BoardPage({ subPath }: { subPath: string }) {
@@ -102,6 +103,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
     focusCard(ticketId);
   }, [board, focusCard]);
   const cursorId = (): string | null => {
+    if (focusedStop() !== null) return null;
     const focused = document.activeElement?.closest<HTMLElement>("[data-ticket-id]")?.dataset.ticketId;
     const candidate = focused !== undefined && boardRef.current?.contains(document.activeElement) ? focused : lastCardId.current;
     return candidate !== null && layout.some((ids) => ids.includes(candidate)) ? candidate : null;
@@ -125,14 +127,63 @@ export function BoardPage({ subPath }: { subPath: string }) {
     refetch();
   };
 
+  const todoCommand = useRef<((command: BoardCommand) => void) | null>(null);
+  const todoRef = useRef<HTMLDivElement>(null);
+  const columnCards = (columnId: string | undefined) => layout[board?.columns.findIndex((column) => column.id === columnId) ?? -1] ?? [];
+
   const runCommand = (command: BoardCommand) => {
     if (board === null) return;
+    if (command.kind === "toggle-view") {
+      navigate.toPluginPanel("board", { subPath: view === "board" ? "todo" : "" });
+      return;
+    }
+    if (command.kind === "help") {
+      pageUi.set({ dialog: "keys" });
+      return;
+    }
+    if (view === "todo") {
+      todoCommand.current?.(command);
+      return;
+    }
+    const at = focusedStop();
     const current = cursorId();
     const ticket = current === null ? undefined : board.tickets.find((entry) => entry.id === current);
     switch (command.kind) {
       case "cursor": {
+        if (at !== null) {
+          if (moveAlongBand(at.band, at.stop, command.motion)) return;
+          if (command.motion === "up" && at.band === "columns") {
+            const next = nearestStop("header", at.stop);
+            if (next !== null) focusStop(next);
+          } else if (command.motion === "down" && at.band === "header") {
+            const next = nearestStop("columns", at.stop);
+            if (next !== null) focusStop(next);
+          } else if ((command.motion === "down" || command.motion === "top" || command.motion === "bottom") && at.band === "columns") {
+            const cards = columnCards(at.stop.dataset.columnId);
+            const next = command.motion === "bottom" ? cards[cards.length - 1] : cards[0];
+            if (next !== undefined) focusCard(next);
+          }
+          return;
+        }
+        if (ticket !== undefined && command.motion === "up" && columnCards(ticket.columnId)[0] === ticket.id) {
+          const add = boardRef.current?.querySelector<HTMLElement>(`[data-kanban-column-add][data-column-id="${CSS.escape(ticket.columnId)}"]`);
+          if (add != null) focusStop(add);
+          return;
+        }
         const next = cursorAfter(layout, current, command.motion);
         if (next !== null) focusCard(next);
+        else {
+          const first = bandStops("columns")[0];
+          if (first !== undefined) focusStop(first);
+        }
+        return;
+      }
+      case "scroll": {
+        const card = current === null ? null : (boardRef.current?.querySelector<HTMLElement>(`[data-ticket-id="${CSS.escape(current)}"]`) ?? null);
+        const list = card?.closest<HTMLElement>("[data-kanban-column-list]");
+        if (card == null || list == null) return;
+        const next = scrollHalfPage(list, Array.from(list.querySelectorAll<HTMLElement>("[data-ticket-id]")), card, command.direction);
+        if (next !== null && next !== card) next.focus({ preventScroll: true });
         return;
       }
       case "move": {
@@ -144,7 +195,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
         return;
       }
       case "open":
-        if (ticket !== undefined) showTicket(ticket.id, true);
+        if (at !== null) pressStop(at.stop);
+        else if (ticket !== undefined) showTicket(ticket.id, true);
         return;
       case "thread":
         if (ticket?.threadId != null) openThread(ticket.threadId);
@@ -153,10 +205,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         if (ticket !== undefined && (ticket.pr !== null || ticket.threadId !== null)) openDiff(ticket.id);
         return;
       case "add":
-        pageUi.set({ dialog: "new", newTicketColumn: ticket?.columnId ?? null });
-        return;
-      case "help":
-        pageUi.set({ dialog: "keys" });
+        pageUi.set({ dialog: "new", newTicketColumn: (at?.band === "columns" ? at.stop.dataset.columnId : ticket?.columnId) ?? null });
         return;
       case "toggle-hidden": {
         // With no card under the cursor, the first column holding cards back.
@@ -164,9 +213,11 @@ export function BoardPage({ subPath }: { subPath: string }) {
         if (columnId !== undefined && board.columns.find((column) => column.id === columnId)?.hideAfterDays != null) toggleHidden(columnId);
         return;
       }
+      default:
+        return;
     }
   };
-  useBoardKeys(boardRef, diffTicketId === null && !proposalsList && proposalId === null && view === "board" && board !== null, runCommand);
+  useBoardKeys(view === "todo" ? todoRef : boardRef, diffTicketId === null && !proposalsList && proposalId === null && board !== null, runCommand);
 
   if (diffTicketId !== null) {
     return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} />;
@@ -224,8 +275,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
         </p>
       ) : null}
       {view === "todo" && board !== null ? (
-        <div className={cn("min-h-0 flex-1 overflow-y-auto", enter.fade, speed.fast)}>
+        <div ref={todoRef} tabIndex={-1} data-kanban-keys="" className={cn("min-h-0 flex-1 overflow-y-auto outline-none", enter.fade, speed.fast)}>
           <TodoView
+            commandRef={todoCommand}
             board={board}
             threads={threads}
             rpc={rpc}

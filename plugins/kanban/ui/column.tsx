@@ -110,13 +110,15 @@ export function ColumnView({
           size="icon"
           className="size-6 text-muted-foreground"
           aria-label={`Add card to ${column.name}`}
+          data-kanban-column-add=""
+          data-column-id={column.id}
           onClick={onAdd}
         >
           <Icon name="Plus" className="size-3.5" />
         </Button>
       </header>
       {/* pt-0.5 leaves room for a hovered card's lift so the top card isn't clipped. */}
-      <div ref={listRef} className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-0.5">
+      <div ref={listRef} data-kanban-column-list="" className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-0.5">
         {tickets.map((ticket, index) => (
           <div key={ticket.id} className="flex flex-col gap-2">
             {isTarget && dropTarget.index === index && draggingId !== ticket.id ? (
