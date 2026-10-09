@@ -1,4 +1,5 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import { mountComposerStatusBar } from "./footer-style.js";
 import { FooterStatus } from "./status.js";
 

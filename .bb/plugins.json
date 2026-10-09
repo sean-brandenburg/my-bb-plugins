@@ -15,6 +15,7 @@
     { "name": "composer-status-bar", "source": "./plugins/composer-status-bar" },
     { "name": "thread-header-project", "source": "./plugins/thread-header-project" },
     { "name": "history-keys", "source": "./plugins/history-keys" },
-    { "name": "minimal-top-bar", "source": "./plugins/minimal-top-bar" }
+    { "name": "minimal-top-bar", "source": "./plugins/minimal-top-bar" },
+    { "name": "motion", "source": "./plugins/motion" }
   ]
 }

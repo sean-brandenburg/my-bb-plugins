@@ -1,0 +1,16 @@
+{
+  "name": "bb-motion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The motion system bb plugins share: easing and duration tokens, prefixed keyframes and classes, and small React helpers. Plain CSS plus code that imports only modules bb shims to the host, so it needs no install of its own.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./motion.css": "./motion.css"
+  },
+  "bb": {
+    "pluginTailwindContent": [
+      "**/*.{ts,tsx}"
+    ]
+  }
+}

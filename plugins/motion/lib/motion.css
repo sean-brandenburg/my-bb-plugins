@@ -1,0 +1,309 @@
+/*
+ * bb-motion: the motion system shared by these bb plugins.
+ *
+ * Rules every class here follows:
+ * - Only transform and opacity animate, so nothing triggers layout.
+ * - Entrances use `animation-fill-mode: backwards`: the first frame holds
+ *   through any stagger delay, and once the animation ends the element's own
+ *   transform (hover lifts, Tailwind translate utilities) is back in charge.
+ * - Every distance, scale, and duration is a token, and the reduced-motion
+ *   block at the bottom rewrites the tokens, so a reduced-motion user gets
+ *   short opacity-only fades and no movement without any per-class override.
+ *
+ * bb appends a plugin's CSS after its Tailwind output without running Tailwind
+ * over it, so this file is plain CSS: no @theme, @apply, or @utility. Several
+ * plugins bundle their own copy; identical duplicates are harmless, and the
+ * `bbm-` prefix keeps them clear of bb's own keyframes (`enter`, `exit`).
+ */
+
+:root {
+  /* Snappy, organic deceleration: most of the distance in the first third. */
+  --bbm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Slight overshoot for things that land: toasts, badges, checkmarks. */
+  --bbm-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Symmetric, for state toggles that move in place (chevrons, switches). */
+  --bbm-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Exits accelerate away so they never linger. */
+  --bbm-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --bbm-duration-instant: 90ms;
+  --bbm-duration-fast: 160ms;
+  --bbm-duration-base: 260ms;
+  --bbm-duration-slow: 420ms;
+  --bbm-duration-exit: 140ms;
+
+  --bbm-distance-sm: 4px;
+  --bbm-distance: 8px;
+  --bbm-distance-lg: 16px;
+  --bbm-scale-pop: 0.94;
+  --bbm-scale-enter: 0.97;
+  --bbm-scale-press: 0.97;
+  --bbm-lift: -1px;
+
+  --bbm-stagger-step: 35ms;
+  /* Items past this index enter together, so long lists don't drag on. */
+  --bbm-stagger-cap: 10;
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes bbm-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes bbm-rise-in {
+  from { opacity: 0; transform: translate3d(0, var(--bbm-distance), 0); }
+}
+
+@keyframes bbm-drop-in {
+  from { opacity: 0; transform: translate3d(0, calc(var(--bbm-distance) * -1), 0); }
+}
+
+@keyframes bbm-slide-in-left {
+  from { opacity: 0; transform: translate3d(calc(var(--bbm-distance-lg) * -1), 0, 0); }
+}
+
+@keyframes bbm-slide-in-right {
+  from { opacity: 0; transform: translate3d(var(--bbm-distance-lg), 0, 0); }
+}
+
+@keyframes bbm-scale-in {
+  from { opacity: 0; transform: scale(var(--bbm-scale-enter)); }
+}
+
+@keyframes bbm-pop-in {
+  from { opacity: 0; transform: scale(var(--bbm-scale-pop)); }
+}
+
+@keyframes bbm-pop {
+  50% { transform: scale(calc(2 - var(--bbm-scale-pop))); }
+}
+
+@keyframes bbm-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes bbm-sink-out {
+  to { opacity: 0; transform: translate3d(0, var(--bbm-distance-sm), 0) scale(var(--bbm-scale-enter)); }
+}
+
+@keyframes bbm-nudge {
+  25% { transform: translate3d(calc(var(--bbm-distance-sm) * -1), 0, 0); }
+  75% { transform: translate3d(var(--bbm-distance-sm), 0, 0); }
+}
+
+@keyframes bbm-shimmer {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+/* ---------- Entrances ----------
+ * Plays once when the element mounts. A re-render with the same React key
+ * does not replay it; only a remount does. Don't put these on rows of a
+ * virtualized list, which remount as they scroll into view. */
+
+.bbm-fade-in,
+.bbm-rise-in,
+.bbm-drop-in,
+.bbm-slide-in-left,
+.bbm-slide-in-right,
+.bbm-scale-in,
+.bbm-pop-in {
+  animation-duration: var(--bbm-duration-base);
+  animation-timing-function: var(--bbm-ease-out);
+  animation-fill-mode: backwards;
+}
+
+.bbm-fade-in { animation-name: bbm-fade-in; }
+.bbm-rise-in { animation-name: bbm-rise-in; }
+.bbm-drop-in { animation-name: bbm-drop-in; }
+.bbm-slide-in-left { animation-name: bbm-slide-in-left; }
+.bbm-slide-in-right { animation-name: bbm-slide-in-right; }
+.bbm-scale-in { animation-name: bbm-scale-in; }
+.bbm-pop-in {
+  animation-name: bbm-pop-in;
+  animation-timing-function: var(--bbm-ease-spring);
+}
+
+/* Cascade: set --bbm-index (the `stagger(i)` helper does) on each item. */
+.bbm-stagger {
+  animation-delay: calc(min(var(--bbm-index, 0), var(--bbm-stagger-cap)) * var(--bbm-stagger-step));
+}
+
+/* Speed modifiers for any entrance or exit. */
+.bbm-fast { animation-duration: var(--bbm-duration-fast); }
+.bbm-slow { animation-duration: var(--bbm-duration-slow); }
+
+/* ---------- Exits ----------
+ * Pair with `usePresence`, which keeps the element mounted until its exit
+ * animation ends. */
+
+.bbm-fade-out,
+.bbm-sink-out {
+  animation-duration: var(--bbm-duration-exit);
+  animation-timing-function: var(--bbm-ease-in);
+  animation-fill-mode: forwards;
+  pointer-events: none;
+}
+
+.bbm-fade-out { animation-name: bbm-fade-out; }
+.bbm-sink-out { animation-name: bbm-sink-out; }
+
+/* ---------- Attention ----------
+ * One-shot feedback. Retrigger by remounting, e.g. `key={count}` on a badge. */
+
+.bbm-pop {
+  animation: bbm-pop var(--bbm-duration-base) var(--bbm-ease-spring);
+}
+
+/* Rejected input: a short horizontal shake. */
+.bbm-nudge {
+  animation: bbm-nudge var(--bbm-duration-slow) var(--bbm-ease-in-out);
+}
+
+/* ---------- Interaction ---------- */
+
+/* Tactile press: buttons, cards, rows that act on click. */
+.bbm-press {
+  transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+.bbm-press:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(var(--bbm-scale-press));
+  transition-duration: var(--bbm-duration-instant);
+}
+
+/* Hover lift for cards. The shadow lives on a pseudo-element whose opacity
+ * animates, so the lift never repaints a box-shadow per frame. The element
+ * needs `position: relative` (or any positioned value) and its own radius. */
+.bbm-lift {
+  transition: transform var(--bbm-duration-base) var(--bbm-ease-out);
+}
+.bbm-lift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--bbm-duration-base) var(--bbm-ease-out);
+}
+@media (hover: hover) {
+  .bbm-lift:hover {
+    transform: translate3d(0, var(--bbm-lift), 0);
+  }
+  .bbm-lift:hover::after {
+    opacity: 1;
+  }
+}
+
+/* Children revealed while their `.bbm-reveal-host` is hovered or holds focus:
+ * row actions, copy buttons. Hidden children stay focusable and appear on
+ * keyboard focus. */
+.bbm-reveal {
+  opacity: 0;
+  transform: translate3d(var(--bbm-distance-sm), 0, 0);
+  transition:
+    opacity var(--bbm-duration-fast) var(--bbm-ease-out),
+    transform var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+.bbm-reveal-host:hover .bbm-reveal,
+.bbm-reveal-host:focus-within .bbm-reveal,
+.bbm-reveal[data-state="open"],
+.bbm-reveal[aria-expanded="true"] {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .bbm-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Transform and opacity transitions for state-driven changes: rotating
+ * chevrons, swapping icons, sliding indicators. Set the end state yourself. */
+.bbm-transform {
+  transition: transform var(--bbm-duration-base) var(--bbm-ease-out);
+}
+.bbm-opacity {
+  transition: opacity var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+.bbm-transform.bbm-opacity {
+  transition:
+    transform var(--bbm-duration-base) var(--bbm-ease-out),
+    opacity var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+
+/* Disclosure chevron: points right, turns down when the nearest ancestor (or
+ * the element) is open. */
+.bbm-chevron {
+  transition: transform var(--bbm-duration-base) var(--bbm-ease-out);
+}
+[aria-expanded="true"] > .bbm-chevron,
+[data-state="open"] > .bbm-chevron,
+[data-bbm-open="true"] .bbm-chevron,
+.bbm-chevron[data-bbm-open="true"] {
+  transform: rotate(90deg);
+}
+
+/* ---------- Loading ----------
+ * A sheen that sweeps across a skeleton block. The block needs
+ * `position: relative` and `overflow: hidden`. */
+.bbm-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+  animation: bbm-shimmer 1.4s var(--bbm-ease-in-out) infinite;
+  pointer-events: none;
+}
+
+/* ---------- bb's tw-animate overlays ----------
+ * Dialogs, menus, popovers, and tooltips already animate through tw-animate's
+ * `animate-in` / `animate-out`, which read their curve from --tw-ease. These
+ * sit in the theme layer so an explicit Tailwind `ease-*` utility still wins. */
+@layer theme {
+  .animate-in {
+    --tw-ease: var(--bbm-ease-out);
+  }
+  .animate-out {
+    --tw-ease: var(--bbm-ease-in);
+  }
+}
+
+/* ---------- Reduced motion ----------
+ * Movement goes; short fades stay, so state changes still read. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bbm-duration-fast: 80ms;
+    --bbm-duration-base: 120ms;
+    --bbm-duration-slow: 160ms;
+    --bbm-duration-exit: 80ms;
+    --bbm-distance-sm: 0px;
+    --bbm-distance: 0px;
+    --bbm-distance-lg: 0px;
+    --bbm-scale-pop: 1;
+    --bbm-scale-enter: 1;
+    --bbm-scale-press: 1;
+    --bbm-lift: 0px;
+    --bbm-stagger-step: 0ms;
+  }
+  .bbm-chevron,
+  .bbm-transform {
+    transition-duration: 0s;
+  }
+  .bbm-shimmer::after,
+  .bbm-nudge {
+    animation: none;
+  }
+  .animate-in,
+  .animate-out {
+    --tw-enter-scale: 1 !important;
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+  }
+}
