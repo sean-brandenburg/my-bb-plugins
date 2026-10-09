@@ -1,7 +1,5 @@
 /** Height of a file's sticky header; keyboard jumps land content just below it. */
 export const STICKY_HEADER_PX = 36;
-/** Lines kept between the keyboard cursor and the edge of the scroller, like vim's `scrolloff`. */
-const SCROLL_OFF_PX = 60;
 
 /** Scroll the diff so `element` sits just below the sticky file header. */
 export function scrollToElement(main: HTMLElement, element: Element): void {
@@ -9,19 +7,19 @@ export function scrollToElement(main: HTMLElement, element: Element): void {
   main.scrollTo({ top: Math.max(0, offset - STICKY_HEADER_PX), behavior: "auto" });
 }
 
-/**
- * Scroll the diff so `element` is on screen: just enough to keep it `SCROLL_OFF_PX` inside the edges, or to put it at
- * the middle, top or bottom when `block` says so.
- */
-export function revealElement(main: HTMLElement, element: Element, block?: "center" | "start" | "end"): void {
+/** Where the keyboard cursor rests: the middle of the diff below the sticky file header. */
+export function cursorLineY(main: HTMLElement): number {
   const view = main.getBoundingClientRect();
-  const box = element.getBoundingClientRect();
-  const top = view.top + STICKY_HEADER_PX;
-  let delta = 0;
-  if (block === "center") delta = box.top + box.height / 2 - (top + view.bottom) / 2;
-  else if (block === "start") delta = box.top - top;
-  else if (block === "end") delta = box.bottom - view.bottom;
-  else if (box.top < top + SCROLL_OFF_PX) delta = box.top - (top + SCROLL_OFF_PX);
-  else if (box.bottom > view.bottom - SCROLL_OFF_PX) delta = box.bottom - (view.bottom - SCROLL_OFF_PX);
+  return (view.top + STICKY_HEADER_PX + view.bottom) / 2;
+}
+
+/**
+ * Scroll the diff so a box (in viewport coordinates) sits at the cursor line, like vim with a large `scrolloff`, or at
+ * the top or bottom when `block` says so. Near either end of the diff the scroll stops short and the box stays off
+ * centre.
+ */
+export function revealBox(main: HTMLElement, box: { top: number; height: number }, block: "center" | "start" | "end" = "center"): void {
+  const view = main.getBoundingClientRect();
+  const delta = block === "start" ? box.top - (view.top + STICKY_HEADER_PX) : block === "end" ? box.top + box.height - view.bottom : box.top + box.height / 2 - cursorLineY(main);
   if (delta !== 0) main.scrollTo({ top: Math.max(0, main.scrollTop + delta), behavior: "auto" });
 }

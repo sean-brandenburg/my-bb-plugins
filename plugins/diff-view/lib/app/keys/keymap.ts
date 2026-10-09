@@ -32,7 +32,9 @@ export type ReviewCommand =
   | { kind: "searchNext"; direction: 1 | -1 }
   | { kind: "peek" }
   | { kind: "help" }
-  | { kind: "escape" };
+  | { kind: "escape" }
+  /** No key: the reader scrolled by hand, and the cursor moves to the line now in the middle. */
+  | { kind: "follow" };
 
 /** Keys as typed: printable characters as themselves, the rest as `<C-d>`, `<Esc>`, `<CR>`, `<Down>`. */
 export function keyToken(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): string | null {

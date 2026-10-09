@@ -12,7 +12,7 @@ import { DeltaStrip, useDelta } from "./delta-strip";
 import { FileSection } from "./file-section";
 import { WHOLE_FILE, type ComposerAnchor, type PatchAnnotationProps } from "./patch-annotations";
 import { riskByPath } from "./risk";
-import { STICKY_HEADER_PX, revealElement } from "./scroll";
+import { STICKY_HEADER_PX, cursorLineY, revealBox } from "./scroll";
 import { ScrollMarkers, useScrollMarkers } from "./scroll-markers";
 import { SummaryBar } from "./summary-bar";
 import { useDiffResult } from "./use-diff-result";
@@ -28,7 +28,7 @@ import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
 import { useTour } from "./tour/use-tour";
-import { cursorAt, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
+import { cursorAt, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
 import { KeyHelp, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
 import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
@@ -71,6 +71,8 @@ const NO_THREADS: DiffThread[] = [];
 const FOCUS_REQUEST_TTL_MS = 5_000;
 /** Approximate height of one diff line, for turning a page scroll into cursor rows. */
 const LINE_PX = 20;
+/** How long after a wheel or touch event a scroll still counts as the reader's. */
+const SCROLL_INTENT_MS = 250;
 
 /** The vim-style mode and half-typed keys, shown while the view has the keyboard. */
 function ModeLabel() {
@@ -185,14 +187,22 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const reveal = (cursor: Cursor, block?: "center" | "start" | "end") => {
     const main = mainRef.current;
     if (main === null) return;
-    const element = cursor.line === null ? null : elementFor(cursor);
+    if (cursor.line === null) {
+      // A stuck header reports where it sticks, not where it sits; the section's top is where it sits.
+      const section = sectionRefs.current.get(cursor.path);
+      pendingReveal.current = null;
+      if (section !== undefined) revealBox(main, { top: section.getBoundingClientRect().top, height: STICKY_HEADER_PX }, block);
+      return;
+    }
+    const element = elementFor(cursor);
     if (element === null) {
-      pendingReveal.current = cursor.line === null ? null : { cursor, block, tries: 0 };
+      pendingReveal.current = { cursor, block, tries: 0 };
       sectionRefs.current.get(cursor.path)?.scrollIntoView({ block: "start" });
       return;
     }
     pendingReveal.current = null;
-    revealElement(main, element, block);
+    const box = element.getBoundingClientRect();
+    revealBox(main, { top: box.top, height: box.height }, block);
   };
   const revealRef = useRef(reveal);
   revealRef.current = reveal;
@@ -217,24 +227,32 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     // elementFor reads only refs and the stable store.
   }, [keys]);
 
+  /** The line at the middle of the screen, where the cursor rests. */
   const seat = (): Cursor | null => {
     const main = mainRef.current;
     if (main === null || diff === null || diff.files.length === 0) return null;
     const files = navFiles();
-    const top = main.getBoundingClientRect().top + STICKY_HEADER_PX;
+    const middle = cursorLineY(main);
     const want = keys.get().cursor?.want ?? "RIGHT";
+    const other = want === "LEFT" ? "RIGHT" : "LEFT";
     for (const [fileIndex, file] of diff.files.entries()) {
       const box = sectionRefs.current.get(file.path)?.getBoundingClientRect();
-      if (box === undefined || box.bottom <= top) continue;
+      if (box === undefined || box.bottom <= middle) continue;
       const model = collapsed.has(file.path) ? undefined : keys.models.get(file.path);
-      // The file's header is stuck to the top, so the reader is somewhere in its lines.
-      if (model !== undefined && box.top < top - STICKY_HEADER_PX) {
-        const row = model.rows.findIndex((_, index) => (model.element(index, want)?.getBoundingClientRect().top ?? -Infinity) >= top - 2);
+      if (model !== undefined && box.top + STICKY_HEADER_PX <= middle) {
+        // The last row starting above the middle; a row with no line on the wanted side is measured on the other.
+        let row = -1;
+        for (let index = 0; index < model.rows.length; index++) {
+          const top = (model.element(index, want) ?? model.element(index, other))?.getBoundingClientRect().top;
+          if (top === undefined) continue;
+          if (top > middle) break;
+          row = index;
+        }
         if (row !== -1) return cursorAt(files, { fileIndex, row }, want);
       }
       return cursorAt(files, { fileIndex, row: -1 }, want);
     }
-    return cursorAt(files, { fileIndex: 0, row: -1 }, want);
+    return lastPosition(files, want);
   };
   const onScreen = (cursor: Cursor): boolean | null => {
     const main = mainRef.current;
@@ -319,6 +337,24 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     runReviewCommand(command, count, env);
   };
   const keyboardScope = useReviewKeys(rootRef, keys, overlay === null, runCommand);
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
+  // Scrolling by hand (wheel, trackpad, touch, the scrollbar) drags the cursor along, so it stays on the middle line.
+  // The diff's own scrolls, which put the cursor there, carry no such intent and are left alone.
+  const lastScrollIntent = useRef(0);
+  const draggingScrollbar = useRef(false);
+  const followFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(followFrame.current), []);
+  const markScrollIntent = () => {
+    lastScrollIntent.current = performance.now();
+  };
+  const onMainScroll = () => {
+    trackActive();
+    if (keys.get().cursor === null) return;
+    if (!draggingScrollbar.current && performance.now() - lastScrollIntent.current > SCROLL_INTENT_MS) return;
+    cancelAnimationFrame(followFrame.current);
+    followFrame.current = requestAnimationFrame(() => runCommandRef.current({ kind: "follow" }, 1));
+  };
   const closeOverlay = () => {
     setOverlay(null);
     rootRef.current?.focus({ preventScroll: true });
@@ -411,7 +447,18 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 onSelect={jumpTo}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1">
-                <main ref={mainRef} onScroll={trackActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                <main
+                  ref={mainRef}
+                  onScroll={onMainScroll}
+                  onWheel={markScrollIntent}
+                  onTouchMove={markScrollIntent}
+                  onPointerDown={(event) => {
+                    // A press on the scroller itself, not its content, is on the scrollbar.
+                    if (event.target !== event.currentTarget) return;
+                    draggingScrollbar.current = true;
+                    window.addEventListener("pointerup", () => (draggingScrollbar.current = false), { once: true });
+                  }}
+                  className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   {source.tour !== undefined && diff !== null && diff.files.length > 0 ? (
                     <TourPanel tour={tour} busy={tourBusy} onGenerate={() => void generateTour()} onJump={jumpTo} onOpenThread={onOpenThread} files={diff.files} />
                   ) : null}

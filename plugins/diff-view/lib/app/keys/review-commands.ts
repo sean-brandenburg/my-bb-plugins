@@ -113,6 +113,15 @@ function withinSelection(env: ReviewEnv, next: Cursor): boolean {
 
 export function runReviewCommand(command: ReviewCommand, count: number, env: ReviewEnv): void {
   const state = env.keys.get();
+  if (command.kind === "follow") {
+    const next = env.seat();
+    const current = state.cursor;
+    if (next === null || (current !== null && next.path === current.path && next.side === current.side && next.line === current.line)) return;
+    if (!withinSelection(env, next)) return;
+    const first = annotationsAt(env, next)[0];
+    env.keys.set({ cursor: next, focused: first === undefined ? null : focusOf(first) });
+    return;
+  }
   // A cursor the reader scrolled away from (or whose file a refresh dropped) restarts at the top of the screen, as in vim.
   const kept = state.cursor !== null && cursorPosition(env.files, state.cursor) !== null && env.onScreen(state.cursor) !== false ? state.cursor : null;
   const cursor = kept ?? env.seat();
@@ -143,12 +152,12 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     }
     case "top": {
       const next = firstPosition(files, cursor.want);
-      if (next !== null) move(next, "start");
+      if (next !== null) move(next);
       return;
     }
     case "bottom": {
       const next = lastPosition(files, cursor.want);
-      if (next !== null) move(next, "end");
+      if (next !== null) move(next);
       return;
     }
     case "page": {
@@ -160,10 +169,10 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       move(moveChange(files, cursor, command.direction, count), "center");
       return;
     case "hunk":
-      move(moveHunk(files, cursor, command.direction, count), "start");
+      move(moveHunk(files, cursor, command.direction, count));
       return;
     case "file":
-      move(moveFile(files, cursor, command.direction, count), "start");
+      move(moveFile(files, cursor, command.direction, count));
       return;
     case "thread": {
       const anchors = annotationAnchors(env);
@@ -224,7 +233,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
           return;
         case "closeAll":
           env.setCollapsed(files.map((file) => file.path), true);
-          go(env, header, { block: "start" });
+          go(env, header);
           return;
         case "moreContext":
           if (model?.moreContext === undefined) env.notify("Only the structural view folds unchanged lines");
@@ -328,7 +337,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       if (!nowViewed) return;
       // Marking a file viewed folds it away, so the review carries on at the next file.
       const folded = files.map((file) => (file.path === cursor.path ? { ...file, collapsed: true } : file));
-      go(env, moveFile(folded, { ...cursor, line: null }, 1, 1), { block: "start" });
+      go(env, moveFile(folded, { ...cursor, line: null }, 1, 1));
       return;
     }
     case "target":
