@@ -4,11 +4,11 @@ import type {
   DiffCommentTarget,
   DiffDelta,
   DiffResult,
-  DiffSide,
   FileSlice,
   FindingEdit,
   GithubComment,
   HunkExplanation,
+  LineRange,
   Narrative,
   Review,
   StructuralDiff,
@@ -31,7 +31,7 @@ export interface DiffSource {
   /** Returns the viewed paths after the change. */
   setViewed(path: string, viewed: boolean): Promise<string[]>;
   listComments(): Promise<DiffComment[]>;
-  addComment(comment: { path: string; line: number | null; side: DiffSide; body: string; target: DiffCommentTarget; inReplyTo: string | null }): Promise<void>;
+  addComment(comment: { path: string; body: string; target: DiffCommentTarget; inReplyTo: string | null } & LineRange): Promise<void>;
   updateComment(id: string, patch: { body?: string; target?: DiffCommentTarget }): Promise<void>;
   deleteComment(id: string): Promise<void>;
   /** Comments can also be GitHub drafts; off unless set. */

@@ -49,6 +49,9 @@ export interface GithubReviewComment extends GithubIssueComment {
   line: number | null;
   original_line: number | null;
   side?: "LEFT" | "RIGHT";
+  start_line?: number | null;
+  original_start_line?: number | null;
+  start_side?: "LEFT" | "RIGHT" | null;
   in_reply_to_id?: number;
 }
 export interface GithubReview {

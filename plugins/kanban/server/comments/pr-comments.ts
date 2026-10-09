@@ -8,12 +8,13 @@ import type { KanbanContext } from "../context";
 import { rowToComment, rowToCommentApply, type CommentApplyRow, type TicketRow } from "../db/rows";
 import { githubPages, prShortName, reviewThreadResolution, type GithubIssueComment, type GithubReview, type GithubReviewComment } from "../github";
 import type { Projects } from "../projects";
+import { locationLabel } from "bb-diff-view/line-range";
 import { parseStringArray, shortId, threadTitle } from "../util";
 
 export function commentsBody(ticket: Ticket, comments: PrComment[]): string {
   const label = (comment: PrComment) =>
     comment.kind === "review-comment"
-      ? `${comment.path ?? "?"}${comment.line === null ? "" : `:${comment.line}`}${comment.id.startsWith("local:") ? " (left on the Kanban diff view)" : ""}`
+      ? `${locationLabel(comment.path ?? "?", comment)}${comment.id.startsWith("local:") ? " (left on the Kanban diff view)" : ""}`
       : comment.kind === "review"
         ? `review summary (${comment.reviewState ?? "COMMENTED"})`
         : "conversation";
@@ -112,7 +113,7 @@ export function createPrComments(
         stmts.upsertComment.run({
           id, ticket_id: row.id, kind: "issue-comment", github_id: comment.id, author, mine: mine(author),
           body: comment.body ?? "", path: null, line: null, review_state: null, in_reply_to: null,
-          side: "RIGHT", outdated: 0, resolved: null, url: comment.html_url, created_at: comment.created_at, updated_at: comment.updated_at,
+          side: "RIGHT", start_line: null, start_side: null, outdated: 0, resolved: null, url: comment.html_url, created_at: comment.created_at, updated_at: comment.updated_at,
         });
       }
       for (const comment of reviewComments) {
@@ -120,11 +121,13 @@ export function createPrComments(
         ids.push(id);
         const author = comment.user?.login ?? "";
         const resolved = resolvedByRoot.get(comment.in_reply_to_id ?? comment.id);
+        const startLine = (comment.line === null ? comment.original_start_line : comment.start_line) ?? null;
         stmts.upsertComment.run({
           id, ticket_id: row.id, kind: "review-comment", github_id: comment.id, author, mine: mine(author),
           body: comment.body ?? "", path: comment.path, line: comment.line ?? comment.original_line ?? null, review_state: null,
           in_reply_to: comment.in_reply_to_id === undefined ? null : `review-comment:${comment.in_reply_to_id}`,
-          side: comment.side === "LEFT" ? "LEFT" : "RIGHT", outdated: comment.line === null ? 1 : 0,
+          side: comment.side === "LEFT" ? "LEFT" : "RIGHT",
+          start_line: startLine, start_side: startLine === null ? null : comment.start_side === "LEFT" ? "LEFT" : "RIGHT", outdated: comment.line === null ? 1 : 0,
           resolved: resolved === undefined ? null : resolved ? 1 : 0, url: comment.html_url, created_at: comment.created_at, updated_at: comment.updated_at,
         });
       }
@@ -138,7 +141,7 @@ export function createPrComments(
         stmts.upsertComment.run({
           id, ticket_id: row.id, kind: "review", github_id: review.id, author, mine: mine(author),
           body: review.body ?? "", path: null, line: null, review_state: review.state, in_reply_to: null,
-          side: "RIGHT", outdated: 0, resolved: null, url: review.html_url, created_at: review.submitted_at, updated_at: review.submitted_at,
+          side: "RIGHT", start_line: null, start_side: null, outdated: 0, resolved: null, url: review.html_url, created_at: review.submitted_at, updated_at: review.submitted_at,
         });
       }
       stmts.deleteStaleComments.run(row.id, JSON.stringify(ids));

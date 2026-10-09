@@ -1,4 +1,4 @@
-import type { DiffSide, StructuralDiff } from "../../types";
+import type { LineRange, StructuralDiff } from "../../types";
 
 /** Unchanged lines kept visible on each side of a change, GitHub-style. */
 export const CONTEXT_LINES = 3;
@@ -25,7 +25,7 @@ export function structuralRows(diff: StructuralDiff): StructuralRow[] {
 /**
  * The rows left unfolded: changes and their context, rows the user expanded, and the context around every finding
  * (new-side lines) and comment thread, which can sit on lines this view would otherwise fold away because GitHub's
- * hunks carry more context than difftastic's.
+ * hunks carry more context than difftastic's. A thread on a range unfolds all of it.
  */
 export function visibleRows(
   rows: readonly StructuralRow[],
@@ -33,7 +33,7 @@ export function visibleRows(
     revealed,
     findingLines,
     threads,
-  }: { revealed: ReadonlySet<number>; findingLines: ReadonlyArray<number | null>; threads: ReadonlyArray<{ line: number | null; side: DiffSide }> },
+  }: { revealed: ReadonlySet<number>; findingLines: ReadonlyArray<number | null>; threads: ReadonlyArray<LineRange> },
 ): Set<number> {
   const visible = new Set<number>(revealed);
   const showAround = (index: number) => {
@@ -50,9 +50,15 @@ export function visibleRows(
     const index = line === null ? undefined : rowByNewLine.get(line);
     if (index !== undefined) showAround(index);
   }
+  const rowOf = (side: LineRange["side"], line: number) => (side === "LEFT" ? rowByOldLine : rowByNewLine).get(line);
   for (const thread of threads) {
-    const index = thread.line === null ? undefined : (thread.side === "LEFT" ? rowByOldLine : rowByNewLine).get(thread.line);
-    if (index !== undefined) showAround(index);
+    const index = thread.line === null ? undefined : rowOf(thread.side, thread.line);
+    if (index === undefined) continue;
+    showAround(index);
+    const start = thread.startLine === null || thread.startSide === null ? undefined : rowOf(thread.startSide, thread.startLine);
+    if (start === undefined) continue;
+    showAround(start);
+    for (let i = Math.min(start, index); i <= Math.max(start, index); i++) visible.add(i);
   }
   return visible;
 }

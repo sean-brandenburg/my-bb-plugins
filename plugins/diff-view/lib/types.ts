@@ -3,6 +3,17 @@
 
 export type DiffSide = "LEFT" | "RIGHT";
 
+/**
+ * Where a line comment sits, in GitHub's shape: `line`/`side` is the last line, and a multi-line comment starts at
+ * `startLine`/`startSide`. A null `line` is the whole file; a null `startLine` is a single line.
+ */
+export interface LineRange {
+  line: number | null;
+  side: DiffSide;
+  startLine: number | null;
+  startSide: DiffSide | null;
+}
+
 export interface DiffFile {
   path: string;
   previousPath: string | null;
@@ -92,6 +103,8 @@ export interface DiffComment {
   line: number | null;
   /** Which side of the diff the line number refers to: RIGHT = new file (default), LEFT = removed line. */
   side: DiffSide;
+  startLine: number | null;
+  startSide: DiffSide | null;
   body: string;
   target: DiffCommentTarget;
   /** Thread root: another diff comment's id, or a synced GitHub comment id (`review-comment:<n>`). */
@@ -122,6 +135,8 @@ export interface GithubComment {
   /** Root of the review thread this replies to. */
   inReplyTo: string | null;
   side: DiffSide;
+  startLine: number | null;
+  startSide: DiffSide | null;
   /** The line it was left on no longer exists in the PR head; `line` is then the original line. */
   outdated: boolean;
   resolved: boolean | null;

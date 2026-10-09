@@ -1,4 +1,5 @@
 import type { DiffCommentTarget } from "../../types";
+import { WHOLE_FILE } from "../patch-annotations";
 import { DiffCommentForm } from "./comment-form";
 import { DiffThreadView } from "./thread-view";
 import type { DiffThread } from "./threads";
@@ -23,7 +24,7 @@ export function FileLevelComments({
     <>
       {composing ? (
         <div className="px-3">
-          <DiffCommentForm path={path} line={null} side="RIGHT" defaultTarget={composeTarget} onSubmit={onSubmit} onCancel={onCancel} />
+          <DiffCommentForm path={path} range={WHOLE_FILE} defaultTarget={composeTarget} onSubmit={onSubmit} onCancel={onCancel} />
         </div>
       ) : null}
       {threads.length > 0 ? (

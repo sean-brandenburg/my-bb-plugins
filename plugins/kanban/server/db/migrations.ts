@@ -176,5 +176,11 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     // Refetch every PR's comments once so the new thread columns fill in and earlier posts link to their synced copies.
     `UPDATE tickets SET comments_synced_for = NULL`,
     `ALTER TABLE tickets ADD COLUMN due_date TEXT`,
+    `ALTER TABLE diff_comments ADD COLUMN start_line INTEGER`,
+    `ALTER TABLE diff_comments ADD COLUMN start_side TEXT`,
+    `ALTER TABLE pr_comments ADD COLUMN start_line INTEGER`,
+    `ALTER TABLE pr_comments ADD COLUMN start_side TEXT`,
+    // Refetch every PR's comments once so multi-line comments get their start lines.
+    `UPDATE tickets SET comments_synced_for = NULL`,
   ]);
 }

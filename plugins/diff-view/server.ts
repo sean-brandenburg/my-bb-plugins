@@ -8,6 +8,7 @@ import { resolve, sep } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DIFF_CHANGED } from "./events";
+import { checkedLineRange, locationLabel } from "./lib/line-range";
 import { emptyDiff, environmentDiff, environmentFileSides, grepDefinitions, grepUsages, hideVendoredFiles, localEnvironmentPath, runDifftastic } from "./lib/server";
 import type { DiffComment, DiffFile, DiffResult, FileSlice, StructuralDiff, SymbolLookup, SymbolUsages } from "./lib/types";
 
@@ -78,6 +79,8 @@ const diffCommentSchema: z.ZodType<DiffComment> = z.object({
   path: z.string(),
   line: z.number().int().nullable(),
   side: sideSchema,
+  startLine: z.number().int().nullable(),
+  startSide: sideSchema.nullable(),
   body: z.string(),
   target: z.enum(["local", "github"]),
   inReplyTo: z.string().nullable(),
@@ -116,8 +119,11 @@ export const rpcContract = defineRpcContract({
         path: z.string().min(1),
         line: z.number().int().min(1).nullable().default(null),
         side: sideSchema.default("RIGHT"),
+        /** First line of a multi-line comment, which ends at `line`. */
+        startLine: z.number().int().min(1).nullable().default(null),
+        startSide: sideSchema.nullable().default(null),
         body: commentBodySchema,
-        /** Reply in this comment's thread; path, line and side then come from its root. */
+        /** Reply in this comment's thread; path and lines then come from its root. */
         inReplyTo: z.string().min(1).nullable().default(null),
       })
       .strict(),
@@ -135,6 +141,8 @@ interface CommentRow {
   path: string;
   line: number | null;
   side: string;
+  start_line: number | null;
+  start_side: string | null;
   body: string;
   in_reply_to: string | null;
   created_at: number;
@@ -148,6 +156,8 @@ function rowToComment(row: CommentRow): DiffComment {
     path: row.path,
     line: row.line,
     side: row.side === "LEFT" ? "LEFT" : "RIGHT",
+    startLine: row.start_line,
+    startSide: row.start_line === null ? null : row.start_side === "LEFT" ? "LEFT" : "RIGHT",
     body: row.body,
     target: "local",
     inReplyTo: row.in_reply_to,
@@ -168,8 +178,9 @@ function fileFingerprint(file: DiffFile): string {
   return createHash("sha1").update(file.patch ?? `${file.status}:${file.additions}:${file.deletions}`).digest("hex");
 }
 
-function where(comment: { path: string; line: number | null; side: string }): string {
-  return comment.line === null ? comment.path : `${comment.path}:${comment.line}${comment.side === "LEFT" ? " (old side)" : ""}`;
+function where(row: CommentRow): string {
+  const { path, line, side, startLine, startSide } = rowToComment(row);
+  return locationLabel(path, { line, side, startLine, startSide });
 }
 
 /** One message with every unsent comment, replies under the comment they answer. */
@@ -224,6 +235,8 @@ export default async function plugin(bb: BbPluginApi) {
       send_id TEXT
     )`,
     `CREATE INDEX IF NOT EXISTS comments_thread ON comments (thread_id, created_at)`,
+    `ALTER TABLE comments ADD COLUMN start_line INTEGER`,
+    `ALTER TABLE comments ADD COLUMN start_side TEXT`,
   ]);
   const stmts = {
     viewedForThread: db.prepare<[string], { path: string; fingerprint: string }>(`SELECT path, fingerprint FROM viewed WHERE thread_id = ?`),
@@ -235,8 +248,8 @@ export default async function plugin(bb: BbPluginApi) {
     commentsForThread: db.prepare<[string], CommentRow>(`SELECT * FROM comments WHERE thread_id = ? ORDER BY created_at`),
     commentById: db.prepare<[string], CommentRow>(`SELECT * FROM comments WHERE id = ?`),
     insertComment: db.prepare(
-      `INSERT INTO comments (id, thread_id, path, line, side, body, in_reply_to, created_at, updated_at)
-       VALUES (@id, @thread_id, @path, @line, @side, @body, @in_reply_to, @created_at, @updated_at)`,
+      `INSERT INTO comments (id, thread_id, path, line, side, start_line, start_side, body, in_reply_to, created_at, updated_at)
+       VALUES (@id, @thread_id, @path, @line, @side, @start_line, @start_side, @body, @in_reply_to, @created_at, @updated_at)`,
     ),
     updateCommentBody: db.prepare<[string, number, string]>(`UPDATE comments SET body = ?, updated_at = ? WHERE id = ?`),
     deleteComment: db.prepare<[string, string]>(`DELETE FROM comments WHERE id = ? OR in_reply_to = ?`),
@@ -348,15 +361,18 @@ export default async function plugin(bb: BbPluginApi) {
       return { paths: await viewedPaths(threadId) };
     },
     diff_comments_list: ({ threadId }) => ({ comments: stmts.commentsForThread.all(threadId).map(rowToComment) }),
-    diff_comment_add: ({ threadId, path, line, side, body, inReplyTo }) => {
+    diff_comment_add: ({ threadId, path, line, side, startLine, startSide, body, inReplyTo }) => {
       const root = inReplyTo === null ? null : threadRoot(threadId, inReplyTo);
+      const anchor = root === null ? checkedLineRange({ line, side, startLine, startSide }) : rowToComment(root);
       const now = Date.now();
       const row: Omit<CommentRow, "send_id"> = {
         id: randomUUID(),
         thread_id: threadId,
         path: root?.path ?? path,
-        line: root === null ? line : root.line,
-        side: root?.side ?? side,
+        line: anchor.line,
+        side: anchor.side,
+        start_line: anchor.startLine,
+        start_side: anchor.startSide,
         body,
         in_reply_to: root?.id ?? null,
         created_at: now,

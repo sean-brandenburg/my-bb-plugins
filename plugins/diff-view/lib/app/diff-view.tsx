@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { DiffComment, DiffFile, DiffSide, SymbolLookup } from "../types";
+import type { DiffComment, DiffFile, SymbolLookup } from "../types";
 import { useDiffPreferences } from "./state";
 import { DEFAULT_LABELS, DiffSourceContext, type DiffSource, type DiffViewLabels } from "./source";
 import { DeltaStrip, useDelta } from "./delta-strip";
 import { FileSection } from "./file-section";
-import type { ComposerAnchor, PatchAnnotationProps } from "./patch-annotations";
+import { WHOLE_FILE, type ComposerAnchor, type PatchAnnotationProps } from "./patch-annotations";
 import { riskByPath } from "./risk";
 import { stepTo } from "./scroll";
 import { ScrollMarkers, useScrollMarkers } from "./scroll-markers";
@@ -155,9 +155,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       threads: forPath(file.path),
       composer: fileComposer,
       composeTarget: comments.newCommentTarget,
-      onStartComment: (line: number | null, side: DiffSide) => setComposer({ path: file.path, line, side }),
+      onStartComment: (anchor) => setComposer({ path: file.path, ...anchor }),
       onCancelComposer: () => setComposer(null),
-      onSubmitComposer: (body, target) => (fileComposer === null ? Promise.resolve() : comments.addComment(file.path, fileComposer.line, fileComposer.side, body, target)),
+      onSubmitComposer: (body, target) => (fileComposer === null ? Promise.resolve() : comments.addComment(file.path, fileComposer, body, target)),
       findings: findingsByPath.get(file.path) ?? [],
       onToggleFinding: toggleFinding,
       onEditFinding: editFinding,
@@ -233,7 +233,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                     viewed={viewed.has(file.path)}
                     onToggleCollapsed={() => toggleCollapsed(file.path)}
                     onMarkViewed={(isViewed) => markViewed(file.path, isViewed)}
-                    onCommentOnFile={() => setComposer({ path: file.path, line: null, side: "RIGHT" })}
+                    onCommentOnFile={() => setComposer({ path: file.path, ...WHOLE_FILE })}
                     annotations={annotationsFor(file)}
                     onOpenFile={openDefinition}
                     explanations={explanations.filter((entry) => entry.path === file.path)}

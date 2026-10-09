@@ -1,12 +1,11 @@
-import type { DiffCommentTarget, DiffSide, FindingEdit } from "../types";
+import type { DiffCommentTarget, FindingEdit, LineRange } from "../types";
 import type { DiffThread } from "./comments/threads";
 import type { InlineFinding, PlacedFinding } from "./findings/findings";
 
-/** Where the new-comment form is open in a file; a null line is the whole file. */
-export interface ComposerAnchor {
-  line: number | null;
-  side: DiffSide;
-}
+/** Where the new-comment form is open in a file: a line, a range ending at `line`, or (a null line) the whole file. */
+export type ComposerAnchor = LineRange;
+
+export const WHOLE_FILE: ComposerAnchor = { line: null, side: "RIGHT", startLine: null, startSide: null };
 
 /** What every renderer of a file's diff draws between its lines: comment threads, the new-comment form, and review findings. */
 export interface PatchAnnotationProps {
@@ -14,7 +13,7 @@ export interface PatchAnnotationProps {
   threads: DiffThread[];
   composer: ComposerAnchor | null;
   composeTarget: DiffCommentTarget;
-  onStartComment: (line: number | null, side: DiffSide) => void;
+  onStartComment: (anchor: ComposerAnchor) => void;
   onCancelComposer: () => void;
   onSubmitComposer: (body: string, target: DiffCommentTarget) => Promise<void>;
   findings: PlacedFinding[];

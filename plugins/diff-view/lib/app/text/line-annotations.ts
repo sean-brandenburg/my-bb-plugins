@@ -11,6 +11,10 @@ export function toPierreSide(side: DiffSide): PierreSide {
   return side === "LEFT" ? "deletions" : "additions";
 }
 
+export function fromPierreSide(side: PierreSide | undefined): DiffSide {
+  return side === "deletions" ? "LEFT" : "RIGHT";
+}
+
 /**
  * Pierre keys annotation slots by array index, so an insertion or removal hands every later slot to the next
  * annotation. `key` is the identity the renderer puts on each slot's element so a shifted slot remounts rather than

@@ -7,6 +7,7 @@ import { cn } from "../utils";
 import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { relativeTime } from "../format";
 import { useDiffSource } from "../source";
+import { longLineLabel, shortLineLabel } from "../../line-range";
 import { DiffCommentForm } from "./comment-form";
 import { DiffCommentsContext } from "./context";
 import { isUnsent, localCommentState, threadIsOpen, type DiffThread, type LocalCommentState, type ThreadEntry } from "./threads";
@@ -161,7 +162,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
   const replies = thread.entries.slice(1);
   const unsent = thread.entries.some(isUnsent);
   const firstLine = root.comment.body.split("\n").find((text) => text.trim() !== "") ?? "";
-  const where = thread.line === null ? (thread.outdated ? "outdated" : "file") : `${thread.side === "LEFT" ? "old " : ""}L${thread.line}`;
+  const where = shortLineLabel(thread) ?? (thread.outdated ? "outdated" : "file");
   const rootIsLocal = root.source === "local";
   const reveal = useOpenedSinceMount(open) ? cn(enter.rise, FAST) : undefined;
   // Replies already here when the thread mounted (or seen before a collapse) arrive with it, not one by one.
@@ -181,7 +182,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
         <span className="shrink-0 font-mono text-muted-foreground">{where}</span>
         {root.source === "github" ? <Badge tone="outline">GitHub</Badge> : null}
         {thread.resolved === true ? <Badge tone="success">resolved</Badge> : null}
-        {thread.outdated ? <Badge title={`Left on line ${root.comment.line ?? "?"}, which the latest push changed`}>outdated · L{root.comment.line ?? "?"}</Badge> : null}
+        {thread.outdated ? <Badge title={`Left on ${longLineLabel(root.comment) ?? "a line"}, which the latest push changed`}>outdated · {shortLineLabel(root.comment) ?? "L?"}</Badge> : null}
         {!open ? <span className="min-w-0 flex-1 truncate text-foreground">{firstLine}</span> : <span className="flex-1" />}
         {replies.length > 0 ? <span className="shrink-0 text-muted-foreground">{replies.length} repl{replies.length === 1 ? "y" : "ies"}</span> : null}
       </button>
@@ -200,8 +201,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
           ) : replying ? (
             <DiffCommentForm
               path={thread.path}
-              line={thread.line}
-              side={thread.side}
+              range={thread}
               reply
               githubAllowed={thread.onGithub}
               defaultTarget={thread.onGithub && root.source === "github" ? "github" : rootIsLocal && root.comment.target === "github" ? "github" : "local"}

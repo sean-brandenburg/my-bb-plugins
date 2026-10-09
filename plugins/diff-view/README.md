@@ -14,8 +14,10 @@ plugins embed.
   panel), structural (difftastic) or text (Pierre) diffs, unified or split,
   wrap toggle, viewed marks, ⌘-hover and ⌘-click symbol peeks in the thread's
   checkout, and `j`/`k`, `n`/`p`, `c`/`C`, `v` keys.
-- **Comments**: "+" on a line or "Comment on file", with replies. "Send N to
-  the thread" sends every unsent comment to the thread's agent as one message.
+- **Comments**: "+" on a line or "Comment on file", with replies. Drag the "+"
+  or the line numbers (or shift-click a second line number) to comment on a
+  range of lines, as on GitHub. "Send N to the thread" sends every unsent
+  comment to the thread's agent as one message.
 - **Viewed marks** remember the file's patch; a mark lapses once the file
   changes again.
 

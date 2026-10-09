@@ -97,6 +97,20 @@ describe("comments", () => {
     await expect(call("diff_comment_update", { id: root.id, body: "edited" })).rejects.toThrow(/already sent/u);
   });
 
+  it("keeps a multi-line comment's range, gives it to replies, and names it in the message", async () => {
+    await load();
+    const root = await call<DiffComment>("diff_comment_add", { threadId: "thr_1", path: "x.ts", line: 6, startLine: 2, body: "Split this" });
+    expect(root).toMatchObject({ line: 6, side: "RIGHT", startLine: 2, startSide: "RIGHT" });
+    const reply = await call<DiffComment>("diff_comment_add", { threadId: "thr_1", path: "x.ts", body: "And name it", inReplyTo: root.id });
+    expect(reply).toMatchObject({ line: 6, startLine: 2, startSide: "RIGHT" });
+    const single = await call<DiffComment>("diff_comment_add", { threadId: "thr_1", path: "x.ts", line: 3, startLine: 3, body: "One line" });
+    expect(single).toMatchObject({ line: 3, startLine: null, startSide: null });
+    await expect(call("diff_comment_add", { threadId: "thr_1", path: "x.ts", line: 2, startLine: 6, body: "Backwards" })).rejects.toThrow(/before/u);
+
+    await call("diff_comments_send", { threadId: "thr_1" });
+    expect(sent[0]!.text).toContain("- `x.ts:2-6`: Split this");
+  });
+
   it("keeps comments unsent when the thread rejects the message", async () => {
     await load();
     await call("diff_comment_add", { threadId: "thr_1", path: "x.ts", body: "Fix" });

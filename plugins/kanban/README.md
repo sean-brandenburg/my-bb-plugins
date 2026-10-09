@@ -170,7 +170,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   even then they stay collapsed and use the text diff, never difftastic.
 - **Diff comments**: hover a line in the changes view and press the "+" gutter
   button (or click the line number) to comment on that exact line, on either
-  side of the diff; "Comment on file" leaves a file-level note. On PR cards the
+  side of the diff. Drag the "+" or the line numbers, or shift-click a second
+  line number, to comment on a range instead; it posts to GitHub as a
+  multi-line comment, and the text view keeps a range inside one hunk, as
+  GitHub requires. "Comment on file" leaves a file-level note. On PR cards the
   composer has a **Local / GitHub PR** switch: local comments stay on the board
   for an agent, GitHub ones are drafts until you post them. New comments
   default to GitHub on PRs carrying the review tag (`#pr-reviews` by default,

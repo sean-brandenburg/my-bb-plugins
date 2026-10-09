@@ -8,6 +8,8 @@ import { enclosingDefinition } from "./lib/app/structural/enclosing-definition";
 import { detectMoves } from "./lib/app/structural/moves";
 import { hunkSpan, structuralRows, visibleRows } from "./lib/app/structural/rows";
 import { buildLineAnnotations } from "./lib/app/text/line-annotations";
+import { patchRows, selectionRange } from "./lib/app/text/patch-rows";
+import { checkedLineRange, locationLabel, longLineLabel, shortLineLabel } from "./lib/line-range";
 import { splitUnifiedDiff } from "./lib/server";
 import type { DiffComment, DiffFile, Finding, GithubComment, Review, StructuralDiff } from "./lib/types";
 
@@ -16,6 +18,8 @@ function local(overrides: Partial<DiffComment> & { id: string }): DiffComment {
     path: "x.ts",
     line: 1,
     side: "RIGHT",
+    startLine: null,
+    startSide: null,
     body: "body",
     target: "local",
     inReplyTo: null,
@@ -42,6 +46,8 @@ function github(overrides: Partial<GithubComment> & { id: string }): GithubComme
     line: 1,
     inReplyTo: null,
     side: "RIGHT",
+    startLine: null,
+    startSide: null,
     outdated: false,
     resolved: null,
     url: "https://github.invalid/c",
@@ -102,9 +108,14 @@ describe("buildDiffThreads", () => {
     expect(thread).toMatchObject({ id: "gone", orphaned: true, onGithub: false });
   });
 
-  it("drops the line of an outdated GitHub comment", () => {
-    const [thread] = buildDiffThreads([], [github({ id: "review-comment:1", outdated: true, line: 12 })]);
-    expect(thread).toMatchObject({ line: null, outdated: true });
+  it("drops the lines of an outdated GitHub comment", () => {
+    const [thread] = buildDiffThreads([], [github({ id: "review-comment:1", outdated: true, line: 12, startLine: 10, startSide: "RIGHT" })]);
+    expect(thread).toMatchObject({ line: null, startLine: null, startSide: null, outdated: true });
+  });
+
+  it("anchors a multi-line comment's thread on its range", () => {
+    const [thread] = buildDiffThreads([local({ id: "a", line: 14, startLine: 10, startSide: "RIGHT" })], []);
+    expect(thread).toMatchObject({ line: 14, side: "RIGHT", startLine: 10, startSide: "RIGHT" });
   });
 
   it("lets replies go to GitHub only from line comments that are, or will become, inline GitHub comments", () => {
@@ -178,7 +189,7 @@ describe("inlineFindingsByPath", () => {
 describe("buildLineAnnotations", () => {
   const threads = buildDiffThreads([local({ id: "a", line: 3 }), local({ id: "file", line: null }), local({ id: "b", line: 9, side: "LEFT" })], []);
   const findings = inlineFindingsByPath([review("r", 1, [finding("F1", [{ file: "x.ts", startLine: 3, endLine: 3 }, { file: "x.ts", startLine: 7, endLine: 7 }, { file: "x.ts", startLine: null, endLine: null }])])], null).get("x.ts")!;
-  const composer = { line: 3, side: "RIGHT" as const };
+  const composer = { line: 3, side: "RIGHT" as const, startLine: null, startSide: null };
   const keys = (list: ReturnType<typeof buildLineAnnotations>) => list.map((annotation) => annotation.metadata.key);
 
   it("puts line threads, then the composer, then each placed finding, under stable keys", () => {
@@ -243,9 +254,15 @@ describe("structural rows", () => {
   it("unfolds around findings, threads on either side, and revealed rows", () => {
     const aligned: StructuralDiff["aligned"] = [...unchanged(30).slice(0, 15), [16, null], ...unchanged(30).slice(16).map(([lhs, rhs]) => [lhs, rhs! - 1] as [number, number])];
     const rows = structuralRows(structural(aligned, [], []));
-    const visible = visibleRows(rows, { revealed: new Set([29]), findingLines: [2, null], threads: [{ line: 25, side: "LEFT" }] });
+    const visible = visibleRows(rows, { revealed: new Set([29]), findingLines: [2, null], threads: [{ line: 25, side: "LEFT", startLine: null, startSide: null }] });
     // Row 15 is the deletion; old line 25 is row 24; new line 2 is row 1.
     expect([...visible].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 29]);
+  });
+
+  it("unfolds all of a thread's range", () => {
+    const rows = structuralRows(structural(unchanged(40), [1]));
+    const visible = visibleRows(rows, { revealed: new Set(), findingLines: [], threads: [{ line: 30, side: "RIGHT", startLine: 18, startSide: "RIGHT" }] });
+    expect([...visible].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, ...Array.from({ length: 19 }, (_, i) => 14 + i)]);
   });
 
   it("spans a hunk on its new side unless it only deletes", () => {
@@ -357,5 +374,50 @@ describe("splitUnifiedDiff", () => {
     ]);
     expect(files[0]!.patch).toContain("@@ -1,2 +1,2 @@");
     expect(files[3]!.patch).toBeNull();
+  });
+});
+
+describe("line ranges", () => {
+  it("collapses a one-line range, defaults the start side, and rejects backwards or endless ranges", () => {
+    expect(checkedLineRange({ line: 5, side: "RIGHT", startLine: 5 })).toEqual({ line: 5, side: "RIGHT", startLine: null, startSide: null });
+    expect(checkedLineRange({ line: 9, side: "LEFT", startLine: 5 })).toEqual({ line: 9, side: "LEFT", startLine: 5, startSide: "LEFT" });
+    expect(checkedLineRange({ line: 3, side: "RIGHT", startLine: 8, startSide: "LEFT" })).toEqual({ line: 3, side: "RIGHT", startLine: 8, startSide: "LEFT" });
+    expect(() => checkedLineRange({ line: 5, side: "RIGHT", startLine: 9 })).toThrow(/before/u);
+    expect(() => checkedLineRange({ line: null, side: "RIGHT", startLine: 9 })).toThrow(/end line/u);
+  });
+
+  it("labels single lines, same-side ranges and ranges across sides", () => {
+    const one = { line: 12, side: "RIGHT" as const, startLine: null, startSide: null };
+    const same = { line: 6, side: "LEFT" as const, startLine: 4, startSide: "LEFT" as const };
+    const across = { line: 6, side: "RIGHT" as const, startLine: 4, startSide: "LEFT" as const };
+    expect([one, same, across].map(shortLineLabel)).toEqual(["L12", "old L4–6", "old L4 – new L6"]);
+    expect([one, same, across].map(longLineLabel)).toEqual(["line 12", "old lines 4–6", "old line 4 to new line 6"]);
+    expect([one, same, across].map((range) => locationLabel("a.ts", range))).toEqual(["a.ts:12", "a.ts:4-6 (old side)", "a.ts (old line 4 to new line 6)"]);
+    expect(locationLabel("a.ts", { line: null, side: "RIGHT", startLine: null, startSide: null })).toBe("a.ts");
+  });
+});
+
+describe("selectionRange", () => {
+  // Hunk 1: context 1, -2, +2, context 3/3. Hunk 2 starts at old 10 / new 10.
+  const rows = patchRows(["diff --git a/x b/x", "--- a/x", "+++ b/x", "@@ -1,3 +1,3 @@", " a", "-b", "+B", " c", "@@ -10,2 +10,3 @@ fn", " j", "+k", "", "\\ No newline at end of file"].join("\n"));
+
+  it("orders a selection dragged upward", () => {
+    expect(selectionRange(rows, { line: 3, side: "RIGHT" }, { line: 1, side: "RIGHT" })).toEqual({ line: 3, side: "RIGHT", startLine: 1, startSide: "RIGHT" });
+  });
+
+  it("orders a selection across sides by where the lines show, not their numbers", () => {
+    expect(selectionRange(rows, { line: 2, side: "RIGHT" }, { line: 2, side: "LEFT" })).toEqual({ line: 2, side: "RIGHT", startLine: 2, startSide: "LEFT" });
+  });
+
+  it("finds a context line from either side and collapses a selection of one row", () => {
+    expect(selectionRange(rows, { line: 3, side: "LEFT" }, { line: 3, side: "RIGHT" })).toEqual({ line: 3, side: "RIGHT", startLine: null, startSide: null });
+  });
+
+  it("cuts a selection to the hunk it ends in, counting blank context lines without their space", () => {
+    expect(selectionRange(rows, { line: 1, side: "RIGHT" }, { line: 12, side: "RIGHT" })).toEqual({ line: 12, side: "RIGHT", startLine: 10, startSide: "RIGHT" });
+  });
+
+  it("falls back to line order on one side for lines outside the patch", () => {
+    expect(selectionRange(rows, { line: 40, side: "RIGHT" }, { line: 30, side: "RIGHT" })).toEqual({ line: 40, side: "RIGHT", startLine: 30, startSide: "RIGHT" });
   });
 });

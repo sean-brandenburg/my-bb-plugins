@@ -8,12 +8,28 @@ import type { BoardStore } from "../board";
 import { GithubHttpError, githubPages, githubPost, resolveToken } from "../github";
 import type { PrComments } from "./pr-comments";
 import { errorMessage, shortId } from "../util";
+import { checkedLineRange, longLineLabel, locationLabel } from "bb-diff-view/line-range";
+import type { LineRange } from "bb-diff-view/types";
 
-export interface DiffThreadRoot {
+function sideOf(side: string | null): "LEFT" | "RIGHT" {
+  return side === "LEFT" ? "LEFT" : "RIGHT";
+}
+
+function rowRange(row: { line: number | null; side: string | null; start_line: number | null; start_side: string | null }): LineRange {
+  return { line: row.line, side: sideOf(row.side), startLine: row.start_line, startSide: row.start_line === null ? null : sideOf(row.start_side) };
+}
+
+/** Says which lines a comment that touches the old side is on, since the apply thread reads line numbers as the new file's. */
+function oldSideNote(comment: DiffComment): string {
+  if (comment.line === null || (comment.side !== "LEFT" && comment.startSide !== "LEFT")) return "";
+  if (comment.startLine === null) return `(On removed line ${comment.line} of the old file.) `;
+  if (comment.startSide === comment.side) return `(On removed lines ${comment.startLine}–${comment.line} of the old file.) `;
+  return `(On ${longLineLabel(comment)}.) `;
+}
+
+export interface DiffThreadRoot extends LineRange {
   id: string;
   path: string;
-  line: number | null;
-  side: "LEFT" | "RIGHT";
   /** The thread lives (or will live, once its draft root posts) on GitHub, so replies may go there too. */
   onGithub: boolean;
 }
@@ -63,9 +79,11 @@ export function createDiffComments(
       githubId: 0,
       author: sync.login ?? "you",
       mine: true,
-      body: `${comment.inReplyTo === null ? "" : threadContext(ticket.id, comment.inReplyTo, batch)}${comment.side === "LEFT" && comment.line !== null ? `(On removed line ${comment.line} of the old file.) ` : ""}${comment.body}`,
+      body: `${comment.inReplyTo === null ? "" : threadContext(ticket.id, comment.inReplyTo, batch)}${oldSideNote(comment)}${comment.body}`,
       path: comment.path,
       line: comment.line,
+      startLine: comment.startLine,
+      startSide: comment.startSide,
       reviewState: null,
       inReplyTo: comment.inReplyTo === null ? null : comment.inReplyTo.startsWith("review-comment:") ? comment.inReplyTo : `local:${comment.inReplyTo}`,
       side: comment.side,
@@ -92,11 +110,12 @@ export function createDiffComments(
         // Posted from the board but not synced back yet.
         const draft = stmts.diffCommentByGithubId.get(ticketId, id);
         if (draft === undefined) throw new Error(`No GitHub review comment ${id} on this card`);
-        return { id, path: draft.path, line: draft.line, side: draft.side === "LEFT" ? "LEFT" : "RIGHT", onGithub: true };
+        return { id, path: draft.path, ...rowRange(draft), onGithub: true };
       }
       if (comment.ticket_id !== ticketId) throw new Error(`No GitHub review comment ${id} on this card`);
       if (comment.in_reply_to !== null) return diffThreadRoot(ticketId, comment.in_reply_to);
-      return { id, path: comment.path ?? "", line: comment.outdated === 1 ? null : comment.line, side: comment.side === "LEFT" ? "LEFT" : "RIGHT", onGithub: true };
+      const range = rowRange(comment);
+      return { id, path: comment.path ?? "", ...(comment.outdated === 1 ? { ...range, line: null, startLine: null, startSide: null } : range), onGithub: true };
     }
     const comment = stmts.diffCommentById.get(id);
     if (comment === undefined || comment.ticket_id !== ticketId) throw new Error(`No diff comment ${id} on this card`);
@@ -105,7 +124,7 @@ export function createDiffComments(
       return diffThreadRoot(ticketId, comment.github_comment_id);
     }
     const onGithub = comment.target === "github" && comment.line !== null && (comment.posted_at === null || (comment.github_comment_id?.startsWith("review-comment:") ?? false));
-    return { id: comment.github_comment_id?.startsWith("review-comment:") ? comment.github_comment_id : comment.id, path: comment.path, line: comment.line, side: comment.side === "LEFT" ? "LEFT" : "RIGHT", onGithub };
+    return { id: comment.github_comment_id?.startsWith("review-comment:") ? comment.github_comment_id : comment.id, path: comment.path, ...rowRange(comment), onGithub };
   }
 
   function assertCommentTarget(ticket: Ticket, target: DiffCommentTarget, root: DiffThreadRoot | null): void {
@@ -130,8 +149,7 @@ export function createDiffComments(
     if (topLevel.length > 0) {
       const inline = topLevel.filter((comment) => comment.line !== null);
       const general = topLevel.filter((comment) => comment.line === null);
-      const where = (comment: DiffComment) => `${comment.path}${comment.line === null ? "" : `:${comment.line}${comment.side === "LEFT" ? " (old)" : ""}`}`;
-      const summarize = (list: DiffComment[]) => list.map((comment) => `- \`${where(comment)}\` — ${comment.body.trim()}`).join("\n");
+      const summarize = (list: DiffComment[]) => list.map((comment) => `- \`${locationLabel(comment.path, comment)}\` — ${comment.body.trim()}`).join("\n");
       const path = `/repos/${repo}/pulls/${number}/reviews`;
       const commitId = (await ticketDiff(ticket, false)).headSha;
       let review: { id: number; html_url: string };
@@ -141,7 +159,13 @@ export function createDiffComments(
           event: "COMMENT",
           ...(commitId === null ? {} : { commit_id: commitId }),
           body: general.length === 0 ? "" : summarize(general),
-          comments: inline.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side, body: comment.body.trim() })),
+          comments: inline.map((comment) => ({
+            path: comment.path,
+            ...(comment.startLine === null ? {} : { start_line: comment.startLine, start_side: comment.startSide ?? comment.side }),
+            line: comment.line,
+            side: comment.side,
+            body: comment.body.trim(),
+          })),
         });
       } catch (error) {
         // A line outside the diff makes GitHub reject the whole review; fall back to one body-only review.
@@ -175,7 +199,7 @@ export function createDiffComments(
       if (reply === undefined || reply.posted_at !== null) continue;
       const rootId = reply.in_reply_to ?? "";
       if (!rootId.startsWith("review-comment:")) {
-        failed.push(`${reply.path}${reply.line === null ? "" : `:${reply.line}`}: its thread is not an inline GitHub comment`);
+        failed.push(`${locationLabel(reply.path, rowRange(reply))}: its thread is not an inline GitHub comment`);
         continue;
       }
       try {
@@ -189,7 +213,7 @@ export function createDiffComments(
         repliesPosted += 1;
         url ??= created.html_url;
       } catch (error) {
-        failed.push(`${reply.path}${reply.line === null ? "" : `:${reply.line}`}: ${errorMessage(error)}`);
+        failed.push(`${locationLabel(reply.path, rowRange(reply))}: ${errorMessage(error)}`);
       }
     }
     const row = stmts.byId.get(ticket.id);
@@ -221,6 +245,8 @@ export function createDiffComments(
     path,
     line,
     side,
+    startLine,
+    startSide,
     body,
     target,
     inReplyTo,
@@ -229,12 +255,15 @@ export function createDiffComments(
     path: string;
     line: number | null;
     side: "LEFT" | "RIGHT";
+    startLine?: number | null | undefined;
+    startSide?: "LEFT" | "RIGHT" | null | undefined;
     body: string;
     target?: DiffCommentTarget | undefined;
     inReplyTo: string | null;
   }): Promise<DiffComment> {
     const ticket = await resolveDiffSubject(ticketId);
     const root = inReplyTo === null ? null : diffThreadRoot(ticket.id, inReplyTo);
+    const anchor = root ?? checkedLineRange({ line, side: line === null ? "RIGHT" : side, startLine, startSide });
     const chosen = target ?? (root === null ? ticket.defaultCommentTarget : "local");
     assertCommentTarget(ticket, chosen, root);
     const now = Date.now();
@@ -243,8 +272,10 @@ export function createDiffComments(
       id,
       ticket_id: ticket.id,
       path: root?.path ?? path,
-      line: root === null ? line : root.line,
-      side: root?.side ?? (line === null ? "RIGHT" : side),
+      line: anchor.line,
+      side: anchor.side,
+      start_line: anchor.startLine,
+      start_side: anchor.startSide,
       body,
       target: chosen,
       in_reply_to: root?.id ?? null,
@@ -272,7 +303,9 @@ export function createDiffComments(
         throw new Error("Replies in this thread are headed to GitHub; make them local first");
       }
     }
-    stmts.updateDiffComment.run(body ?? row.body, line === undefined || row.in_reply_to !== null ? row.line : line, nextTarget, Date.now(), id);
+    // Moving a comment to another line makes it a one-line comment there.
+    const range = line === undefined || row.in_reply_to !== null ? rowRange(row) : checkedLineRange({ line, side: sideOf(row.side) });
+    stmts.updateDiffComment.run(body ?? row.body, range.line, range.startLine, range.startSide, nextTarget, Date.now(), id);
     publish();
     return rowToDiffComment(stmts.diffCommentById.get(id)!);
   }

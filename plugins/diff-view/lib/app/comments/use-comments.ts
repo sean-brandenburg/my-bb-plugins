@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { DiffComment, DiffCommentTarget, DiffSide, GithubComment } from "../../types";
+import type { DiffComment, DiffCommentTarget, GithubComment, LineRange } from "../../types";
 import { errorMessage } from "../format";
 import type { DiffSource } from "../source";
 import { buildDiffThreads, localCommentState, type DiffThread } from "./threads";
@@ -39,9 +39,9 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
       toast.error(errorMessage(cause));
     }
   };
-  const addComment = async (path: string, line: number | null, side: DiffSide, body: string, target: DiffCommentTarget) => {
+  const addComment = async (path: string, range: LineRange, body: string, target: DiffCommentTarget) => {
     try {
-      await source.addComment({ path, line, side, body, target, inReplyTo: null });
+      await source.addComment({ path, line: range.line, side: range.side, startLine: range.startLine, startSide: range.startSide, body, target, inReplyTo: null });
       setLastTarget(target);
       loadComments();
     } catch (cause) {
@@ -51,7 +51,7 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
   };
   const reply = async (thread: DiffThread, body: string, target: DiffCommentTarget) => {
     try {
-      await source.addComment({ path: thread.path, line: thread.line, side: thread.side, body, target, inReplyTo: thread.id });
+      await source.addComment({ path: thread.path, line: thread.line, side: thread.side, startLine: thread.startLine, startSide: thread.startSide, body, target, inReplyTo: thread.id });
       loadComments();
     } catch (cause) {
       toast.error(errorMessage(cause));

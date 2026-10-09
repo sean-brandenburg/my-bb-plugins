@@ -79,7 +79,7 @@ function stubGithub(options: {
   codeSearch?: Array<{ path: string; fragment: string }>;
   comments?: {
     issue?: Array<{ id: number; login: string; body: string }>;
-    review?: Array<{ id: number; login: string; body: string; path: string; line: number | null; side?: "LEFT" | "RIGHT"; replyTo?: number }>;
+    review?: Array<{ id: number; login: string; body: string; path: string; line: number | null; side?: "LEFT" | "RIGHT"; startLine?: number; replyTo?: number }>;
     reviews?: Array<{ id: number; login: string; body: string; state: string; submitted?: boolean }>;
   };
   /** Root review-comment ids of resolved threads, answered from the GraphQL reviewThreads query. */
@@ -167,6 +167,9 @@ function stubGithub(options: {
         (options.comments?.review ?? []).map((comment) => ({
           id: comment.id, user: { login: comment.login }, body: comment.body, path: comment.path, line: comment.line, original_line: comment.line ?? 1, side: comment.side ?? "RIGHT",
           ...(comment.replyTo === undefined ? {} : { in_reply_to_id: comment.replyTo }),
+          ...(comment.startLine === undefined
+            ? { start_line: null, original_start_line: null, start_side: null }
+            : { start_line: comment.line === null ? null : comment.startLine, original_start_line: comment.startLine, start_side: comment.side ?? "RIGHT" }),
           html_url: `https://github.com/${reviewComments[1]}/pull/${reviewComments[2]}#discussion_r${comment.id}`,
           created_at: "2026-10-05T11:00:00Z", updated_at: "2026-10-05T11:00:00Z",
         })),
@@ -1357,6 +1360,40 @@ describe("diff view and diff comments", () => {
     await current().harness.behavior.runCli(["comments-applied", "--commit", "abc1234", "--pushed"], { threadId: "thr_1", signal: new AbortController().signal });
     ({ comments } = (await current().harness.behavior.callRpc("diff_comments_list", { ticketId: card.id })) as { comments: DiffComment[] });
     expect(comments.find((comment) => comment.id === local.id)?.addressedAt).toEqual(expect.any(Number));
+  });
+
+  it("posts multi-line comments with their start line, syncs GitHub's, and names the range for the agent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        requested: [searchItem("acme-co/widgets", 7, { title: "Refactor", user: { login: "alice" } })],
+        comments: { review: [{ id: 501, login: "bob", body: "This block", path: "a.go", line: 4, startLine: 2 }, { id: 502, login: "bob", body: "Gone", path: "a.go", line: null, startLine: 5 }] },
+      }),
+    );
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const card = (await board()).tickets[0]!;
+    const synced = ((await current().harness.behavior.callRpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] }).comments;
+    expect(synced.find((comment) => comment.id === "review-comment:501")).toMatchObject({ line: 4, startLine: 2, startSide: "RIGHT", outdated: false });
+    expect(synced.find((comment) => comment.id === "review-comment:502")).toMatchObject({ line: 1, startLine: 5, outdated: true });
+
+    const draft = (await current().harness.behavior.callRpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 3, startLine: 1, startSide: "LEFT", side: "RIGHT", body: "Rename across both" })) as DiffComment;
+    expect(draft).toMatchObject({ line: 3, side: "RIGHT", startLine: 1, startSide: "LEFT", target: "github" });
+    await expect(current().harness.behavior.callRpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 1, startLine: 3, body: "Backwards" })).rejects.toThrow(/before/u);
+    const reply = (await current().harness.behavior.callRpc("diff_comment_add", { ticketId: card.id, path: "x", body: "Same here", inReplyTo: "review-comment:501", target: "local" })) as DiffComment;
+    expect(reply).toMatchObject({ path: "a.go", line: 4, startLine: 2, startSide: "RIGHT" });
+    const local = (await current().harness.behavior.callRpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 3, side: "LEFT", startLine: 1, body: "Drop these", target: "local" })) as DiffComment;
+
+    await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, address: false });
+    expect(posted[0]).toMatchObject({ comments: [{ path: "a.go", start_line: 1, start_side: "LEFT", line: 3, side: "RIGHT", body: "Rename across both" }] });
+
+    await current().harness.behavior.callRpc("diff_comment_delete", { id: reply.id });
+    const toAgent = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true, autoApprove: true })) as { apply: CommentApply | null };
+    expect(toAgent.apply?.commentIds).toEqual([`local:${local.id}`]);
+    const prompt = String(spawned[0]!.prompt);
+    expect(prompt).toContain("a.go:1-3 (old side) (left on the Kanban diff view)");
+    expect(prompt).toContain("(On removed lines 1–3 of the old file.) Drop these");
+    expect(prompt).toContain('"startLine": 1');
   });
 
   it("defaults to local comments without the review tag, still posts GitHub drafts, and falls back to a body-only review on 422", async () => {

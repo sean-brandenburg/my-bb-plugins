@@ -43,8 +43,8 @@ function useThreadDiffSource(threadId: string): DiffSource {
       listViewed: async () => (await rpc.call("diff_viewed_list", { threadId })).paths,
       setViewed: async (path, viewed) => (await rpc.call("diff_viewed_set", { threadId, path, viewed })).paths,
       listComments: async () => (await rpc.call("diff_comments_list", { threadId })).comments,
-      addComment: async ({ path, line, side, body, inReplyTo }) => {
-        await rpc.call("diff_comment_add", { threadId, path, line, side, body, inReplyTo });
+      addComment: async ({ path, line, side, startLine, startSide, body, inReplyTo }) => {
+        await rpc.call("diff_comment_add", { threadId, path, line, side, startLine, startSide, body, inReplyTo });
       },
       updateComment: async (id, { body }) => {
         if (body !== undefined) await rpc.call("diff_comment_update", { id, body });

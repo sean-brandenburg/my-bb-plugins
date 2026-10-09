@@ -127,10 +127,11 @@ export function prepareStatements(db: KanbanDatabase) {
     ),
     commentById: db.prepare<[string], PrCommentRow>(`SELECT * FROM pr_comments WHERE id = ?`),
     upsertComment: db.prepare(
-      `INSERT INTO pr_comments (id, ticket_id, kind, github_id, author, mine, body, path, line, review_state, in_reply_to, side, outdated, resolved, url, created_at, updated_at)
-       VALUES (@id, @ticket_id, @kind, @github_id, @author, @mine, @body, @path, @line, @review_state, @in_reply_to, @side, @outdated, @resolved, @url, @created_at, @updated_at)
+      `INSERT INTO pr_comments (id, ticket_id, kind, github_id, author, mine, body, path, line, review_state, in_reply_to, side, start_line, start_side, outdated, resolved, url, created_at, updated_at)
+       VALUES (@id, @ticket_id, @kind, @github_id, @author, @mine, @body, @path, @line, @review_state, @in_reply_to, @side, @start_line, @start_side, @outdated, @resolved, @url, @created_at, @updated_at)
        ON CONFLICT(id) DO UPDATE SET author = excluded.author, mine = excluded.mine, body = excluded.body, path = excluded.path,
-         line = excluded.line, review_state = excluded.review_state, side = excluded.side, outdated = excluded.outdated,
+         line = excluded.line, review_state = excluded.review_state, side = excluded.side, start_line = excluded.start_line,
+         start_side = excluded.start_side, outdated = excluded.outdated,
          resolved = COALESCE(excluded.resolved, pr_comments.resolved), url = excluded.url, updated_at = excluded.updated_at`,
     ),
     deleteStaleComments: db.prepare<[string, string]>(
@@ -176,10 +177,12 @@ export function prepareStatements(db: KanbanDatabase) {
     diffCommentByGithubId: db.prepare<[string, string], DiffCommentRow>(`SELECT * FROM diff_comments WHERE ticket_id = ? AND github_comment_id = ? LIMIT 1`),
     diffCommentByAnyGithubId: db.prepare<[string], DiffCommentRow>(`SELECT * FROM diff_comments WHERE github_comment_id = ? LIMIT 1`),
     insertDiffComment: db.prepare(
-      `INSERT INTO diff_comments (id, ticket_id, path, line, side, body, target, in_reply_to, author, author_thread_id, created_at, updated_at)
-       VALUES (@id, @ticket_id, @path, @line, @side, @body, @target, @in_reply_to, @author, @author_thread_id, @created_at, @updated_at)`,
+      `INSERT INTO diff_comments (id, ticket_id, path, line, side, start_line, start_side, body, target, in_reply_to, author, author_thread_id, created_at, updated_at)
+       VALUES (@id, @ticket_id, @path, @line, @side, @start_line, @start_side, @body, @target, @in_reply_to, @author, @author_thread_id, @created_at, @updated_at)`,
     ),
-    updateDiffComment: db.prepare<[string, number | null, string, number, string]>(`UPDATE diff_comments SET body = ?, line = ?, target = ?, updated_at = ? WHERE id = ?`),
+    updateDiffComment: db.prepare<[string, number | null, number | null, string | null, string, number, string]>(
+      `UPDATE diff_comments SET body = ?, line = ?, start_line = ?, start_side = ?, target = ?, updated_at = ? WHERE id = ?`,
+    ),
     deleteDiffComment: db.prepare<[string, string]>(`DELETE FROM diff_comments WHERE id = ? OR in_reply_to = ?`),
     deleteDiffCommentsForTicket: db.prepare<[string]>(`DELETE FROM diff_comments WHERE ticket_id = ?`),
     viewedPathsForHead: db.prepare<[string, string], { path: string }>(`SELECT path FROM diff_viewed WHERE ticket_id = ? AND head_sha = ? ORDER BY path`),

@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { locationLabel } from "bb-diff-view/line-range";
 import { relativeTime, shortSha } from "./format";
 import { type Rpc, usePushPreference, useNow } from "./data";
 import { ExternalLink, PushToggle, Badge, ThreadStatusDot, COMPACT, Group } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 function commentWhere(comment: PrComment): string {
-  if (comment.kind === "review-comment") return `${comment.path ?? "?"}${comment.line === null ? "" : `:${comment.line}`}`;
+  if (comment.kind === "review-comment") return locationLabel(comment.path ?? "?", comment);
   if (comment.kind === "review") return `review · ${(comment.reviewState ?? "COMMENTED").toLowerCase().replace("_", " ")}`;
   return "conversation";
 }

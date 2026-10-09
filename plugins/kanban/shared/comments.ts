@@ -18,6 +18,9 @@ export const prCommentSchema = z.object({
   inReplyTo: z.string().nullable(),
   /** Diff side an inline comment sits on. */
   side: diffSideSchema,
+  /** First line of a multi-line comment, which ends at `line`; null for one line. */
+  startLine: z.number().int().nullable(),
+  startSide: diffSideSchema.nullable(),
   /** The line it was left on no longer exists in the PR head; `line` is then the original line. */
   outdated: z.boolean(),
   /** Whether the review thread is resolved on GitHub; null when unknown. */
@@ -57,6 +60,9 @@ export const diffCommentSchema = z.object({
   line: z.number().int().nullable(),
   /** Which side of the diff the line number refers to: RIGHT = new file (default), LEFT = removed line. */
   side: diffSideSchema,
+  /** First line of a multi-line comment, which ends at `line`; null for one line. */
+  startLine: z.number().int().nullable(),
+  startSide: diffSideSchema.nullable(),
   body: z.string(),
   target: diffCommentTargetSchema,
   /** Thread root: another diff comment's id, or a synced GitHub comment id (`review-comment:<n>`). */

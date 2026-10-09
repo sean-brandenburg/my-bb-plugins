@@ -1,13 +1,11 @@
-import type { DiffComment, DiffSide, GithubComment } from "../../types";
+import type { DiffComment, GithubComment, LineRange } from "../../types";
 
 export type ThreadEntry = { source: "github"; comment: GithubComment } | { source: "local"; comment: DiffComment };
 
-/** A conversation anchored to one line (or file): a GitHub review thread or one started on the board, with replies from either. */
-export interface DiffThread {
+/** A conversation anchored to a line, a range ending at `line`, or the file: a GitHub review thread or one started on the board, with replies from either. */
+export interface DiffThread extends LineRange {
   id: string;
   path: string;
-  line: number | null;
-  side: DiffSide;
   entries: ThreadEntry[];
   /** Replies may be posted to GitHub: the root is an inline GitHub comment, or a GitHub draft that will become one. */
   onGithub: boolean;
@@ -49,6 +47,8 @@ export function buildDiffThreads(local: readonly DiffComment[], github: readonly
     path: comment.path,
     line: comment.outdated ? null : comment.line,
     side: comment.side,
+    startLine: comment.outdated ? null : comment.startLine,
+    startSide: comment.outdated ? null : comment.startSide,
     entries: [{ source: "github", comment }],
     onGithub: true,
     outdated: comment.outdated,
@@ -60,6 +60,8 @@ export function buildDiffThreads(local: readonly DiffComment[], github: readonly
     path: comment.path,
     line: comment.line,
     side: comment.side,
+    startLine: comment.startLine,
+    startSide: comment.startSide,
     entries: [{ source: "local", comment }],
     onGithub: comment.target === "github" && comment.line !== null && (comment.postedAt === null || (comment.githubCommentId?.startsWith("review-comment:") ?? false)),
     outdated: false,

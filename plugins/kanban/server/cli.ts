@@ -1,5 +1,6 @@
 import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
@@ -443,12 +444,12 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             const now = Date.now();
             const replyId = shortId();
             stmts.insertDiffComment.run({
-              id: replyId, ticket_id: ticketId, path: root.path, line: root.line, side: root.side, body: body.slice(0, 10_000),
+              id: replyId, ticket_id: ticketId, path: root.path, line: root.line, side: root.side, start_line: root.startLine, start_side: root.startSide, body: body.slice(0, 10_000),
               target: "local", in_reply_to: root.id, author: "agent", author_thread_id: ctx.threadId ?? null, created_at: now, updated_at: now,
             });
             publish();
             const reply = rowToDiffComment(stmts.diffCommentById.get(replyId)!);
-            return { exitCode: 0, stdout: options.json ? JSON.stringify(reply) : `Replied in the thread on ${root.path}${root.line === null ? "" : `:${root.line}`}` };
+            return { exitCode: 0, stdout: options.json ? JSON.stringify(reply) : `Replied in the thread on ${locationLabel(root.path, root)}` };
           },
         }),
         "review-applied": cliCommand({

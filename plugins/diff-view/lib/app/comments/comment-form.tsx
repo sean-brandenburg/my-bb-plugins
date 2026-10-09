@@ -1,6 +1,7 @@
 import { useContext, useState } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import type { DiffCommentTarget, DiffSide } from "../../types";
+import type { DiffCommentTarget, LineRange } from "../../types";
+import { longLineLabel } from "../../line-range";
 import { Button, COMPACT } from "../ui/button";
 import { cn } from "../utils";
 import { FAST, PRESS, enter } from "../ui/motion";
@@ -33,8 +34,7 @@ function CommentTargetToggle({ target, onChange, canPostToGithub, githubAllowed 
 
 export function DiffCommentForm({
   path,
-  line,
-  side,
+  range,
   defaultTarget,
   githubAllowed = true,
   reply = false,
@@ -42,8 +42,7 @@ export function DiffCommentForm({
   onCancel,
 }: {
   path: string;
-  line: number | null;
-  side: DiffSide;
+  range: LineRange;
   defaultTarget: DiffCommentTarget;
   githubAllowed?: boolean;
   reply?: boolean;
@@ -73,7 +72,7 @@ export function DiffCommentForm({
         {reply ? <span>Reply</span> : (
           <>
             <span className="truncate font-mono">{path}</span>
-            <code>{line === null ? "whole file" : `${side === "LEFT" ? "old " : ""}line ${line}`}</code>
+            <code>{longLineLabel(range) ?? "whole file"}</code>
           </>
         )}
         <span className="ml-auto">

@@ -180,6 +180,9 @@ export const rpcContract = defineRpcContract({
         path: z.string().min(1),
         line: z.number().int().min(1).nullable().default(null),
         side: diffSideSchema.default("RIGHT"),
+        /** First line of a multi-line comment, which ends at `line`. */
+        startLine: z.number().int().min(1).nullable().default(null),
+        startSide: diffSideSchema.nullable().default(null),
         body: z.string().trim().min(1).max(10_000),
         /** Defaults to the card's default target for new threads, and to local for replies. */
         target: diffCommentTargetSchema.optional(),

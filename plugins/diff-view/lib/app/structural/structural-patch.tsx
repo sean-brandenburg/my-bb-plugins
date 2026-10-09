@@ -1,6 +1,7 @@
 import { Fragment, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DiffSide, HunkExplanation, SemanticChange, StructuralDiff, SymbolLookup } from "../../types";
+import { checkedLineRange } from "../../line-range";
 import { Button, COMPACT } from "../ui/button";
 import { cn } from "../utils";
 import { FAST, PRESS, SHIMMER, enter } from "../ui/motion";
@@ -32,7 +33,18 @@ const LARGE_FILE_PREVIEW_ROWS = 60;
 /** How far past the preview a whole-file diff may run before it is cut to the preview. */
 const LARGE_FILE_PREVIEW_SLACK = 10;
 
-/** difftastic's side-by-side diff of one file, folded to GitHub-style hunks, with comments, findings, symbol peeks and the tour's semantic labels inline. */
+/** A line-number drag in progress: one side's lines from `anchor` to `current`, in either direction. */
+interface LineDrag {
+  side: DiffSide;
+  anchor: number;
+  current: number;
+}
+
+/**
+ * difftastic's side-by-side diff of one file, folded to GitHub-style hunks, with comments, findings, symbol peeks and
+ * the tour's semantic labels inline. Clicking a line number comments on that line; dragging over line numbers, or
+ * shift-clicking with the comment form open, comments on a range of one side's lines.
+ */
 export function StructuralPatch({
   path,
   threads,
@@ -63,6 +75,7 @@ export function StructuralPatch({
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
   const [showAll, setShowAll] = useState(false);
+  const [drag, setDrag] = useState<LineDrag | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
   const { wrap: diffWrap } = useDiffPreferences();
   const themeName = useHostThemeName();
@@ -88,6 +101,21 @@ export function StructuralPatch({
     };
   }, [source, path]);
   const symbols = useSymbolNavigation(source);
+  useEffect(() => {
+    if (drag === null) return;
+    const finish = () => {
+      setDrag(null);
+      const [from, to] = drag.anchor <= drag.current ? [drag.anchor, drag.current] : [drag.current, drag.anchor];
+      onStartComment(checkedLineRange({ line: to, side: drag.side, startLine: from, startSide: drag.side }));
+    };
+    const cancel = () => setDrag(null);
+    document.addEventListener("pointerup", finish);
+    document.addEventListener("pointercancel", cancel);
+    return () => {
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", cancel);
+    };
+  }, [drag, onStartComment]);
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
   if (diff === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   if (!diff.available) {
@@ -123,6 +151,19 @@ export function StructuralPatch({
     });
   };
   const threadsAt = (side: DiffSide, line: number) => threads.filter((thread) => thread.line === line && thread.side === side);
+  const selected = (side: DiffSide, line: number): boolean => {
+    if (drag !== null) return side === drag.side && line >= Math.min(drag.anchor, drag.current) && line <= Math.max(drag.anchor, drag.current);
+    if (composer === null || composer.line === null) return false;
+    if (composer.startLine === null || composer.startSide === null) return side === composer.side && line === composer.line;
+    if (composer.startSide === composer.side) return side === composer.side && line >= composer.startLine && line <= composer.line;
+    return side === composer.startSide ? line >= composer.startLine : line <= composer.line;
+  };
+  /** A shift-click extends the open comment's range on the same side, from whichever end stays put. */
+  const dragAnchor = (side: DiffSide, line: number, extend: boolean): number => {
+    if (!extend || composer === null || composer.line === null || composer.side !== side || (composer.startSide ?? side) !== side) return line;
+    const start = composer.startLine ?? composer.line;
+    return line < start ? composer.line : start;
+  };
   const semanticAt = (side: DiffSide, line: number): SemanticChange | null =>
     semantics.find((change) => {
       if (change.kind === "logic") return false;
@@ -139,8 +180,9 @@ export function StructuralPatch({
     const lineTokens = (side === "LEFT" ? oldTokens : newTokens)?.[line - 1] ?? null;
     const semantic = rowChanged && movedRow === null ? semanticAt(side, line) : null;
     const neutral = movedRow !== null || semantic !== null;
-    const tint = neutral ? "bg-violet-500/10" : rowChanged && (side === "LEFT" ? "bg-red-500/10" : "bg-emerald-500/10");
-    const gutterTint = neutral ? "bg-violet-500/20" : rowChanged && (side === "LEFT" ? "bg-red-500/20" : "bg-emerald-500/20");
+    const inSelection = selected(side, line);
+    const tint = inSelection ? "bg-amber-400/20" : neutral ? "bg-violet-500/10" : rowChanged && (side === "LEFT" ? "bg-red-500/10" : "bg-emerald-500/10");
+    const gutterTint = inSelection ? "bg-amber-400/35" : neutral ? "bg-violet-500/20" : rowChanged && (side === "LEFT" ? "bg-red-500/20" : "bg-emerald-500/20");
     const changedSince = side === "RIGHT" && rangesOverlap(line, line, changedRanges);
     const movedLabel =
       movedRow !== null && movedRow.first ? (
@@ -158,9 +200,18 @@ export function StructuralPatch({
         <td className={cn("group/ln select-none border-r border-border/60 pr-2 text-right align-top text-muted-foreground/70", gutterTint, changedSince && "shadow-[inset_2px_0_0_0_theme(colors.sky.500)]")} title={changedSince ? "Changed since you last looked" : undefined}>
           <button
             type="button"
-            className="relative w-full text-right tabular-nums hover:text-foreground"
-            title="Comment on this line"
-            onClick={() => onStartComment(line, side)}
+            className="relative w-full touch-none text-right tabular-nums hover:text-foreground"
+            title="Comment on this line; drag or shift-click for several"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              // Keeps the drag from selecting text.
+              event.preventDefault();
+              setDrag({ side, anchor: dragAnchor(side, line, event.shiftKey), current: line });
+            }}
+            onClick={(event) => {
+              // Pointer clicks start from pointerdown; this is the keyboard's Enter or Space.
+              if (event.detail === 0) onStartComment(checkedLineRange({ line, side }));
+            }}
           >
             <span className="group-hover/ln:invisible">{line}</span>
             <span className="absolute inset-0 hidden items-center justify-end pr-0.5 text-primary group-hover/ln:flex">+</span>
@@ -184,7 +235,7 @@ export function StructuralPatch({
           {list.map((thread) => (
             <DiffThreadView key={thread.id} thread={thread} />
           ))}
-          {composing ? <DiffCommentForm path={path} line={line} side={side} defaultTarget={composeTarget} onSubmit={onSubmitComposer} onCancel={onCancelComposer} /> : null}
+          {composing && composer !== null ? <DiffCommentForm path={path} range={composer} defaultTarget={composeTarget} onSubmit={onSubmitComposer} onCancel={onCancelComposer} /> : null}
           {lineFindings.map((entry) => (
             <FindingAnnotation key={`${entry.item.reviewId}:${entry.item.finding.id}`} item={entry.item} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
           ))}
@@ -317,7 +368,18 @@ export function StructuralPatch({
     if (startsHunk) body.push(hunkHeader(row.index));
     body.push(
       <Fragment key={row.index}>
-        <tr className={cn("hover:bg-state-hover/40", unfolded && [enter.fade, FAST])} data-row={row.index}>
+        <tr
+          className={cn("hover:bg-state-hover/40", unfolded && [enter.fade, FAST])}
+          data-row={row.index}
+          onPointerEnter={
+            drag === null
+              ? undefined
+              : () => {
+                  const line = drag.side === "LEFT" ? row.lhs : row.rhs;
+                  if (line !== null && line !== drag.current) setDrag({ ...drag, current: line });
+                }
+          }
+        >
           {lineCell(row.lhs, "LEFT", row.changed, moved.get(row.index) ?? null)}
           {lineCell(row.rhs, "RIGHT", row.changed, moved.get(row.index) ?? null)}
         </tr>

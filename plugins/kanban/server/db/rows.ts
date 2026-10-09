@@ -104,6 +104,8 @@ export interface PrCommentRow {
   review_state: string | null;
   in_reply_to: string | null;
   side: string;
+  start_line: number | null;
+  start_side: string | null;
   outdated: number;
   resolved: number | null;
   url: string;
@@ -119,6 +121,8 @@ export interface DiffCommentRow {
   path: string;
   line: number | null;
   side: string | null;
+  start_line: number | null;
+  start_side: string | null;
   body: string;
   target: string;
   in_reply_to: string | null;
@@ -133,6 +137,11 @@ export interface DiffCommentRow {
   apply_id: string | null;
 }
 
+function sideOf(startLine: number | null, side: string | null): "LEFT" | "RIGHT" | null {
+  if (startLine === null) return null;
+  return side === "LEFT" ? "LEFT" : "RIGHT";
+}
+
 export function rowToDiffComment(row: DiffCommentRow): DiffComment {
   return {
     id: row.id,
@@ -140,6 +149,8 @@ export function rowToDiffComment(row: DiffCommentRow): DiffComment {
     path: row.path,
     line: row.line,
     side: row.side === "LEFT" ? "LEFT" : "RIGHT",
+    startLine: row.start_line,
+    startSide: sideOf(row.start_line, row.start_side),
     body: row.body,
     target: row.target === "github" ? "github" : "local",
     inReplyTo: row.in_reply_to,
@@ -232,6 +243,8 @@ export function rowToComment(row: PrCommentRow): PrComment {
     reviewState: row.review_state,
     inReplyTo: row.in_reply_to,
     side: row.side === "LEFT" ? "LEFT" : "RIGHT",
+    startLine: row.start_line,
+    startSide: sideOf(row.start_line, row.start_side),
     outdated: row.outdated === 1,
     resolved: row.resolved === null ? null : row.resolved === 1,
     url: row.url,
