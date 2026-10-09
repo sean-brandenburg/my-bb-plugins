@@ -165,6 +165,7 @@ function TicketDetails({
               type="button"
               className={HEADER_ICON_BUTTON}
               aria-label="View changes"
+              data-kanban-initial-stop=""
               title={ticket.pendingDiffComments > 0 ? `View changes · ${ticket.pendingDiffComments} comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet` : "View changes"}
               onClick={() => onOpenDiff(ticket.id)}
             >

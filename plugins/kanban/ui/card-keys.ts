@@ -7,6 +7,8 @@ const STOPS =
   'a[href], button:not(:disabled), input:not(:disabled):not([readonly]):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled):not([readonly]), [contenteditable="true"]';
 /** The text box the cursor rests on while focus stays on the card, so keys still move. */
 const PARKED = "data-kanban-cursor";
+/** Where the cursor starts when a card opens, if the card has it; otherwise the first stop. */
+const INITIAL_STOP = "[data-kanban-initial-stop]";
 /** The card's main text box, which `i` goes to when the cursor is on no text box. */
 const MAIN_INPUT = "[data-kanban-main-input]";
 const PREFIX_TIMEOUT_MS = 500;
@@ -103,7 +105,8 @@ export function useCardKeys(
     const focusFirst = () => {
       const root = rootRef.current;
       if (root === null) return;
-      const first = stops(root)[0];
+      const list = stops(root);
+      const first = list.find((stop) => stop.matches(INITIAL_STOP)) ?? list[0];
       if (first !== undefined) land(root, first);
       else root.focus({ preventScroll: true });
     };

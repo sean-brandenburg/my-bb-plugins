@@ -39,8 +39,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   card to the current column, `za` shows or hides the column's old cards
   (see Columns), and `?` (or Settings → Keyboard shortcuts) lists
   them all. Arrow keys work as `h`/`j`/`k`/`l`.
-  Opening a card from the keyboard puts the keys in the card, which move the
-  way it is laid out: `j`/`k` go to the field or button below or above,
+  Opening a card from the keyboard puts the keys in the card, with the cursor
+  on its View changes button when it has one; the keys move the way the card
+  is laid out: `j`/`k` go to the field or button below or above,
   `h`/`l` along a row (such as the buttons beside the title), `gg`/`G` to the
   first or last, and Ctrl-d/Ctrl-u scroll half a page. Enter or Space presses a button; on a text box, Enter or `i` starts
   typing (`i` elsewhere goes to the description). Escape returns to the keys;
