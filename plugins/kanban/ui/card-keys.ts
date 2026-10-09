@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
-import { stepIndex } from "./board-nav";
+import { spatialStep, type Direction } from "./board-nav";
 
 const NON_TEXT_INPUTS = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file", "image"]);
 const STOPS =
@@ -133,6 +133,11 @@ export function useCardKeys(
     const list = stops(root);
     const current = target === root ? parked(root) : (list.find((stop) => stop === target || stop.contains(target)) ?? null);
     const index = current === null ? -1 : list.indexOf(current);
+    const boxes = () => list.map((stop) => stop.getBoundingClientRect());
+    const step = (direction: Direction) => {
+      const next = spatialStep(boxes(), index, direction);
+      if (next !== null) go(next);
+    };
     const go = (next: number) => {
       const stop = list[next];
       if (stop !== undefined) land(root, stop);
@@ -168,11 +173,15 @@ export function useCardKeys(
     switch (event.key) {
       case "j":
       case "ArrowDown":
-        go(stepIndex(index, 1, list.length));
+        step("down");
         break;
       case "k":
       case "ArrowUp":
-        go(stepIndex(index, -1, list.length));
+        step("up");
+        break;
+      case "l":
+      case "ArrowRight":
+        step("right");
         break;
       case "G":
         go(list.length - 1);
@@ -191,10 +200,15 @@ export function useCardKeys(
         break;
       }
       case "h":
-        if (handlers.onBack === undefined) return;
-        unpark(root);
-        handlers.onBack();
+      case "ArrowLeft": {
+        const next = spatialStep(boxes(), index, "left");
+        if (next !== null) go(next);
+        else if (handlers.onBack !== undefined) {
+          unpark(root);
+          handlers.onBack();
+        } else return;
         break;
+      }
       case "t":
         handlers.onThread();
         break;
