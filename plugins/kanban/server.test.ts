@@ -326,6 +326,34 @@ describe("ad hoc tickets", () => {
     expect(String(spawned[0]!.prompt)).toContain("bb kanban move");
   });
 
+  it("creates subtasks with the card, in its column and project, before its thread starts", async () => {
+    await load();
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", {
+      title: "Ship it",
+      columnId: "todo",
+      projectId: "proj_acme",
+      startThread: true,
+      subtasks: [{ title: "Write the migration", tags: ["db"] }, { title: "Backfill", description: "In batches" }],
+    })) as Ticket;
+    expect(ticket.children.total).toBe(2);
+    const children = (await board()).tickets.filter((entry) => entry.parentId === ticket.id).sort((a, b) => a.position - b.position);
+    expect(children.map((child) => [child.title, child.description, child.tags, child.columnId, child.projectId, child.threadId])).toEqual([
+      ["Write the migration", "", ["db"], "todo", "proj_acme", null],
+      ["Backfill", "In batches", [], "todo", "proj_acme", null],
+    ]);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]).toMatchObject({ pluginMetadata: { ticketId: ticket.id } });
+    const configured = await current().harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ pluginMetadata: { ticketId: ticket.id } }));
+    expect(configured?.instructions).toContain("2 subtask(s)");
+  });
+
+  it("returns the subtask count without starting a thread", async () => {
+    await load();
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "Plan", subtasks: [{ title: "One" }] })) as Ticket;
+    expect(ticket.children).toMatchObject({ total: 1, done: 0 });
+    expect(spawned).toHaveLength(0);
+  });
+
   it("rejects moves to unknown columns", async () => {
     await load();
     const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "A" })) as Ticket;

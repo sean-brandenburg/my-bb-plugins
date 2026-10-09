@@ -14,8 +14,9 @@ A kanban board where every card is a BB thread.
   thread proposes cards (with subtasks, dependencies and open questions) that
   you edit and accept on the board.
 - **Due dates** on any card, shown on the board and flagged when overdue.
-- **Subtasks** on any card, written by you or by the card's agent, with agents
-  started on them one thread each or one thread working through them in order.
+- **Subtasks** on any card, written by you (also while creating the card) or
+  by the card's agent, with agents started on them one thread each or one
+  thread working through them in order.
 - A **changes page** per card: structural or text diff, viewed marks, and line
   comments that stay local for an agent or post to the PR as GitHub drafts.
 - **PR review pipeline**: run your `code-review` skill on a PR card, pick the

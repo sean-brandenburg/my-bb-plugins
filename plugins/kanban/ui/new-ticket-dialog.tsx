@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { PRESS, enter, speed } from "bb-motion";
@@ -63,6 +63,79 @@ function useDictation(onText: (text: string) => void) {
   return { state, start, stop };
 }
 
+type SubtaskDraft = { key: number; text: string };
+
+/** Subtask titles typed while creating a card; Enter adds one instead of submitting the card. */
+function SubtaskDrafts({
+  drafts,
+  onChange,
+  text,
+  onTextChange,
+}: {
+  drafts: readonly SubtaskDraft[];
+  onChange: (drafts: SubtaskDraft[]) => void;
+  text: string;
+  onTextChange: (text: string) => void;
+}) {
+  const nextKey = useRef(0);
+  const addInput = useRef<HTMLInputElement>(null);
+  const add = () => {
+    if (parseQuickAdd(text).title === "") return;
+    nextKey.current += 1;
+    onChange([...drafts, { key: nextKey.current, text }]);
+    onTextChange("");
+  };
+  const remove = (key: number) => {
+    onChange(drafts.filter((draft) => draft.key !== key));
+    addInput.current?.focus();
+  };
+  const onRowKeyDown = (event: KeyboardEvent<HTMLInputElement>, draft: SubtaskDraft) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addInput.current?.focus();
+    } else if (event.key === "Backspace" && draft.text === "") {
+      event.preventDefault();
+      remove(draft.key);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Subtasks
+      {drafts.length > 0 ? (
+        <ul className="flex flex-col gap-0.5">
+          {drafts.map((draft, index) => (
+            <li key={draft.key} className={cn("flex items-center gap-1.5 rounded px-1 hover:bg-state-hover", enter.rise, speed.fast)}>
+              <Icon name="ListTodo" className="size-3.5 shrink-0" />
+              <input
+                value={draft.text}
+                onChange={(event) => onChange(drafts.map((entry) => (entry.key === draft.key ? { ...entry, text: event.target.value } : entry)))}
+                onKeyDown={(event) => onRowKeyDown(event, draft)}
+                aria-label={`Subtask ${index + 1}`}
+                className="h-7 min-w-0 flex-1 bg-transparent text-sm text-foreground focus-visible:outline-none"
+              />
+              <button type="button" aria-label={`Remove subtask ${index + 1}`} className={cn("flex size-6 shrink-0 items-center justify-center rounded hover:text-destructive", PRESS)} onClick={() => remove(draft.key)}>
+                <Icon name="X" className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Input
+        ref={addInput}
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          add();
+        }}
+        placeholder="Add a subtask… (Enter to add, #tag allowed)"
+        aria-label="New subtask"
+      />
+    </div>
+  );
+}
+
 const MODE_OPTIONS = [
   { value: "single", label: "One card" },
   { value: "dump", label: "Brain dump" },
@@ -95,6 +168,8 @@ export function NewTicketDialog({
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([]);
+  const [subtaskText, setSubtaskText] = useState("");
   const [columnId, setColumnId] = useState(initialColumnId ?? columns[0]?.id ?? "");
   const [projectId, setProjectId] = useState("");
   const [startThread, setStartThread] = useState(true);
@@ -114,6 +189,8 @@ export function NewTicketDialog({
     setPending(true);
     const parsed = parseQuickAdd(title);
     const extraTags = parseTagList(tags);
+    // Text still in the add box counts, so the last subtask is not lost to a missed Enter.
+    const subtaskList = [...subtasks.map((draft) => draft.text), subtaskText].map(parseQuickAdd).filter((subtask) => subtask.title !== "");
     try {
       await rpc.call("ticket_create", {
         title: parsed.title,
@@ -123,11 +200,14 @@ export function NewTicketDialog({
         dueDate: dueDate === "" ? null : dueDate,
         projectId: projectId === "" ? null : projectId,
         startThread: projectId !== "" && startThread,
+        subtasks: subtaskList,
       });
       setTitle("");
       setDescription("");
       setTags("");
       setDueDate("");
+      setSubtasks([]);
+      setSubtaskText("");
       onOpenChange(false);
       onCreated();
     } catch (cause) {
@@ -174,6 +254,7 @@ export function NewTicketDialog({
             <Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title (use #tag for tags)" aria-label="Title" />
             <Textarea aria-label="Description" value={description} onChange={setDescription} placeholder="What needs to happen? (markdown, sent to the agent as the first prompt)" />
             <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Tags, comma or space separated" aria-label="Tags" />
+            <SubtaskDrafts drafts={subtasks} onChange={setSubtasks} text={subtaskText} onTextChange={setSubtaskText} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 Column

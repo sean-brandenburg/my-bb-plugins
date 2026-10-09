@@ -45,8 +45,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   deselect tickets, choose a column, and create the cards (optionally starting
   a thread per card). Planning threads are archived when a dump is finalized
   or discarded.
-- **Subtasks**: any card can hold subtasks (nested as deep as you like). The
-  card panel's Subtasks group lists them with done checkboxes, column, and
+- **Subtasks**: any card can hold subtasks (nested as deep as you like). List
+  them while creating the card in the New card dialog (Enter adds the next
+  one; `#tag` works); they land in the card's column and project before its
+  thread starts, so that thread already knows about them. The card panel's Subtasks group lists them with done checkboxes, column, and
   thread status; add one inline, or **Break down with AI** to have the card's
   agent split it (it creates subtasks with `bb kanban add --parent`).
   **Start N subtasks** launches one thread per open subtask (nested under the

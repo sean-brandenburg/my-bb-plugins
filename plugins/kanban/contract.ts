@@ -21,6 +21,19 @@ export const rpcContract = defineRpcContract({
         /** Create the card as a subtask of this card. */
         parentId: z.string().nullable().default(null),
         dueDate: dueDateSchema.nullable().default(null),
+        /** Created under the new card, in its column and project, before any thread starts. */
+        subtasks: z
+          .array(
+            z
+              .object({
+                title: z.string().trim().min(1).max(200),
+                description: z.string().max(10_000).default(""),
+                tags: z.array(tagSchema).max(20).default([]),
+              })
+              .strict(),
+          )
+          .max(50)
+          .default([]),
       })
       .strict(),
     output: ticketSchema,

@@ -6,7 +6,7 @@ import type { Services } from "./services";
 
 /** The board's RPC surface; each handler hands off to the feature that owns it. */
 export function registerRpc(ctx: KanbanContext, services: Services): void {
-  const { bb, stmts, sync, publish } = ctx;
+  const { bb, db, stmts, sync, publish } = ctx;
   const { board, subjects, threads, projects, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads } = services;
   const { resolveDiffSubject } = subjects;
 
@@ -32,18 +32,35 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
           : initialColumn(columns, null);
       if (input.parentId !== null && stmts.byId.get(input.parentId) === undefined) throw new Error(`No ticket with id ${input.parentId}`);
       const parentProject = input.parentId === null ? null : (stmts.byId.get(input.parentId)?.project_id ?? null);
-      const ticket = board.createTicket({
-        title: input.title,
-        description: input.description,
-        columnId,
-        kind: "adhoc",
-        tags: input.tags,
-        threadId: null,
-        projectId: input.projectId ?? parentProject,
-        pr: null,
-        parentId: input.parentId,
-        dueDate: input.dueDate,
-      });
+      const projectId = input.projectId ?? parentProject;
+      const ticket = db.transaction(() => {
+        const created = board.createTicket({
+          title: input.title,
+          description: input.description,
+          columnId,
+          kind: "adhoc",
+          tags: input.tags,
+          threadId: null,
+          projectId,
+          pr: null,
+          parentId: input.parentId,
+          dueDate: input.dueDate,
+        });
+        for (const subtask of input.subtasks) {
+          board.createTicket({
+            title: subtask.title,
+            description: subtask.description,
+            columnId,
+            kind: "adhoc",
+            tags: subtask.tags,
+            threadId: null,
+            projectId,
+            pr: null,
+            parentId: created.id,
+          });
+        }
+        return board.getTicket(created.id);
+      })();
       publish();
       if (input.startThread && input.projectId !== null) {
         return threads.spawnThreadForTicket(ticket.id, input.projectId);
