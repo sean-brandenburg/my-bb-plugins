@@ -53,14 +53,16 @@ describe("picker keymap", () => {
     expect(command("j", "g")).toBe("down");
   });
 
-  it("hints p, r, d (as delete), and n in that order", () => {
+  it("hints p, r, d (as delete), u, and n in that order", () => {
     expect(PICKER_HINTS).toEqual([
       ["p", "pin"],
       ["r", "mark read"],
       ["d", "delete"],
+      ["u", "undo"],
       ["n", "new"],
     ]);
     expect(command("d")).toBe("archive");
+    expect(command("u")).toBe("undo-archive");
   });
 
   it("keeps preview scrolling keys out of the main map", () => {

@@ -8,6 +8,7 @@ import {
   toggleProjectPicker,
   useToggleProjectPickerEvent,
 } from "./app/picker/picker-store.js";
+import { installUndoArchiveKey } from "./app/undo-archive.js";
 
 // Owning the thread-list slot is what keeps bb's own list out of the sidebar;
 // projects and threads live in the picker instead.
@@ -39,6 +40,10 @@ export default definePluginApp((app) => {
   app.slots.experimental_appOverlay({
     id: "project-picker",
     component: ProjectPickerOverlay,
+  });
+  app.contentScripts.register({
+    id: "undo-archive-key",
+    mount: () => installUndoArchiveKey(document, window),
   });
   app.commands.register({
     id: "switch-project",

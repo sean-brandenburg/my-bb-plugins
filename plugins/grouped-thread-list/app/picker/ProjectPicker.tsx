@@ -53,6 +53,7 @@ import {
 } from "./PreviewPane.js";
 import { ProjectsColumn } from "./ProjectsColumn.js";
 import { ThreadsColumn } from "./ThreadsColumn.js";
+import { undoLastArchive } from "../undo-archive.js";
 
 /**
  * Opens on Unread with the left column focused, so the projects are one j
@@ -303,6 +304,7 @@ function ProjectPickerDialog({
     pin: togglePin,
     "mark-read": markRead,
     archive: archiveThread,
+    "undo-archive": () => undoLastArchive(document),
     "new-thread": newThread,
     filter: startSearch,
     escape: () => {

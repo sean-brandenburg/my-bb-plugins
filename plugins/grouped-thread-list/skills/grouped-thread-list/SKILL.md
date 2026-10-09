@@ -28,7 +28,9 @@ name, hiding Open folder…, Unassociated, Pinned, and Unread while a filter is 
 normal mode clears it), `Enter` opens a thread or moves into a
 project's threads, `p` pins or unpins the highlighted thread (the mouse
 highlights the row under it), `r` marks it read, `d` (hinted as "delete") archives
-it rather than deleting it, so it stays restorable, `n` starts a thread in the selected project, `Esc` or `q`
+it rather than deleting it, so it stays restorable, `u` clicks Undo on bb's
+"Thread Archived" toast (it also works outside the picker, but never while
+typing in a text box), `n` starts a thread in the selected project, `Esc` or `q`
 closes. Typing a path after `/` (absolute or `~/`) offers
 to add that folder as a project; a folder that is already a project selects it.
 

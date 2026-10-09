@@ -11,6 +11,7 @@ export type PickerCommand =
   | "pin"
   | "mark-read"
   | "archive"
+  | "undo-archive"
   | "new-thread"
   | "filter"
   | "escape"
@@ -52,6 +53,7 @@ export const PICKER_KEYMAP: readonly KeyBinding<PickerCommand>[] = [
   { keys: ["r"], command: "mark-read", hint: "mark read" },
   // Labelled delete because that's the intent; archiving keeps it recoverable.
   { keys: ["d"], command: "archive", hint: "delete" },
+  { keys: ["u"], command: "undo-archive", hint: "undo" },
   { keys: ["n"], command: "new-thread", hint: "new" },
   { keys: ["/"], command: "filter" },
   { keys: ["Escape"], command: "escape" },
