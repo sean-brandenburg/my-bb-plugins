@@ -148,6 +148,12 @@ export const FOOTER_CSS = `
     border-left: 1px solid var(--border-hairline);
     color: var(--muted-foreground);
   }
+  /* With a Nerd Font the model is a family glyph and its version. */
+  ${part("model")} {
+    display: flex;
+    align-items: center;
+    gap: 0.1875rem;
+  }
   ${part("effort")} {
     color: var(--subtle-foreground);
   }

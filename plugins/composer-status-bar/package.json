@@ -20,7 +20,8 @@
     ]
   },
   "dependencies": {
-    "bb-motion": "file:../motion/lib"
+    "bb-motion": "file:../motion/lib",
+    "bb-nerd-font": "file:../nerd-font/lib"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.15",
@@ -35,7 +36,8 @@
   },
   "pnpm": {
     "overrides": {
-      "bb-motion": "link:../motion/lib"
+      "bb-motion": "link:../motion/lib",
+      "bb-nerd-font": "link:../nerd-font/lib"
     }
   },
   "scripts": {

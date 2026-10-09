@@ -5,6 +5,7 @@ import {
   useSdk,
 } from "@get-bb/plugin-sdk/app";
 import { cx, enter, exit, POP, speed, STAGGER, stagger, usePresence, NEAR } from "bb-motion";
+import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
 import { type AnimationEventHandler, type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Arrival, arrive, type Shown } from "./arrival.js";
@@ -21,6 +22,8 @@ import {
   type CatalogModel,
   type ContextUsage,
   type RateLimitWindow,
+  compactModel,
+  effortGlyph,
   formatContext,
   rateLimitNotice,
   resolveModelName,
@@ -142,18 +145,18 @@ function ChangingPart(props: {
 
 // Rises in when a limit nears, pops once if it then escalates to blocked, and
 // fades out when the window resets.
-function UsageLimit(props: { slot: HTMLElement | undefined; limit: LimitNotice | null }) {
+function UsageLimit(props: { slot: HTMLElement | undefined; limit: LimitNotice | null; nerdFont: boolean }) {
   const presence = usePresence(props.limit !== null);
   const last = useRef(props.limit);
   if (props.limit !== null) last.current = props.limit;
   if (!props.slot || !presence.mounted || last.current === null) return null;
   return createPortal(
-    <LimitPart limit={last.current} exiting={presence.exiting} onAnimationEnd={presence.onAnimationEnd} />,
+    <LimitPart limit={last.current} nerdFont={props.nerdFont} exiting={presence.exiting} onAnimationEnd={presence.onAnimationEnd} />,
     props.slot,
   );
 }
 
-function LimitPart(props: { limit: LimitNotice; exiting: boolean; onAnimationEnd: AnimationEventHandler }) {
+function LimitPart(props: { limit: LimitNotice; nerdFont: boolean; exiting: boolean; onAnimationEnd: AnimationEventHandler }) {
   const { limit } = props;
   const arrival = useArrival(limit.blocked ? "blocked" : "warning", limit.blocked ? 1 : 0);
   const motion: PartMotion = props.exiting
@@ -170,9 +173,23 @@ function LimitPart(props: { limit: LimitNotice; exiting: boolean; onAnimationEnd
       onAnimationEnd={props.onAnimationEnd}
       {...motion}
     >
-      <Icon name="AlertTriangle" className="size-3.5" aria-hidden />
+      {props.nerdFont ? (
+        <Glyph glyph={limit.blocked ? GLYPH.timerSandFull : GLYPH.timerSand} className="text-[13px]" />
+      ) : (
+        <Icon name="AlertTriangle" className="size-3.5" aria-hidden />
+      )}
       {limit.text}
     </Part>
+  );
+}
+
+function CompactModel(props: { name: string }) {
+  const { glyph, text } = compactModel(props.name);
+  return (
+    <>
+      <Glyph glyph={glyph} className="text-[13px]" />
+      {text}
+    </>
   );
 }
 
@@ -185,13 +202,14 @@ function StatusSegments(props: {
   reasoningLevel: string | null;
 }) {
   const { slots } = props;
+  const nerdFont = useNerdFont();
   const modelName = useModelName(props.providerId, props.model);
-  const effort = useEffortLabel(props.providerId, props.reasoningLevel);
+  const effort = useEffort(props.providerId, props.reasoningLevel);
   const usage = useThreadUsage(props.threadId, props.isRunning);
   const context = formatContext(usage.context);
   const limit = rateLimitNotice(usage.rateLimits, Date.now());
   const modelTitle =
-    modelName === null ? undefined : effort === null ? `Model: ${modelName}` : `Model: ${modelName}, effort: ${effort}`;
+    modelName === null ? undefined : effort === null ? `Model: ${modelName}` : `Model: ${modelName}, effort: ${effort.label}`;
 
   return (
     <>
@@ -200,15 +218,19 @@ function StatusSegments(props: {
             <span className="contents" title={modelTitle}>
               {/* Keyed on the selection, not the name, which resolves from the raw id a moment after mount. */}
               <ChangingPart name="model" value={props.model ?? modelName} index={0}>
-                {modelName}
+                {nerdFont ? <CompactModel name={modelName} /> : modelName}
               </ChangingPart>
-              {effort === null ? null : (
+              {effort === null ? null : nerdFont && effort.glyph !== null ? (
+                <ChangingPart name="effort" value={props.reasoningLevel ?? effort.label} rank={effort.rank} index={1}>
+                  <Glyph glyph={effort.glyph} label={`Effort: ${effort.label}`} className="text-[13px]" />
+                </ChangingPart>
+              ) : (
                 <>
                   <Part name="effort-separator" {...valueMotion("enter", 1)}>
                     ·
                   </Part>
-                  <ChangingPart name="effort" value={props.reasoningLevel ?? effort} index={2}>
-                    {effort}
+                  <ChangingPart name="effort" value={props.reasoningLevel ?? effort.label} index={2}>
+                    {effort.label}
                   </ChangingPart>
                 </>
               )}
@@ -216,7 +238,7 @@ function StatusSegments(props: {
             slots.agent,
           )
         : null}
-      <UsageLimit slot={slots.usage} limit={limit} />
+      <UsageLimit slot={slots.usage} limit={limit} nerdFont={nerdFont} />
       {slots.context && context !== null
         ? createPortal(
             <ChangingPart
@@ -272,11 +294,20 @@ function useModelName(providerId: string | null, model: string | null): string |
   return name;
 }
 
-function useEffortLabel(providerId: string | null, level: string | null): string | null {
+interface Effort {
+  label: string;
+  /** Null when the provider doesn't list the level, so its place on the gauge is unknown. */
+  glyph: string | null;
+  rank: number;
+}
+
+function useEffort(providerId: string | null, level: string | null): Effort | null {
   const { providers } = experimental_useProviders();
   if (level === null) return null;
-  const provider = providers.find((candidate) => candidate.id === providerId);
-  return provider?.reasoningLevels?.find((candidate) => candidate.id === level)?.label ?? level;
+  const levels = providers.find((candidate) => candidate.id === providerId)?.reasoningLevels ?? [];
+  const index = levels.findIndex((candidate) => candidate.id === level);
+  if (index === -1) return { label: level, glyph: null, rank: 0 };
+  return { label: levels[index].label, glyph: effortGlyph(index, levels.length), rank: index };
 }
 
 interface ThreadUsage {

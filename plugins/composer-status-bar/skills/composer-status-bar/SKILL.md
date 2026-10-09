@@ -11,6 +11,7 @@ The plugin has no commands or settings. It changes the bar under each thread's c
 - bb's new-thread button is hidden; new threads start from the sidebar or the project picker. The footer has the project / environment labels and the branch on the left, then on the right the limit warning, context, a divider, model · effort, and permission mode last. When the thread-header-project plugin is also installed, it moves the project into the thread header and hides the footer's project and environment labels.
 - The branch is quiet text that outlines on hover (click copies its name). The outlined chips are the controls: permission mode, and context (opens the token breakdown).
 - A limit warning shows only an icon and the time to reset; hover it for the window name.
+- When Nerd Font glyphs render (the nerd-font plugin's check, or its "Nerd Font icons" setting forced to Always), model · effort becomes the family glyph plus version (Opus → crown, Sonnet → feather, Haiku → leaf, Fable → book; other models keep their name after a robot glyph) and a gauge glyph whose fill is the level's position in the provider's list (the top level of four or more is a flame). The limit icon becomes an hourglass. Without a Nerd Font the bar shows the text labels.
 - Narrow footers drop the environment, the project's name (its icon stays), the effort, then the model, so the row never overflows.
 
 There is no dollar cost segment. Claude Code only reports cost in memory (the SDK `result` message and the status line's stdin), and bb doesn't record it.

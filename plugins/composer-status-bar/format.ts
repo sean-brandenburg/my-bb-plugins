@@ -1,3 +1,5 @@
+import { GLYPH } from "bb-nerd-font";
+
 export interface ContextUsage {
   usedTokens: number | null;
   modelContextWindow: number | null;
@@ -29,6 +31,30 @@ export function resolveModelName(
     entry.id.startsWith(`claude-${selected}-`),
   );
   return family?.displayName ?? selected;
+}
+
+const MODEL_FAMILIES: ReadonlyArray<readonly [word: string, glyph: string]> = [
+  ["opus", GLYPH.crown],
+  ["sonnet", GLYPH.feather],
+  ["haiku", GLYPH.leaf],
+  ["fable", GLYPH.bookOpen],
+];
+
+/** A model as its family's glyph and version (`Opus 5.5` → crown, `5.5`); other providers' models keep their name. */
+export function compactModel(name: string): { glyph: string; text: string } {
+  const lower = name.toLowerCase();
+  const family = MODEL_FAMILIES.find(([word]) => lower.includes(word));
+  if (family === undefined) return { glyph: GLYPH.robot, text: name };
+  return { glyph: family[1], text: /\d+(?:\.\d+)*/u.exec(name)?.[0] ?? "" };
+}
+
+/** A gauge that fills with the level's place in the provider's list; the top of a long list burns. */
+export function effortGlyph(index: number, count: number): string {
+  if (count <= 1) return GLYPH.gauge;
+  const position = index / (count - 1);
+  if (position === 0) return GLYPH.gaugeEmpty;
+  if (position === 1) return count >= 4 ? GLYPH.fire : GLYPH.gaugeFull;
+  return position < 0.5 ? GLYPH.gaugeLow : position < 0.75 ? GLYPH.gauge : GLYPH.gaugeFull;
 }
 
 export function formatTokens(tokens: number): string {

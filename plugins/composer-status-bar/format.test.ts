@@ -1,5 +1,8 @@
+import { GLYPH } from "bb-nerd-font";
 import { describe, expect, it } from "vitest";
 import {
+  compactModel,
+  effortGlyph,
   formatContext,
   formatReset,
   formatTokens,
@@ -99,5 +102,42 @@ describe("rateLimitNotice", () => {
       title: "Usage limit nearly used",
       blocked: false,
     });
+  });
+});
+
+describe("compactModel", () => {
+  it("draws a Claude family as its glyph and keeps only the version", () => {
+    expect(compactModel("Opus 5.5")).toEqual({ glyph: GLYPH.crown, text: "5.5" });
+    expect(compactModel("Sonnet 5")).toEqual({ glyph: GLYPH.feather, text: "5" });
+    expect(compactModel("Haiku 5.5")).toEqual({ glyph: GLYPH.leaf, text: "5.5" });
+    expect(compactModel("Fable 5.1")).toEqual({ glyph: GLYPH.bookOpen, text: "5.1" });
+  });
+
+  it("shows only the glyph for a bare family alias", () => {
+    expect(compactModel("opus")).toEqual({ glyph: GLYPH.crown, text: "" });
+  });
+
+  it("keeps the whole name for other providers' models", () => {
+    expect(compactModel("GPT-5.3 Codex")).toEqual({ glyph: GLYPH.robot, text: "GPT-5.3 Codex" });
+  });
+});
+
+describe("effortGlyph", () => {
+  it("fills the gauge along a five-level list and burns at the top", () => {
+    expect([0, 1, 2, 3, 4].map((index) => effortGlyph(index, 5))).toEqual([
+      GLYPH.gaugeEmpty,
+      GLYPH.gaugeLow,
+      GLYPH.gauge,
+      GLYPH.gaugeFull,
+      GLYPH.fire,
+    ]);
+  });
+
+  it("tops out at a full gauge on a short list", () => {
+    expect([0, 1, 2].map((index) => effortGlyph(index, 3))).toEqual([GLYPH.gaugeEmpty, GLYPH.gauge, GLYPH.gaugeFull]);
+  });
+
+  it("shows a middling gauge for a single level", () => {
+    expect(effortGlyph(0, 1)).toBe(GLYPH.gauge);
   });
 });
