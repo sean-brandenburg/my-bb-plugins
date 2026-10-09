@@ -443,7 +443,7 @@ export function TicketTab() {
   };
   // Keyed so switching cards rises the new one in with fresh per-card state.
   return (
-    <div key={ticket.id} className={enter.rise}>
+    <div key={ticket.id} data-kanban-keys="" className={enter.rise}>
       <TicketDetails
         {...detailProps}
         ticket={ticket}

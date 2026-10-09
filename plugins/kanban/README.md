@@ -28,9 +28,16 @@ its PR is reviewed and its review findings and comments are handed to agents.
   sources match the repo's git remote first), and a "done when it leaves this
   search" flag.
 - The page's controls live in bb's title bar next to the Kanban name: the
-  Board/Todo toggle, the **Settings** cog (Columns, Sources, "Sync sources
+  Board/Todo toggle, the **Settings** cog (Columns, Sources, Keyboard shortcuts, "Sync sources
   now" with the last-sync status) and New card; on a card's changes page the
   bar holds Back, the card name, the Unified/Split toggle, and Refresh.
+- **Keyboard**: the board moves vim-style outside text boxes. `h`/`l` step
+  between columns (skipping empty ones), `j`/`k` between cards, `gg`/`G` jump
+  to a column's first or last card, `0`/`$` to the first or last column.
+  `H`/`L` move the card to the neighbouring column and `J`/`K` reorder it.
+  `o` (or Enter) opens the card, `t` its thread, `d` its changes, `a` adds a
+  card to the current column, and `?` (or Settings → Keyboard shortcuts) lists
+  them all. Arrow keys work as `h`/`j`/`k`/`l`.
 - Card details follow one hierarchy: the title with a quiet meta line (kind,
   id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
   the count of unsent comments), a property list (Column, Tags, Due, Thread, Author or Jira fields),

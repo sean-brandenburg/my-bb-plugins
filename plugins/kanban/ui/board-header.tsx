@@ -33,12 +33,14 @@ function BoardSettingsMenu({
   syncing,
   onColumns,
   onSources,
+  onShortcuts,
   onSync,
 }: {
   board: Board | null;
   syncing: boolean;
   onColumns: () => void;
   onSources: () => void;
+  onShortcuts: () => void;
   onSync: () => void;
 }) {
   const now = useNow();
@@ -79,6 +81,11 @@ function BoardSettingsMenu({
             </DropdownMenu.ItemIndicator>
             Show subtasks on the board
           </DropdownMenu.CheckboxItem>
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onShortcuts}>
+            <Icon name="kanban-keyboard" className="size-4 text-muted-foreground" />
+            Keyboard shortcuts
+            <kbd className="ml-auto font-mono text-xs text-muted-foreground">?</kbd>
+          </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <DropdownMenu.Item className={cn(MENU_ITEM_CLASS, "items-start")} disabled={syncing} onSelect={onSync}>
             <Icon name="kanban-refresh" className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground", syncing && "animate-spin")} />
@@ -257,7 +264,7 @@ export function BoardHeader({ subPath }: { subPath: string }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div data-kanban-keys="" className="flex items-center gap-1.5">
       <SegmentedTabs
         label="View"
         value={view}
@@ -270,6 +277,7 @@ export function BoardHeader({ subPath }: { subPath: string }) {
         syncing={syncing || board?.sync.inProgress === true}
         onColumns={() => pageUi.set({ dialog: "columns" })}
         onSources={() => pageUi.set({ dialog: "sources" })}
+        onShortcuts={() => pageUi.set({ dialog: "keys" })}
         onSync={() => void syncNow()}
       />
       {board !== null && board.dumps.length > 0 ? <ProposalsButton board={board} onOpen={() => navigate.toPluginPanel("board", { subPath: "proposals" })} /> : null}

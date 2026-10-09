@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -18,6 +18,9 @@ import { SourcesDialog } from "./sources-dialog";
 import { TodoView } from "./todo-view";
 import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
+import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
+import { useBoardKeys } from "./board-keys";
+import { BoardKeysDialog } from "./board-keys-dialog";
 
 export function BoardPage({ subPath }: { subPath: string }) {
   const trimmed = subPath.replace(/^\/+|\/+$/gu, "");
@@ -47,9 +50,10 @@ export function BoardPage({ subPath }: { subPath: string }) {
       list.push(ticket);
       map.set(ticket.columnId, list);
     }
-    for (const list of map.values()) list.sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
+    for (const list of map.values()) list.sort(byPosition);
     return map;
   }, [board, showSubtasks]);
+  const layout = useMemo(() => (board?.columns ?? []).map((column) => (ticketsByColumn.get(column.id) ?? []).map((ticket) => ticket.id)), [board, ticketsByColumn]);
 
   const selected = board?.tickets.find((ticket) => ticket.id === selectedId) ?? null;
   const today = localDay(useNow(60_000));
@@ -62,6 +66,89 @@ export function BoardPage({ subPath }: { subPath: string }) {
   };
 
   const openDiff = (ticketId: string) => navigate.toPluginPanel("board", { subPath: `diff/${ticketId}` });
+
+  const boardRef = useRef<HTMLDivElement>(null);
+  // Focus leaves the board when a card opens in the right panel; keys resume from the card it left.
+  const lastCardId = useRef<string | null>(null);
+  // A card moved to another column remounts there and has to be focused again.
+  const pendingFocusId = useRef<string | null>(null);
+  const focusCard = useCallback((ticketId: string) => {
+    const card = boardRef.current?.querySelector<HTMLElement>(`[data-ticket-id="${CSS.escape(ticketId)}"]`);
+    if (card == null) return;
+    card.focus({ preventScroll: true });
+    card.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
+  useEffect(() => {
+    const ticketId = pendingFocusId.current;
+    if (ticketId === null) return;
+    pendingFocusId.current = null;
+    focusCard(ticketId);
+  }, [board, focusCard]);
+  const cursorId = (): string | null => {
+    const focused = document.activeElement?.closest<HTMLElement>("[data-ticket-id]")?.dataset.ticketId;
+    const candidate = focused !== undefined && boardRef.current?.contains(document.activeElement) ? focused : lastCardId.current;
+    return candidate !== null && layout.some((ids) => ids.includes(candidate)) ? candidate : null;
+  };
+
+  const moveTicket = async (ticket: Ticket, columnId: string, visibleIndex: number) => {
+    if (board === null) return;
+    setSettledId(ticket.id);
+    const visible = (ticketsByColumn.get(columnId) ?? []).filter((entry) => entry.id !== ticket.id).map((entry) => entry.id);
+    const column = board.tickets.filter((entry) => entry.columnId === columnId && entry.id !== ticket.id).sort(byPosition);
+    const index = placementIndex(column.map((entry) => entry.id), visible, visibleIndex);
+    // Optimistic reorder so the card lands where it was put before the server answers.
+    column.splice(index, 0, { ...ticket, columnId });
+    const positions = new Map(column.map((entry, position) => [entry.id, position + 1]));
+    setBoard({
+      ...board,
+      tickets: board.tickets.map((entry) =>
+        positions.has(entry.id) ? { ...entry, columnId, position: positions.get(entry.id)! } : entry,
+      ),
+    });
+    try {
+      await rpc.call("ticket_move", { id: ticket.id, columnId, index });
+    } catch (cause) {
+      toastError(cause);
+    }
+    refetch();
+  };
+
+  const runCommand = (command: BoardCommand) => {
+    if (board === null) return;
+    const current = cursorId();
+    const ticket = current === null ? undefined : board.tickets.find((entry) => entry.id === current);
+    switch (command.kind) {
+      case "cursor": {
+        const next = cursorAfter(layout, current, command.motion);
+        if (next !== null) focusCard(next);
+        return;
+      }
+      case "move": {
+        if (ticket === undefined) return;
+        const placement = movePlacement(layout, ticket.id, command.direction);
+        if (placement === null) return;
+        pendingFocusId.current = ticket.id;
+        void moveTicket(ticket, board.columns[placement.column]!.id, placement.index);
+        return;
+      }
+      case "open":
+        if (ticket !== undefined) showTicket(ticket.id);
+        return;
+      case "thread":
+        if (ticket?.threadId != null) openThread(ticket.threadId);
+        return;
+      case "diff":
+        if (ticket !== undefined && (ticket.pr !== null || ticket.threadId !== null)) openDiff(ticket.id);
+        return;
+      case "add":
+        pageUi.set({ dialog: "new", newTicketColumn: ticket?.columnId ?? null });
+        return;
+      case "help":
+        pageUi.set({ dialog: "keys" });
+        return;
+    }
+  };
+  useBoardKeys(boardRef, diffTicketId === null && !proposalsList && proposalId === null && view === "board" && board !== null, runCommand);
 
   if (diffTicketId !== null) {
     return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} />;
@@ -106,25 +193,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
     if (id === "" || board === null) return;
     const ticket = board.tickets.find((entry) => entry.id === id);
     if (ticket === undefined) return;
-    setSettledId(id);
-    // Optimistic reorder so the card lands where it was dropped before the server answers.
-    const siblings = (ticketsByColumn.get(target.columnId) ?? []).filter((entry) => entry.id !== id);
-    siblings.splice(Math.min(target.index, siblings.length), 0, { ...ticket, columnId: target.columnId });
-    const positions = new Map(siblings.map((entry, index) => [entry.id, index + 1]));
-    setBoard({
-      ...board,
-      tickets: board.tickets.map((entry) =>
-        positions.has(entry.id)
-          ? { ...entry, columnId: target.columnId, position: positions.get(entry.id)! }
-          : entry,
-      ),
-    });
-    try {
-      await rpc.call("ticket_move", { id, columnId: target.columnId, index: target.index });
-    } catch (cause) {
-      toastError(cause);
-    }
-    refetch();
+    await moveTicket(ticket, target.columnId, target.index);
   };
 
   return (
@@ -147,8 +216,15 @@ export function BoardPage({ subPath }: { subPath: string }) {
         </div>
       ) : null}
       <div
+        ref={boardRef}
+        tabIndex={-1}
+        data-kanban-keys=""
+        onFocus={(event) => {
+          const ticketId = (event.target as Element).closest<HTMLElement>("[data-ticket-id]")?.dataset.ticketId;
+          if (ticketId !== undefined) lastCardId.current = ticketId;
+        }}
         // The fade replays each time the board comes back from `hidden` (the todo view).
-        className={cn("flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto p-4", enter.fade, speed.fast, view === "todo" && "hidden")}
+        className={cn("flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto p-4 outline-none", enter.fade, speed.fast, view === "todo" && "hidden")}
         onDragLeave={(event) => {
           if (event.currentTarget === event.target) setDropTarget(null);
         }}
@@ -227,6 +303,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
             rpc={rpc}
             onChanged={refetch}
           />
+          <BoardKeysDialog open={dialog === "keys"} onOpenChange={(open) => pageUi.set({ dialog: open ? "keys" : null })} />
           <TicketDialog
             ticket={selected}
             columns={board.columns}
@@ -266,4 +343,8 @@ function BoardSkeleton() {
       ))}
     </div>
   );
+}
+
+function byPosition(a: Ticket, b: Ticket): number {
+  return a.position - b.position || a.createdAt - b.createdAt;
 }

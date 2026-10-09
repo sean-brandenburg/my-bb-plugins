@@ -14,7 +14,7 @@ export function collapseRightPanel(): void {
  * the page body, which the host mounts as separate React trees.
  */
 interface PageUiState {
-  dialog: "new" | "columns" | "sources" | null;
+  dialog: "new" | "columns" | "sources" | "keys" | null;
   /** Show subtasks as their own cards on the board (default: only in their parent's panel). */
   showSubtasks: boolean;
   newTicketColumn: string | null;
