@@ -28,7 +28,7 @@ import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
 import { useTour } from "./tour/use-tour";
-import { cursorAt, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
+import { cursorAt, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
 import { KeyHelp, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
 import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
@@ -176,6 +176,35 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
 
   const navFiles = (): NavFile[] => (diff?.files ?? []).map((file) => ({ path: file.path, collapsed: collapsed.has(file.path), rows: keys.models.get(file.path)?.rows ?? null }));
+  const navFilesRef = useRef(navFiles);
+  navFilesRef.current = navFiles;
+  // A newly opened diff starts the cursor on its first line, not on whatever line is mid-screen when a key is first
+  // pressed. Until the first open file's rows arrive the cursor waits on its header; a refresh leaves it alone.
+  const placedFor = useRef<string | null>(null);
+  const hasFiles = diff !== null && diff.files.length > 0;
+  useEffect(() => {
+    if (!hasFiles || placedFor.current === instanceKey) return;
+    placedFor.current = instanceKey;
+    let placed: Cursor | null = null;
+    const place = (): boolean => {
+      const current = keys.get().cursor;
+      // The reader got there first.
+      if (placed !== null && current !== placed) return true;
+      const files = navFilesRef.current();
+      const fileIndex = files.findIndex((file) => !file.collapsed);
+      const file = files[fileIndex];
+      placed = file === undefined ? firstPosition(files, "RIGHT") : cursorAt(files, { fileIndex, row: file.rows === null || file.rows.length === 0 ? -1 : 0 }, "RIGHT");
+      keys.set({ cursor: placed, visual: null, focused: null });
+      return file === undefined || file.rows !== null;
+    };
+    if (place()) return;
+    const unsubscribe = keys.onModel(() => {
+      if (place()) unsubscribe();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [hasFiles, instanceKey, keys]);
   const elementFor = (cursor: Cursor): Element | null => {
     if (cursor.line === null) return sectionRefs.current.get(cursor.path) ?? null;
     const model = keys.models.get(cursor.path);

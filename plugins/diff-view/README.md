@@ -29,8 +29,8 @@ plugins embed.
   settings) opens the side panel and gives it the keyboard. A cursor moves
   over lines, file headers and folds of hidden lines (Enter opens a fold: a
   short one whole, a long one 20 lines at a time with the cursor left on it)
-  and stays in the middle of the screen: the diff
-  scrolls under it as it moves (`zt`/`zb` aside, and short of either end of
+  and stays in the middle of the screen (a newly opened diff starts it on the
+  first line): the diff scrolls under it as it moves (`zt`/`zb` aside, and short of either end of
   the diff), and scrolling by hand carries it along to the middle line. Keys: `j`/`k` lines (with counts, `5j`; a line with several comments or findings
   is stepped through one at a time), `h`/`l` old
   or new side, `]c`/`[c` changes, `}`/`{` hunks, `]f`/`[f` files, `c`/`C`
