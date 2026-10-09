@@ -138,9 +138,29 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
   };
 
   switch (command.kind) {
-    case "line":
-      move(moveLines(files, cursor, command.direction * count));
+    case "line": {
+      // Several comments or findings under one line are stepped through before the cursor leaves it, in the order
+      // they sit on screen: down from the line reaches the first, up from the line below reaches the last.
+      let at = cursor;
+      let focused = state.focused;
+      for (let step = 0; step < count; step++) {
+        const here = annotationsAt(env, at).map(focusOf);
+        const index = focused === null ? -1 : here.findIndex((entry) => entry.kind === focused!.kind && entry.id === focused!.id);
+        const next = index === -1 ? -1 : index + command.direction;
+        if (next >= 0 && next < here.length) {
+          focused = here[next]!;
+          continue;
+        }
+        const moved = moveLines(files, at, command.direction);
+        if (moved === at || !withinSelection(env, moved)) break;
+        at = moved;
+        const there = annotationsAt(env, at).map(focusOf);
+        focused = (command.direction === 1 ? there[0] : there.at(-1)) ?? null;
+      }
+      if (at === cursor && focused === state.focused) return;
+      go(env, at, { focused });
       return;
+    }
     case "side": {
       const at = model?.rows[row];
       if (at === undefined || lineOn(at, command.side) === null) {
@@ -208,6 +228,15 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       switch (command.action) {
         case "toggle":
         case "annotation": {
+          // On a fold of hidden lines, Enter (and za) opens it.
+          const fold = model !== null && row !== -1 && model.rows[row]?.expander === true ? model.expand?.(row) : undefined;
+          if (fold !== undefined) {
+            if (fold === null) return;
+            const line = cursor.side === "LEFT" ? fold.left : fold.right;
+            const side = line === null ? (cursor.side === "LEFT" ? "RIGHT" : "LEFT") : cursor.side;
+            go(env, { ...cursor, side, line: line ?? (side === "LEFT" ? fold.left : fold.right) });
+            return;
+          }
           const annotation = focusedAnnotation(env, cursor);
           if (annotation !== null) {
             if (annotation.kind === "thread") env.keys.threads.get(annotation.thread.id)?.toggle();
@@ -248,6 +277,10 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       return;
     case "comment": {
       if (env.focusComposer()) return;
+      if (model !== null && row !== -1 && model.rows[row]?.expander === true) {
+        env.notify("Open the fold first (Enter), then comment on a line");
+        return;
+      }
       const { visual } = env.keys.get();
       env.keys.set({ visual: null });
       if (cursor.line === null) {

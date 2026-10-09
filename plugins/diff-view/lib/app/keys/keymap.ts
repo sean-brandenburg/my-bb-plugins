@@ -146,7 +146,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
   {
     group: "Move",
     keys: [
-      { keys: ["j", "k"], action: "Next / previous line (a count repeats: 5j)" },
+      { keys: ["j", "k"], action: "Next / previous line, stopping at each comment when a line has several (a count repeats: 5j)" },
       { keys: ["h", "l"], action: "Old / new side" },
       { keys: ["]c", "[c"], action: "Next / previous change" },
       { keys: ["}", "{"], action: "Next / previous hunk" },
@@ -167,7 +167,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["V"], action: "Select lines; move, then i to comment on them" },
       { keys: ["O"], action: "Comment on the file" },
       { keys: ["a"], action: "Reply to the comment thread under the cursor" },
-      { keys: ["↩", "za"], action: "Open or close the comment or finding under the cursor (za on a bare line folds the file)" },
+      { keys: ["↩", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file)" },
       { keys: ["e"], action: "Edit your unsent comment in that thread, or the finding's wording" },
       { keys: ["dd"], action: "Delete your unsent comment in that thread" },
       { keys: ["M"], action: "Move that comment between local and the GitHub PR" },

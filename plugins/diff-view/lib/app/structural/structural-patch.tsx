@@ -23,12 +23,21 @@ import { visualRange, type NavRow } from "../keys/nav";
 import { useFileCursor, usePublishNavModel, type FileNavModel } from "../keys/review-keys-context";
 import { enclosingDefinition } from "./enclosing-definition";
 import { detectMoves, type MovedRow } from "./moves";
-import { CONTEXT_LINES, hunkSpan, structuralRows, visibleRows } from "./rows";
+import { CONTEXT_LINES, hunkSpan, structuralRows, visibleRows, type StructuralRow } from "./rows";
 import { IDENTIFIER, StructuralLine } from "./structural-line";
 import { shikiLangFor, useShikiTokens } from "./syntax";
 
 /** Folded runs up to this long expand in one click; longer ones expand this many lines per click. */
 const EXPAND_STEP_LINES = 20;
+
+/** One row the keyboard cursor can stand on: a shown line, a fold of unchanged lines, or a long new file's "show more". */
+type NavEntry = { kind: "row"; row: StructuralRow } | { kind: "gap"; from: number; to: number } | { kind: "more"; at: number };
+
+/** The hidden row whose lines a fold's cursor takes: the one next to the code the fold opens toward. */
+function foldCursorIndex(entry: NavEntry & { kind: "gap" | "more" }): number {
+  if (entry.kind === "more") return entry.at;
+  return entry.from === 0 ? entry.to - 1 : entry.from;
+}
 /** Whole-file adds and deletes longer than this show a preview and a "show more" bar instead of a wall of one colour. */
 const LARGE_FILE_PREVIEW_ROWS = 60;
 /** How far past the preview a whole-file diff may run before it is cut to the preview. */
@@ -120,29 +129,61 @@ export function StructuralPatch({
     const visible = visibleRows(rows, { revealed, findingLines: findings.map((entry) => entry.line), threads });
     const wholeFile = diff.status === "created" || diff.status === "deleted" || rows.every((row) => row.changed);
     const previewLimit = wholeFile && !showAll && visible.size > LARGE_FILE_PREVIEW_ROWS + LARGE_FILE_PREVIEW_SLACK ? LARGE_FILE_PREVIEW_ROWS : null;
-    const displayed = rows.filter((row) => visible.has(row.index)).slice(0, previewLimit ?? undefined);
+    // The cursor's rows in display order: shown lines, and the folds between them, which the cursor can stop on.
+    const entries: NavEntry[] = [];
+    const nav: NavRow[] = [];
     let hunk = -1;
-    const nav = displayed.map((row): NavRow => {
+    let gapStart: number | null = null;
+    let emitted = 0;
+    const pushFold = (entry: NavEntry & { kind: "gap" | "more" }) => {
+      const at = rows[foldCursorIndex(entry)]!;
+      entries.push(entry);
+      nav.push({ left: at.lhs, right: at.rhs, hunk, changed: false, expander: true });
+    };
+    for (const row of rows) {
+      if (!visible.has(row.index)) {
+        gapStart ??= row.index;
+        continue;
+      }
+      if (gapStart !== null) {
+        pushFold({ kind: "gap", from: gapStart, to: row.index });
+        gapStart = null;
+      }
+      if (previewLimit !== null && emitted >= previewLimit) {
+        pushFold({ kind: "more", at: row.index });
+        gapStart = null;
+        break;
+      }
+      emitted += 1;
       if (row.index === 0 || !visible.has(row.index - 1)) hunk += 1;
-      return { left: row.lhs, right: row.rhs, hunk, changed: row.changed };
-    });
-    return { rows, visible, previewLimit, displayed, nav };
+      entries.push({ kind: "row", row });
+      nav.push({ left: row.lhs, right: row.rhs, hunk, changed: row.changed });
+    }
+    if (gapStart !== null && (previewLimit === null || emitted < previewLimit)) pushFold({ kind: "gap", from: gapStart, to: rows.length });
+    return { rows, visible, previewLimit, entries, nav };
   }, [diff, revealed, findings, threads, showAll]);
   const navModel = useMemo<FileNavModel | null>(() => {
     // The fallback text diff publishes its own rows.
     if (error !== null || (diff !== null && !diff.available)) return null;
     if (shape === null) return null;
-    const { displayed, nav, visible, previewLimit } = shape;
+    const { entries, nav, visible, previewLimit, rows } = shape;
     const sideLines = { LEFT: diff!.oldText.split("\n"), RIGHT: diff!.newText.split("\n") };
-    const rowElement = (row: number) => (displayed[row] === undefined ? null : (tableRef.current?.querySelector(`[data-row="${displayed[row].index}"]`) ?? null));
+    const rowElement = (row: number) => {
+      const entry = entries[row];
+      if (entry === undefined) return null;
+      const selector = entry.kind === "row" ? `[data-row="${entry.row.index}"]` : entry.kind === "gap" ? `[data-gap="${entry.from}"]` : "[data-preview-more]";
+      return tableRef.current?.querySelector(selector) ?? null;
+    };
+    const linesOf = (index: number) => ({ left: rows[index]!.lhs, right: rows[index]!.rhs });
     return {
       rows: nav,
       cutToHunk: false,
       element: rowElement,
       moreContext: (row) => {
         if (previewLimit !== null) setShowAll(true);
-        const at = displayed[row]?.index;
-        if (at === undefined) return;
+        const entry = entries[row];
+        if (entry?.kind !== "row") return;
+        const at = entry.row.index;
         let start = at;
         let end = at;
         while (visible.has(start - 1)) start -= 1;
@@ -150,8 +191,31 @@ export function StructuralPatch({
         reveal(Math.max(0, start - EXPAND_STEP_LINES), start);
         reveal(end + 1, end + 1 + EXPAND_STEP_LINES);
       },
+      expand: (row) => {
+        const entry = entries[row];
+        if (entry === undefined || entry.kind === "row") return null;
+        if (entry.kind === "more") {
+          setShowAll(true);
+          return linesOf(entry.at);
+        }
+        const { from, to } = entry;
+        const leading = from === 0;
+        // Like the fold's buttons: a short fold opens whole, a long one a step at a time toward the code it borders,
+        // with the cursor left on what remains of it so Enter keeps opening.
+        if (to - from <= EXPAND_STEP_LINES) {
+          reveal(from, to);
+          return linesOf(leading ? to - 1 : from);
+        }
+        if (leading) {
+          reveal(to - EXPAND_STEP_LINES, to);
+          return linesOf(to - EXPAND_STEP_LINES - 1);
+        }
+        reveal(from, from + EXPAND_STEP_LINES);
+        return linesOf(from + EXPAND_STEP_LINES);
+      },
       symbols: {
         at: (row, side) => {
+          if (nav[row]?.expander === true) return [];
           const line = side === "LEFT" ? nav[row]?.left : nav[row]?.right;
           const text = line == null ? "" : (sideLines[side][line - 1] ?? "");
           return [...new Set([...text.matchAll(IDENTIFIER)].map((match) => match[0]))];
@@ -308,6 +372,11 @@ export function StructuralPatch({
       {label}
     </button>
   );
+  const foldAtCursor = (entry: NavEntry & { kind: "gap" | "more" }) => {
+    if (cursor === null) return false;
+    const at = rows[foldCursorIndex(entry)]!;
+    return cursor.line === (cursor.side === "LEFT" ? at.lhs : at.rhs);
+  };
   const gapRow = (from: number, to: number) => {
     const count = to - from;
     const leading = from === 0;
@@ -315,9 +384,10 @@ export function StructuralPatch({
     const first = rows[from]!;
     const last = rows[to - 1]!;
     const range = `${first.rhs ?? first.lhs}–${last.rhs ?? last.lhs}`;
+    const atCursor = foldAtCursor({ kind: "gap", from, to });
     return (
-      <tr key={`gap-${from}`} className="bg-sky-500/10 text-[11px] text-muted-foreground">
-        <td colSpan={4} className="px-2 py-0.5">
+      <tr key={`gap-${from}`} data-gap={from} className="bg-sky-500/10 text-[11px] text-muted-foreground">
+        <td colSpan={4} className={cn("px-2 py-0.5", atCursor && "ring-1 ring-inset ring-primary/70")} data-cursor={atCursor ? "" : undefined}>
           <div className="flex items-center gap-1">
             {count <= EXPAND_STEP_LINES ? (
               expanderButton("↕", `Show ${count} unchanged lines`, () => reveal(from, to))
@@ -330,6 +400,7 @@ export function StructuralPatch({
             <span className="ml-2 font-sans">
               {count} unchanged {count === 1 ? "line" : "lines"} ({range})
             </span>
+            {atCursor ? <span className={cn("ml-auto font-mono text-[10px]", enter.fade, FAST)}>↩ show {count <= EXPAND_STEP_LINES ? "them" : `${EXPAND_STEP_LINES} more`}</span> : null}
           </div>
         </td>
       </tr>
@@ -408,8 +479,8 @@ export function StructuralPatch({
     }
     if (previewLimit !== null && emitted >= previewLimit) {
       body.push(
-        <tr key="preview-more" className="bg-sky-500/10 text-xs text-muted-foreground">
-          <td colSpan={4} className="px-3 py-1.5">
+        <tr key="preview-more" data-preview-more="" className="bg-sky-500/10 text-xs text-muted-foreground">
+          <td colSpan={4} className={cn("px-3 py-1.5", foldAtCursor({ kind: "more", at: row.index }) && "ring-1 ring-inset ring-primary/70")} data-cursor={foldAtCursor({ kind: "more", at: row.index }) ? "" : undefined}>
             <button type="button" className={cn("rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={() => setShowAll(true)}>
               Show {visible.size - emitted} more {visible.size - emitted === 1 ? "line" : "lines"} of this {diff.status === "deleted" ? "deleted" : "new"} file
             </button>

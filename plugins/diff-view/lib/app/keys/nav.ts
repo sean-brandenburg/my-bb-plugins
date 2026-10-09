@@ -7,6 +7,11 @@ export interface NavRow {
   right: number | null;
   hunk: number;
   changed: boolean;
+  /**
+   * A fold of hidden lines, which Enter opens. It takes the line numbers of the hidden line it would show next, which
+   * no other row holds while it is hidden, so a cursor on the fold is an ordinary line cursor.
+   */
+  expander?: boolean;
 }
 
 /**
@@ -139,7 +144,7 @@ export function moveChange(files: readonly NavFile[], cursor: Cursor, direction:
   return seek(files, cursor, direction, count, ({ fileIndex, row }) => {
     if (row === -1) return false;
     const rows = visibleRows(files[fileIndex]!);
-    return rows[row]!.changed && (row === 0 || !rows[row - 1]!.changed || rows[row - 1]!.hunk !== rows[row]!.hunk);
+    return rows[row]!.changed && !rows[row]!.expander && (row === 0 || !rows[row - 1]!.changed || rows[row - 1]!.hunk !== rows[row]!.hunk);
   });
 }
 
@@ -148,7 +153,7 @@ export function moveHunk(files: readonly NavFile[], cursor: Cursor, direction: 1
   return seek(files, cursor, direction, count, ({ fileIndex, row }) => {
     if (row === -1) return false;
     const rows = visibleRows(files[fileIndex]!);
-    return row === 0 || rows[row - 1]!.hunk !== rows[row]!.hunk;
+    return !rows[row]!.expander && (row === 0 || rows[row - 1]!.hunk !== rows[row]!.hunk);
   });
 }
 
@@ -238,7 +243,7 @@ export function visualRange(rows: readonly NavRow[], anchor: Cursor, cursor: Cur
 export function hunkSpanAt(rows: readonly NavRow[], row: number): { side: "old" | "new"; start: number; stop: number } | null {
   const hunk = rows[row]?.hunk;
   if (hunk === undefined) return null;
-  const members = rows.filter((entry) => entry.hunk === hunk);
+  const members = rows.filter((entry) => entry.hunk === hunk && !entry.expander);
   const news = members.map((entry) => entry.right).filter((line): line is number => line !== null);
   const olds = members.map((entry) => entry.left).filter((line): line is number => line !== null);
   const side = news.length > 0 ? "new" : "old";

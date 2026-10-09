@@ -11,6 +11,8 @@ export interface FileNavModel {
   element: (row: number, side: DiffSide) => Element | null;
   /** Unfold more unchanged lines around the hunk holding `row`; absent where the renderer cannot. */
   moreContext?: (row: number) => void;
+  /** Open the fold at `row` (an `expander` row); returns the lines the cursor goes to, which stay on the fold while it has more. */
+  expand?: (row: number) => { left: number | null; right: number | null } | null;
   /** The identifiers on one side of `row`, and a peek at one of them under it; absent where the renderer has no peeks. */
   symbols?: { at: (row: number, side: DiffSide) => string[]; peek: (row: number, symbol: string) => void };
 }

@@ -27,9 +27,12 @@ plugins embed.
   last had the pointer or focus, never while typing in a text box. "Changes:
   review with the keyboard" (⌘⇧D by default, rebindable in bb's keyboard
   settings) opens the side panel and gives it the keyboard. A cursor moves
-  over lines and file headers and stays in the middle of the screen: the diff
+  over lines, file headers and folds of hidden lines (Enter opens a fold: a
+  short one whole, a long one 20 lines at a time with the cursor left on it)
+  and stays in the middle of the screen: the diff
   scrolls under it as it moves (`zt`/`zb` aside, and short of either end of
-  the diff), and scrolling by hand carries it along to the middle line. Keys: `j`/`k` lines (with counts, `5j`), `h`/`l` old
+  the diff), and scrolling by hand carries it along to the middle line. Keys: `j`/`k` lines (with counts, `5j`; a line with several comments or findings
+  is stepped through one at a time), `h`/`l` old
   or new side, `]c`/`[c` changes, `}`/`{` hunks, `]f`/`[f` files, `c`/`C`
   comment threads and review findings (one at a time when several share a
   line), `]d`/`[d` findings only, `gg`/`G`, Ctrl-D/U/F/B, and `zz`/`zt`/`zb`.
