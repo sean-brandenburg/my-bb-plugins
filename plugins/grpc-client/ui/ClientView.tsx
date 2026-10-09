@@ -1,0 +1,591 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import { toast } from "sonner";
+import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import type { CallResult } from "../contract";
+import type { HistoryEntry, Overview, rpcContract } from "../server/rpc-contract";
+import { CHANGED_CHANNEL, MASKED_VALUE, errorMessage, isClientStreaming } from "../shared/common";
+import type { MethodInfo } from "../shared/schema";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
+import { Centered, MenuItem, Segmented, Tabs } from "./controls";
+import { EndpointSwitcher } from "./EndpointSwitcher";
+import { HistoryList } from "./HistoryList";
+import { useServices, useTypeClosure, useWidth } from "./hooks";
+import { EditorOptionsContext, inputClass } from "./MessageEditor";
+import { MetadataEditor, type MetadataRow } from "./MetadataEditor";
+import { MethodBadges, MethodList } from "./MethodList";
+import { Popover } from "./Popover";
+import { exampleMessage, isObject, type JsonObject } from "./proto-json";
+import { RequestBody } from "./RequestBody";
+import { ResponseView } from "./ResponseView";
+import { SplitPane } from "./SplitPane";
+import { readStored, useStored, writeStored } from "./storage";
+
+/** Below this the method list becomes an overlay. */
+const OVERLAY_LIST_WIDTH = 820;
+/** At or above this the request and response sit side by side. */
+const SIDE_BY_SIDE_WIDTH = 1650;
+/** Below this much room beside the list, the request bar folds Form/JSON into its menu. */
+const COMPACT_BAR_WIDTH = 780;
+const NO_METADATA: MetadataRow[] = [];
+const DEFAULT_LIST_WIDTH = 320;
+const MIN_LIST_WIDTH = 220;
+/** The docked list never takes more than this share of the view. */
+const MAX_LIST_SHARE = 0.6;
+/** Dragging the list narrower than this collapses it. */
+const COLLAPSE_LIST_WIDTH = 160;
+const NO_OVERRIDES: Record<string, string> = {};
+
+function EmptyConfig({ errors }: { errors: string[] }) {
+  return (
+    <Centered>
+      <Icon name="grpc-client/brand" className="mx-auto size-8" />
+      <p className="text-base font-medium text-foreground">No gRPC endpoints yet</p>
+      {errors.map((error) => (
+        <p key={error} className="text-destructive">
+          {error}
+        </p>
+      ))}
+      <p>Add named endpoints and proto sources from a terminal, or edit the JSON in this plugin's settings.</p>
+      <pre className="rounded-lg bg-muted/50 p-3 text-left font-mono text-xs leading-relaxed text-foreground">
+        {[
+          "bb grpc source add protos --kind protoDir --path ~/src/protos",
+          "bb grpc endpoint add local --target localhost:50051 --transport plaintext",
+          "bb grpc endpoint add prod --target api.example.com:443 --source protos --protected",
+        ].join("\n")}
+      </pre>
+    </Centered>
+  );
+}
+
+export function ClientView() {
+  const rpc = useRpc<typeof rpcContract>();
+  const [rootRef, width] = useWidth();
+  const overlayList = width > 0 && width < OVERLAY_LIST_WIDTH;
+  const sideBySide = width >= SIDE_BY_SIDE_WIDTH;
+  const [storedListWidth, setListWidth] = useStored<number>("listWidth", DEFAULT_LIST_WIDTH);
+  const [listCollapsed, setListCollapsed] = useStored<boolean>("listCollapsed", false);
+  const listWidth = Math.round(Math.min(Math.max(storedListWidth, MIN_LIST_WIDTH), Math.max(MIN_LIST_WIDTH, width * MAX_LIST_SHARE)));
+  const listDocked = !overlayList && !listCollapsed;
+  const compactBar = width - (listDocked ? listWidth : 0) < COMPACT_BAR_WIDTH;
+
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const loadOverview = useCallback(() => {
+    rpc.call("overview").then(
+      (next) => {
+        setOverview(next);
+        setOverviewError(null);
+      },
+      (cause) => setOverviewError(errorMessage(cause)),
+    );
+  }, [rpc]);
+  useEffect(loadOverview, [loadOverview]);
+
+  const [storedEndpoint, setStoredEndpoint] = useStored<string | null>("endpoint", null);
+  const [sourceOverrides, setSourceOverrides] = useStored<Record<string, string>>("sources", NO_OVERRIDES);
+  const endpoint = overview?.endpoints.find((candidate) => candidate.name === storedEndpoint) ?? overview?.endpoints[0] ?? null;
+  const sourceName = endpoint === null ? null : (sourceOverrides[endpoint.name] ?? endpoint.source);
+  const servicesKey = endpoint === null || sourceName === null ? null : `${endpoint.name}|${sourceName}`;
+
+  const services = useServices(servicesKey);
+  useRealtime(CHANGED_CHANNEL, (payload) => {
+    if (!isObject(payload) || payload.reason !== "config") return;
+    loadOverview();
+    // The host rebuilds descriptors only when the source config changed, so this is cheap otherwise.
+    services.refresh();
+  });
+  const current = services.current;
+  const serviceData = current?.data ?? null;
+
+  const [storedMethod, setStoredMethod] = useStored<string | null>(`method:${endpoint?.name ?? ""}`, null);
+  const method = useMemo(() => {
+    if (serviceData === null || storedMethod === null) return null;
+    for (const service of serviceData.services) {
+      const found = service.methods.find((candidate) => candidate.fullName === storedMethod);
+      if (found !== undefined) return found;
+    }
+    return null;
+  }, [serviceData, storedMethod]);
+
+  const { closure, closureError } = useTypeClosure(method, endpoint?.name ?? null, sourceName, serviceData?.state.loadedAt ?? 0);
+
+  const streams = method !== null && isClientStreaming(method.kind);
+  const defaultRequest = streams ? "[\n  {}\n]" : "{}";
+  const [mode, setMode] = useStored<"form" | "json">("mode", "form");
+  const [showDocs, setShowDocs] = useStored<boolean>("showDocs", false);
+  const [requestText, setRequestText] = useStored<string>(`request:${method?.fullName ?? ""}`, defaultRequest);
+  const [metadata, setMetadata] = useStored<MetadataRow[]>(`metadata:${endpoint?.name ?? ""}`, NO_METADATA);
+  const [requestTab, setRequestTab] = useState<"body" | "metadata" | "options">("body");
+  const [timeout, setTimeoutText] = useState("");
+  const [leftTab, setLeftTab] = useState<"methods" | "history">("methods");
+  const [listOpen, setListOpen] = useState(false);
+  const [showComment, setShowComment] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  /** Latest result per endpoint + method; `recordedAt` marks one restored from history. */
+  const [results, setResults] = useState<Record<string, { result: CallResult; recordedAt: number | null; historyId: number | null }>>({});
+  const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const resultKey = endpoint === null || method === null ? "" : `${endpoint.name}|${method.fullName}`;
+  const activeMetadata = metadata.filter((row) => row.enabled && row.name.trim() !== "");
+
+  const callRequest = (endpointName: string, methodName: string) => {
+    const seconds = Number(timeout);
+    // RPC input must be strict JSON, so optional fields are omitted rather than set to undefined.
+    return {
+      endpoint: endpointName,
+      ...(sourceName === null ? {} : { source: sourceName }),
+      method: methodName,
+      request: requestText,
+      metadata: activeMetadata.map(({ name, value }) => ({ name: name.trim(), value })),
+      ...(timeout.trim() !== "" && Number.isFinite(seconds) && seconds > 0 ? { timeoutSeconds: seconds } : {}),
+    };
+  };
+
+  const send = () => {
+    if (endpoint === null || method === null || sending) return;
+    setConfirming(false);
+    setSending(true);
+    const key = resultKey;
+    rpc.call("invoke", callRequest(endpoint.name, method.fullName)).then(
+      (result) => {
+        setResults((previous) => ({ ...previous, [key]: { result, recordedAt: null, historyId: null } }));
+        setSending(false);
+      },
+      (cause) => {
+        toast.error(errorMessage(cause));
+        setSending(false);
+      },
+    );
+  };
+  const requestSend = () => {
+    if (endpoint?.protected) setConfirming(true);
+    else send();
+  };
+  const copyCommand = () => {
+    if (endpoint === null || method === null) return;
+    rpc
+      .call("command", callRequest(endpoint.name, method.fullName))
+      .then((result) => navigator.clipboard.writeText(result.command))
+      .then(
+        () => toast.success("Copied the grpcurl command"),
+        (cause) => toast.error(errorMessage(cause)),
+      );
+  };
+  const resetAuth = () => {
+    rpc.call("resetAuth").then(
+      (result) => toast.success(result.cleared === 0 ? "No cached tokens to forget" : "Cached tokens forgotten; the next call fetches new ones"),
+      (cause) => toast.error(errorMessage(cause)),
+    );
+  };
+  const fillExample = () => {
+    if (method === null || closure === null) return;
+    const example: JsonObject = exampleMessage(method.input, closure);
+    setRequestText(JSON.stringify(streams ? [example] : example, null, 2));
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      requestSend();
+    }
+  };
+  const selectMethod = (next: MethodInfo) => {
+    setStoredMethod(next.fullName);
+    setShowComment(false);
+    setListOpen(false);
+  };
+  const openHistory = (entry: HistoryEntry) => {
+    writeStored(`method:${entry.endpoint}`, entry.method);
+    writeStored(`request:${entry.method}`, entry.request);
+    // History masks credential values; restoring "***" would override the real auth header.
+    const restorable = entry.metadata.filter((row) => row.value !== MASKED_VALUE);
+    if (restorable.length > 0) {
+      const rows = [...readStored<MetadataRow[]>(`metadata:${entry.endpoint}`, NO_METADATA)];
+      for (const row of restorable) {
+        const index = rows.findIndex((candidate) => candidate.name === row.name);
+        if (index === -1) rows.push({ ...row, enabled: true });
+        else rows[index] = { ...rows[index]!, value: row.value, enabled: true };
+      }
+      writeStored(`metadata:${entry.endpoint}`, rows);
+    }
+    if (overview?.endpoints.some((candidate) => candidate.name === entry.endpoint)) {
+      setSourceOverrides({ ...sourceOverrides, [entry.endpoint]: entry.source });
+      setStoredEndpoint(entry.endpoint);
+    }
+    setRequestTab("body");
+    setListOpen(false);
+    const key = `${entry.endpoint}|${entry.method}`;
+    rpc.call("historyResult", { id: entry.id }).then(
+      ({ result }) => {
+        if (result !== null) setResults((previous) => ({ ...previous, [key]: { result, recordedAt: entry.at, historyId: entry.id } }));
+        else toast("This call was recorded before responses were kept in history; only its request was restored.");
+      },
+      (cause) => toast.error(errorMessage(cause)),
+    );
+  };
+
+  if (overview === null) {
+    return <Centered>{overviewError === null ? "Loading…" : <span className="text-destructive">{overviewError}</span>}</Centered>;
+  }
+  if (endpoint === null) return <EmptyConfig errors={overview.errors} />;
+
+  const errors = [...overview.errors, ...(overviewError ? [overviewError] : [])];
+  const shown = results[resultKey] ?? null;
+  const loadingServices = current?.status === "loading";
+  const methodCount = serviceData?.services.reduce((count, service) => count + service.methods.length, 0) ?? 0;
+
+  const startListResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = listWidth;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    const move = (moveEvent: PointerEvent) => {
+      const next = startWidth + moveEvent.clientX - startX;
+      if (next < COLLAPSE_LIST_WIDTH) {
+        setListCollapsed(true);
+        stop();
+        return;
+      }
+      setListWidth(Math.max(MIN_LIST_WIDTH, next));
+    };
+    const stop = () => {
+      document.body.style.userSelect = previousSelect;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  const showList = () => {
+    if (overlayList) setListOpen(true);
+    else setListCollapsed(false);
+  };
+
+  const list = (
+    <aside
+      className={cn(
+        "relative flex min-h-0 flex-col border-r border-border bg-background",
+        overlayList ? "absolute inset-y-0 left-0 z-20 w-80 max-w-[85%] shadow-xl" : "shrink-0",
+      )}
+      style={overlayList ? undefined : { width: listWidth }}
+    >
+      <div className="flex items-center gap-1 border-b border-border px-1.5 py-1.5">
+        <EndpointSwitcher
+          overview={overview}
+          endpoint={endpoint}
+          sourceName={sourceName ?? ""}
+          descriptors={serviceData?.state ?? null}
+          loading={loadingServices}
+          onEndpoint={setStoredEndpoint}
+          onSource={(next) => setSourceOverrides({ ...sourceOverrides, [endpoint.name]: next })}
+          onReload={services.reload}
+        />
+        <button
+          type="button"
+          className={cn(
+            "rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+            leftTab === "history" && "bg-state-active text-foreground",
+          )}
+          aria-label="Call history"
+          aria-pressed={leftTab === "history"}
+          title="Call history"
+          onClick={() => setLeftTab(leftTab === "history" ? "methods" : "history")}
+        >
+          <Icon name="grpc-client/history" className="size-4" />
+        </button>
+        {overlayList ? (
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-label="Close method list" onClick={() => setListOpen(false)}>
+            <Icon name="X" className="size-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            aria-label="Collapse method list"
+            title="Collapse method list"
+            onClick={() => setListCollapsed(true)}
+          >
+            <Icon name="PanelLeft" className="size-4" />
+          </button>
+        )}
+      </div>
+      {leftTab === "history" ? (
+        <HistoryList selectedId={shown?.historyId ?? null} onOpen={openHistory} />
+      ) : current?.status === "error" && serviceData === null ? (
+        <div className="space-y-3 p-4">
+          <p className="text-sm font-medium text-foreground">Could not load the protos</p>
+          <p className="whitespace-pre-wrap break-words text-xs text-destructive">{current.error}</p>
+          <Button variant="outline" size="sm" onClick={services.reload}>
+            Try again
+          </Button>
+        </div>
+      ) : serviceData === null ? (
+        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <Icon name="Spinner" className="size-4" />
+          Loading protos…
+        </div>
+      ) : (
+        <MethodList key={servicesKey ?? ""} services={serviceData.services} selected={method?.fullName ?? null} filterKey={sourceName ?? ""} onSelect={selectMethod} />
+      )}
+      {overlayList ? null : (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize method list"
+          title="Drag to resize · double-click to reset"
+          className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize hover:bg-ring/30"
+          onPointerDown={startListResize}
+          onDoubleClick={() => setListWidth(DEFAULT_LIST_WIDTH)}
+        />
+      )}
+    </aside>
+  );
+
+  const requestPane =
+    method === null ? null : (
+      <>
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3">
+          {requestTab === "body" ? (
+            <EditorOptionsContext.Provider value={{ showDocs }}>
+              <RequestBody key={method.fullName} method={method} closure={closure} closureError={closureError} mode={mode} text={requestText} onText={setRequestText} />
+            </EditorOptionsContext.Provider>
+          ) : null}
+          {requestTab === "metadata" ? <MetadataEditor rows={metadata} endpoint={endpoint.name} onChange={setMetadata} /> : null}
+          {requestTab === "options" ? (
+            <div className="max-w-xl space-y-5 text-sm">
+              <label className="block space-y-1">
+                <span className="font-medium text-foreground">Deadline</span>
+                <span className="flex items-center gap-2">
+                  <input
+                    className={cn(inputClass, "w-28")}
+                    placeholder={String(overview.timeoutSeconds)}
+                    inputMode="decimal"
+                    value={timeout}
+                    onChange={(event) => setTimeoutText(event.target.value)}
+                  />
+                  <span className="text-muted-foreground">seconds (default {overview.timeoutSeconds})</span>
+                </span>
+              </label>
+              <div className="space-y-2">
+                <span className="font-medium text-foreground">Auth</span>
+                <p className="text-muted-foreground">
+                  {method.auth === null ? "No auth profile, so no token is added." : `Profile “${method.auth}”`}
+                  {method.authReason ? ` · ${method.authReason}` : ""}
+                </p>
+                {method.auth !== null ? (
+                  <Button variant="outline" size="sm" onClick={resetAuth}>
+                    Forget cached tokens
+                  </Button>
+                ) : null}
+              </div>
+              <dl className="space-y-1">
+                <dt className="font-medium text-foreground">Types</dt>
+                <dd className="break-all font-mono text-xs text-muted-foreground">request {method.input}</dd>
+                <dd className="break-all font-mono text-xs text-muted-foreground">response {method.output}</dd>
+              </dl>
+            </div>
+          ) : null}
+        </div>
+      </>
+    );
+
+  return (
+    <div ref={rootRef} className="flex h-full min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+      {errors.length > 0 ? (
+        <div role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive">
+          {errors.join(" · ")}
+        </div>
+      ) : null}
+      {current?.status === "error" && serviceData !== null ? (
+        <div role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive">
+          Reloading the protos failed, so the last good copy is shown: {current.error}
+        </div>
+      ) : null}
+
+      <div className="relative flex min-h-0 flex-1">
+        {(overlayList ? listOpen : !listCollapsed) ? list : null}
+        {method === null ? (
+          <Centered>
+            {serviceData === null ? (
+              current?.status === "error" ? (
+                "The protos could not be loaded; the error is shown in the method list."
+              ) : (
+                "Loading protos…"
+              )
+            ) : (
+              <>
+                <p className="text-base font-medium text-foreground">Pick a method</p>
+                <p>
+                  {methodCount} methods across {serviceData.services.length} services. Search by service or method name.
+                </p>
+                {listDocked ? null : (
+                  <Button variant="outline" size="sm" onClick={showList}>
+                    Browse methods
+                  </Button>
+                )}
+              </>
+            )}
+          </Centered>
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+              {listDocked ? null : (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
+                  aria-label="Show method list"
+                  title="Show method list"
+                  onClick={showList}
+                >
+                  <Icon name="PanelLeft" className="size-4" />
+                </button>
+              )}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <h2 className="truncate text-sm font-semibold text-foreground" title={method.fullName}>
+                  {method.name}
+                </h2>
+                <MethodBadges method={method} showAuthName={!compactBar} />
+                {method.deprecated ? <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] text-amber-800 dark:text-amber-200">deprecated</span> : null}
+                {method.comment ? (
+                  <button
+                    type="button"
+                    className={cn("shrink-0 rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", showComment && "text-foreground")}
+                    aria-label="Show method description"
+                    aria-expanded={showComment}
+                    title={method.comment}
+                    onClick={() => setShowComment(!showComment)}
+                  >
+                    <Icon name="grpc-client/info" className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+              <Tabs
+                value={requestTab}
+                onChange={setRequestTab}
+                options={[
+                  { id: "body", label: "Body" },
+                  {
+                    id: "metadata",
+                    label: (
+                      <>
+                        Metadata{activeMetadata.length > 0 ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{activeMetadata.length}</span> : null}
+                      </>
+                    ),
+                  },
+                  { id: "options", label: "Options" },
+                ]}
+              />
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {requestTab === "body" && !compactBar ? (
+                  <Segmented
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { id: "form", label: "Form" },
+                      { id: "json", label: "JSON" },
+                    ]}
+                  />
+                ) : null}
+                <Popover
+                  open={moreOpen}
+                  onOpenChange={setMoreOpen}
+                  label="Request actions"
+                  className="left-auto right-0 w-56"
+                  trigger={
+                    <button
+                      type="button"
+                      className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", moreOpen && "bg-state-active text-foreground")}
+                      aria-label="More request actions"
+                      aria-expanded={moreOpen}
+                      title="More"
+                      onClick={() => setMoreOpen(!moreOpen)}
+                    >
+                      <Icon name="MoreHorizontal" className="size-4" />
+                    </button>
+                  }
+                >
+                  <MenuItem
+                    disabled={closure === null}
+                    onClick={() => {
+                      fillExample();
+                      setRequestTab("body");
+                      setMoreOpen(false);
+                    }}
+                  >
+                    Fill with example
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setRequestText(defaultRequest);
+                      setMoreOpen(false);
+                    }}
+                  >
+                    Clear request
+                  </MenuItem>
+                  <MenuItem checked={showDocs} onClick={() => setShowDocs(!showDocs)}>
+                    Show field docs
+                  </MenuItem>
+                  {compactBar ? (
+                    <MenuItem
+                      checked={mode === "json"}
+                      onClick={() => {
+                        setMode(mode === "json" ? "form" : "json");
+                        setRequestTab("body");
+                      }}
+                    >
+                      Edit as JSON
+                    </MenuItem>
+                  ) : null}
+                  <div className="my-1 h-px bg-border" />
+                  <MenuItem
+                    onClick={() => {
+                      copyCommand();
+                      setMoreOpen(false);
+                    }}
+                  >
+                    Copy as grpcurl command
+                  </MenuItem>
+                </Popover>
+                <Button size="sm" className={cn("ml-1 h-7 px-3", endpoint.protected && "bg-amber-600 text-white hover:bg-amber-600/90")} disabled={sending} onClick={requestSend}>
+                  <Icon name={sending ? "Spinner" : "grpc-client/send"} className="size-3.5" />
+                  {sending ? "Sending" : endpoint.protected ? `Send to ${endpoint.name}` : "Send"}
+                </Button>
+              </div>
+            </div>
+            {showComment && method.comment ? (
+              <p className="whitespace-pre-line border-b border-border px-4 py-2 text-sm text-muted-foreground">
+                <span className="mb-1 block font-mono text-xs">{method.fullName}</span>
+                {method.comment}
+              </p>
+            ) : null}
+            <SplitPane vertical={!sideBySide} first={requestPane} second={<ResponseView result={shown?.result ?? null} recordedAt={shown?.recordedAt ?? null} sending={sending} />} />
+          </div>
+        )}
+      </div>
+
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send to {endpoint.name}?</DialogTitle>
+            <DialogDescription>
+              {endpoint.name} ({endpoint.target}) is protected. This really calls {method?.name ?? "the method"}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={send}>
+              Send to {endpoint.name}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

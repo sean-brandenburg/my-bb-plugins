@@ -1,0 +1,384 @@
+import { useEffect, useState } from "react";
+import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { Column, Ticket } from "../shared/board";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
+import { threadStatusText } from "./format";
+import { type Rpc, type ProjectOption, useBoard, useProjects, useThreadIndex, useOpenThread } from "./data";
+import { collapseRightPanel, TICKET_TAB } from "./page-state";
+import { ExternalLink, ThreadStatusDot, Select, ProjectSelect, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
+import { TagEditor } from "./tags";
+import { ReviewPanel } from "./review-panel";
+import { CommentsPanel } from "./comments-panel";
+import { SubtasksGroup } from "./subtasks";
+import { usePendingAction } from "./actions";
+
+function TicketDetails({
+  ticket,
+  columns,
+  projects,
+  thread,
+  threads,
+  allTags,
+  rpc,
+  onClose,
+  onChanged,
+  onOpenThread,
+  onOpenDiff,
+  tickets,
+  onOpenTicket,
+}: {
+  ticket: Ticket;
+  columns: Column[];
+  projects: ProjectOption[];
+  thread: PluginSidebarThread | null | undefined;
+  threads: ReadonlyMap<string, PluginSidebarThread>;
+  allTags: readonly string[];
+  rpc: Rpc;
+  onClose: () => void;
+  onChanged: () => void;
+  onOpenThread: (threadId: string) => void;
+  onOpenDiff: (ticketId: string) => void;
+  tickets: readonly Ticket[];
+  onOpenTicket: (ticketId: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const { pending, run } = usePendingAction(onChanged);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showParentPicker, setShowParentPicker] = useState(false);
+  useEffect(() => {
+    setTitle(ticket.title);
+    setDescription(ticket.description);
+    setProjectId(ticket.projectId ?? projects[0]?.id ?? "");
+    setConfirmDelete(false);
+    // Reset the form only when a different card is shown or its stored text changes.
+  }, [ticket.id, ticket.title, ticket.description, ticket.projectId, projects]);
+
+  // Title and description save when the field loses focus, like the other controls apply immediately.
+  const saveText = () => {
+    const nextTitle = title.trim() === "" ? ticket.title : title.trim();
+    if (nextTitle === ticket.title && description === ticket.description) return;
+    void run(() => rpc.call("ticket_update", { id: ticket.id, title: nextTitle, description }));
+  };
+  const kindLabel = ticket.pr !== null ? "Pull request" : ticket.jira !== null ? "Jira issue" : "Card";
+  const columnName = columns.find((column) => column.id === ticket.columnId)?.name ?? ticket.columnId;
+  const parent = ticket.parentId === null ? null : (tickets.find((entry) => entry.id === ticket.parentId) ?? null);
+  // Candidates to nest under: anything except this card and its own descendants.
+  const descendants = new Set<string>();
+  const collect = (id: string) => {
+    for (const entry of tickets) {
+      if (entry.parentId === id && !descendants.has(entry.id)) {
+        descendants.add(entry.id);
+        collect(entry.id);
+      }
+    }
+  };
+  collect(ticket.id);
+  const parentOptions = tickets.filter((entry) => entry.id !== ticket.id && !descendants.has(entry.id));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-col gap-1">
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={saveText}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+          }}
+          aria-label="Title"
+          readOnly={ticket.kind !== "adhoc"}
+          className="-mx-1 w-full rounded bg-transparent px-1 text-base font-semibold leading-6 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        {parent !== null ? (
+          <button type="button" className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground" onClick={() => onOpenTicket(parent.id)}>
+            <Icon name="ChevronUp" className="size-3" />
+            <span className="truncate">{parent.title}</span>
+          </button>
+        ) : null}
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={`${kindLabel} ${ticket.id} · ${columnName}`}>
+            {ticket.pr !== null ? (
+              <>
+                <ExternalLink href={ticket.pr.url} title={`Open ${ticket.pr.repo}#${ticket.pr.number} on GitHub`} className="hover:text-foreground hover:underline">
+                  {ticket.pr.repo.split("/")[1]}#{ticket.pr.number}
+                </ExternalLink>
+                {` · ${ticket.pr.state}`}
+              </>
+            ) : null}
+            {ticket.jira !== null ? (
+              <>
+                <ExternalLink href={ticket.jira.url} title={`Open ${ticket.jira.key} in Jira`} className="hover:text-foreground hover:underline">
+                  {ticket.jira.key}
+                </ExternalLink>
+                {` · ${ticket.jira.status || "unknown"}`}
+              </>
+            ) : null}
+            {ticket.pr === null && ticket.jira === null ? (parent !== null ? "Subtask" : kindLabel) : ""}
+          </p>
+          {ticket.threadId !== null ? (
+            <button type="button" className={HEADER_ICON_BUTTON} aria-label="Open thread" title="Open thread" onClick={() => onOpenThread(ticket.threadId!)}>
+              <Icon name="MessageSquare" className="size-3.5" />
+              <span className="absolute -right-0.5 -top-0.5 flex rounded-full ring-2 ring-background">
+                <ThreadStatusDot thread={thread} />
+              </span>
+            </button>
+          ) : null}
+          {ticket.pr !== null || ticket.threadId !== null ? (
+            <button
+              type="button"
+              className={HEADER_ICON_BUTTON}
+              aria-label="View changes"
+              title={ticket.pendingDiffComments > 0 ? `View changes · ${ticket.pendingDiffComments} comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet` : "View changes"}
+              onClick={() => onOpenDiff(ticket.id)}
+            >
+              <Icon name="kanban-diff" className="size-3.5" />
+              {ticket.pendingDiffComments > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-white tabular-nums">
+                  {ticket.pendingDiffComments}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+        </div>
+      </header>
+
+      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+        <Property label="Column">
+          <Select
+            aria-label="Column"
+            value={ticket.columnId}
+            className="h-7 w-auto"
+            onChange={(columnId) => void run(() => rpc.call("ticket_move", { id: ticket.id, columnId, index: null }))}
+          >
+            {columns.map((column) => (
+              <option key={column.id} value={column.id}>
+                {column.name}
+              </option>
+            ))}
+          </Select>
+        </Property>
+        <Property label="Tags">
+          <TagEditor ticket={ticket} rpc={rpc} run={run} suggestions={allTags} />
+        </Property>
+        {ticket.parentId !== null || showParentPicker ? (
+          <Property label="Parent">
+            <Select
+              aria-label="Parent card"
+              value={ticket.parentId ?? ""}
+              className="h-7 w-auto max-w-full"
+              onChange={(value) => void run(() => rpc.call("ticket_set_parent", { id: ticket.id, parentId: value === "" ? null : value }))}
+            >
+              <option value="">None (top-level)</option>
+              {parentOptions.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.title.length > 60 ? `${entry.title.slice(0, 60)}…` : entry.title}
+                </option>
+              ))}
+            </Select>
+          </Property>
+        ) : null}
+        <Property label="Thread">
+          {ticket.threadId !== null ? (
+            <button
+              type="button"
+              onClick={() => onOpenThread(ticket.threadId!)}
+              className="flex max-w-full items-center gap-1.5 text-left text-sm hover:underline"
+            >
+              <span className="truncate">{thread?.displayTitle ?? "Thread"}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">· {threadStatusText(thread)}</span>
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone={false} className="h-7 w-auto max-w-48" />
+              <Button
+                type="button"
+                variant="secondary"
+                className={COMPACT}
+                disabled={pending || projectId === ""}
+                onClick={() => void run(() => rpc.call("ticket_start_thread", { id: ticket.id, projectId }), "Thread started")}
+              >
+                <Icon name="Play" className="size-3.5" />
+                Start
+              </Button>
+            </div>
+          )}
+        </Property>
+        {ticket.pr !== null ? (
+          <Property label="Author">
+            <span>{ticket.pr.author || "unknown"}</span>
+            {ticket.pr.role === "authored" ? <span className="text-xs text-muted-foreground"> (you)</span> : null}
+          </Property>
+        ) : null}
+        {ticket.jira !== null ? (
+          <>
+            <Property label="Type">{ticket.jira.issueType || "issue"}</Property>
+            {ticket.jira.priority !== null ? <Property label="Priority">{ticket.jira.priority}</Property> : null}
+            {ticket.jira.assignee !== null ? <Property label="Assignee">{ticket.jira.assignee}</Property> : null}
+          </>
+        ) : null}
+      </dl>
+
+      <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={onOpenTicket} onOpenThread={onOpenThread} />
+
+      {ticket.pr !== null ? (
+        <ReviewPanel
+          ticket={ticket}
+          threads={threads}
+          rpc={rpc}
+          pending={pending}
+          canReview={ticket.projectId !== null}
+          run={run}
+          onOpenThread={onOpenThread}
+        />
+      ) : null}
+
+      {ticket.pr !== null ? (
+        <CommentsPanel
+          ticket={ticket}
+          threads={threads}
+          rpc={rpc}
+          pending={pending}
+          canApply={ticket.projectId !== null}
+          run={run}
+          onOpenThread={onOpenThread}
+        />
+      ) : null}
+
+      <Group
+        title={ticket.kind === "adhoc" ? "Description" : "Notes"}
+        summary={description.trim() === "" ? <span className="text-xs text-muted-foreground">empty</span> : undefined}
+        defaultOpen
+      >
+        <textarea
+          aria-label={ticket.kind === "adhoc" ? "Description" : "Notes"}
+          value={description}
+          rows={ticket.kind === "adhoc" ? 6 : 3}
+          placeholder={ticket.kind === "adhoc" ? "What needs to happen?" : "Notes"}
+          onChange={(event) => setDescription(event.target.value)}
+          onBlur={saveText}
+          className="w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      </Group>
+
+      <footer className="flex items-center justify-between gap-2 pt-1">
+        {confirmDelete ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Delete this card? Threads are kept.</span>
+            <Button
+              type="button"
+              variant="destructive"
+              className={COMPACT}
+              disabled={pending}
+              onClick={() =>
+                void run(async () => {
+                  await rpc.call("ticket_delete", { id: ticket.id });
+                  onClose();
+                }, "Card deleted")
+              }
+            >
+              Delete
+            </Button>
+            <Button type="button" variant="ghost" className={COMPACT} onClick={() => setConfirmDelete(false)}>
+              Keep
+            </Button>
+          </div>
+        ) : (
+          <span className="flex items-center gap-1">
+            <Button type="button" variant="ghost" className={cn(COMPACT, "text-muted-foreground hover:text-destructive")} onClick={() => setConfirmDelete(true)}>
+              <Icon name="Trash2" className="size-3.5" />
+              Delete
+            </Button>
+            {ticket.parentId === null && !showParentPicker && parentOptions.length > 0 ? (
+              <Button type="button" variant="ghost" className={cn(COMPACT, "text-muted-foreground")} onClick={() => setShowParentPicker(true)}>
+                Nest under…
+              </Button>
+            ) : null}
+          </span>
+        )}
+        <Button type="button" variant="ghost" className={COMPACT} onClick={onClose}>
+          Close
+        </Button>
+      </footer>
+    </div>
+  );
+}
+
+type TicketDetailsProps = Parameters<typeof TicketDetails>[0];
+
+/** Fallback for surfaces without a right panel (compact viewports). */
+export function TicketDialog(props: Omit<TicketDetailsProps, "ticket"> & { ticket: Ticket | null }) {
+  if (props.ticket === null) return null;
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : props.onClose())}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="sr-only">Card {props.ticket.id}</DialogTitle>
+          <DialogDescription className="sr-only">Edit the card, move it, or open its thread.</DialogDescription>
+        </DialogHeader>
+        <TicketDetails {...props} ticket={props.ticket} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Right-panel tab: shows the card targeted from the board or todo list. */
+export function TicketTab() {
+  const target = useFixedTabTarget(TICKET_TAB);
+  const { rpc, board, refetch } = useBoard();
+  const projects = useProjects();
+  const threads = useThreadIndex();
+  const openThread = useOpenThread();
+  const navigate = useBbNavigate();
+  const appPanel = useAppPanel();
+  const ticket = target === null ? null : (board?.tickets.find((entry) => entry.id === target.target.ticketId) ?? null);
+  // Escape clears the card like closing a dialog would. Radix dialogs (new card, columns, sources)
+  // take precedence: while one is open, Escape belongs to it.
+  useEffect(() => {
+    if (target === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"][data-state="open"]') !== null) return;
+      event.preventDefault();
+      target.clear();
+      collapseRightPanel();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [target]);
+  if (target === null || ticket === null) {
+    return (
+      <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        {board === null ? "Loading…" : target === null ? "Select a card to see its details here." : "This card no longer exists."}
+      </p>
+    );
+  }
+  const detailProps = {
+    columns: board!.columns,
+    projects,
+    thread: ticket.threadId === null ? null : threads.get(ticket.threadId),
+    threads,
+    allTags: board!.tags,
+    rpc,
+    onChanged: refetch,
+    onOpenThread: openThread,
+    onOpenDiff: (ticketId: string) => navigate.toPluginPanel("board", { subPath: `diff/${ticketId}` }),
+    tickets: board!.tickets,
+    onOpenTicket: (ticketId: string) => appPanel.openFixedTab({ surface: { kind: "current" }, tab: TICKET_TAB, target: { ticketId } }),
+  };
+  return (
+    <TicketDetails
+      {...detailProps}
+      ticket={ticket}
+      onClose={() => {
+        target.clear();
+        collapseRightPanel();
+      }}
+    />
+  );
+}

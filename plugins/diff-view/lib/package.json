@@ -1,0 +1,12 @@
+{
+  "name": "bb-diff-view",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The diff view as a library other bb plugins bundle. Imports only modules bb's plugin build shims to the host, so it needs no install of its own.",
+  "type": "module",
+  "bb": {
+    "pluginTailwindContent": [
+      "**/*.{ts,tsx}"
+    ]
+  }
+}

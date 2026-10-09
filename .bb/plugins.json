@@ -1,0 +1,20 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "sean-bb-plugins",
+  "plugins": [
+    { "name": "kanban", "source": "./plugins/kanban" },
+    { "name": "obsidian", "source": "./plugins/obsidian" },
+    { "name": "grouped-thread-list", "source": "./plugins/grouped-thread-list" },
+    { "name": "vim-mode", "source": "./plugins/vim-mode" },
+    { "name": "browser-automation-pinned", "source": "./plugins/browser-automation-pinned" },
+    { "name": "grpc-client", "source": "./plugins/grpc-client" },
+    { "name": "double-shift-palette", "source": "./plugins/double-shift-palette" },
+    { "name": "slim-sidebar", "source": "./plugins/slim-sidebar" },
+    { "name": "diff-view", "source": "./plugins/diff-view" },
+    { "name": "composer-status-bar", "source": "./plugins/composer-status-bar" },
+    { "name": "thread-header-project", "source": "./plugins/thread-header-project" },
+    { "name": "history-keys", "source": "./plugins/history-keys" },
+    { "name": "minimal-top-bar", "source": "./plugins/minimal-top-bar" }
+  ]
+}

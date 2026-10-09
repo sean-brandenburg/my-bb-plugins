@@ -1,0 +1,169 @@
+import { z } from "zod";
+import { COLUMN } from "./columns";
+import { dumpSchema } from "./dump";
+import { reviewSummarySchema } from "./review";
+
+export const columnSchema = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().trim().min(1).max(60),
+});
+export type Column = z.infer<typeof columnSchema>;
+
+/** Whether the signed-in user wrote the PR; drives the card thread's first prompt. */
+export const prRoleSchema = z.enum(["authored", "other"]);
+
+export const tagSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(40)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/u, "Tags are lowercase letters, digits, dots, dashes, underscores");
+
+/**
+ * Where tickets come from automatically. Every item a source returns becomes a
+ * card tagged with the source's tags; a card can be fed by several sources.
+ */
+const sourceBaseSchema = z.object({
+  id: z.string().min(1).max(40).regex(/^[a-z0-9][a-z0-9-]*$/u),
+  name: z.string().trim().min(1).max(80),
+  tags: z.array(tagSchema).max(10),
+  /** Move the card to Done when the item stops appearing in this source while still open. */
+  doneWhenGone: z.boolean(),
+  enabled: z.boolean(),
+  /** Project for this source's card threads. GitHub sources try the repo's remote first. */
+  projectId: z.string().nullable().default(null),
+});
+
+export const githubSourceSchema = sourceBaseSchema.extend({
+  kind: z.literal("github-search"),
+  /** GitHub search query, e.g. `is:pr is:open author:@me archived:false`. */
+  query: z.string().trim().min(1).max(500),
+});
+
+export const jiraSourceSchema = sourceBaseSchema.extend({
+  kind: z.literal("jira-jql"),
+  /** JQL, e.g. `assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`. */
+  jql: z.string().trim().min(1).max(1000),
+});
+
+export const sourceSchema = z.discriminatedUnion("kind", [githubSourceSchema, jiraSourceSchema]);
+export type Source = z.infer<typeof sourceSchema>;
+export type SourceKind = Source["kind"];
+export const SOURCE_KINDS: Array<{ kind: SourceKind; label: string; description: string }> = [
+  { kind: "github-search", label: "GitHub search", description: "Pull requests or issues matching a GitHub search query." },
+  { kind: "jira-jql", label: "Jira (JQL)", description: "Issues matching a JQL query on your Jira Cloud site." },
+];
+
+export const DEFAULT_SOURCES: Source[] = [
+  {
+    id: "my-prs",
+    name: "My pull requests",
+    kind: "github-search",
+    query: "is:pr is:open author:@me archived:false",
+    tags: ["my-prs"],
+    doneWhenGone: false,
+    enabled: true,
+    projectId: null,
+  },
+  {
+    id: "pr-reviews",
+    name: "Review requests",
+    kind: "github-search",
+    query: "is:pr is:open user-review-requested:@me archived:false draft:false",
+    tags: ["pr-reviews"],
+    doneWhenGone: true,
+    enabled: true,
+    projectId: null,
+  },
+];
+
+export const jiraIssueSchema = z.object({
+  key: z.string(),
+  url: z.string(),
+  status: z.string(),
+  /** Jira's status category: `new` (To Do), `indeterminate` (In Progress), `done`. */
+  statusCategory: z.enum(["new", "indeterminate", "done", "undefined"]),
+  issueType: z.string(),
+  priority: z.string().nullable(),
+  assignee: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type JiraIssue = z.infer<typeof jiraIssueSchema>;
+export const prStateSchema = z.enum(["open", "draft", "merged", "closed"]);
+
+export const pullRequestSchema = z.object({
+  repo: z.string(),
+  number: z.number().int(),
+  url: z.string(),
+  role: prRoleSchema,
+  state: prStateSchema,
+  author: z.string(),
+  updatedAt: z.string(),
+});
+export type PullRequest = z.infer<typeof pullRequestSchema>;
+
+export const ticketSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  columnId: z.string(),
+  kind: z.enum(["pr", "jira", "adhoc"]),
+  tags: z.array(z.string()),
+  /** The source that created the card, or null for ad hoc cards. */
+  sourceId: z.string().nullable(),
+  threadId: z.string().nullable(),
+  /** Thread of the latest review, if one was started. */
+  reviewThreadId: z.string().nullable(),
+  latestReview: reviewSummarySchema.nullable(),
+  /** PR comment counts: everything synced, and the ones not yet marked addressed. */
+  comments: z.object({ total: z.number().int(), open: z.number().int(), selected: z.number().int() }).nullable(),
+  /** Parent card when this is a subtask; null for top-level cards. */
+  parentId: z.string().nullable(),
+  /** Subtask progress: how many children exist and how many are in the done column. */
+  children: z.object({ total: z.number().int(), done: z.number().int(), withThread: z.number().int() }),
+  /** Comments the user left on the card's diff that have not been submitted for addressing yet. */
+  pendingDiffComments: z.number().int(),
+  /** Whether diff comments can go to the GitHub PR (any PR card). */
+  canPostToGithub: z.boolean(),
+  /** Where a new diff comment goes unless the user picks otherwise: GitHub for PRs carrying the review tag. */
+  defaultCommentTarget: z.enum(["local", "github"]),
+  projectId: z.string().nullable(),
+  pr: pullRequestSchema.nullable(),
+  jira: jiraIssueSchema.nullable(),
+  position: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type Ticket = z.infer<typeof ticketSchema>;
+
+export const syncStatusSchema = z.object({
+  lastSyncAt: z.number().nullable(),
+  lastError: z.string().nullable(),
+  login: z.string().nullable(),
+  tokenSource: z.enum(["setting", "gh-cli", "none"]),
+  /** Jira Cloud site URL when the Jira settings are complete, else null. */
+  jiraSite: z.string().nullable(),
+  inProgress: z.boolean(),
+});
+export type SyncStatus = z.infer<typeof syncStatusSchema>;
+
+export const boardSchema = z.object({
+  columns: z.array(columnSchema),
+  tickets: z.array(ticketSchema),
+  sources: z.array(sourceSchema),
+  /** Every tag in use, sorted. */
+  tags: z.array(z.string()),
+  sync: syncStatusSchema,
+  /** Brain dumps still in flight or awaiting review (planning, ready, failed). */
+  dumps: z.array(dumpSchema),
+});
+export type Board = z.infer<typeof boardSchema>;
+
+export const DEFAULT_COLUMNS: Column[] = [
+  { id: COLUMN.backlog, name: "Backlog" },
+  { id: COLUMN.todo, name: "To Do" },
+  { id: COLUMN.inProgress, name: "In Progress" },
+  { id: COLUMN.review, name: "In Review" },
+  { id: COLUMN.done, name: "Done" },
+];
