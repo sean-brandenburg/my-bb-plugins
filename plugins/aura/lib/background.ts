@@ -2,10 +2,14 @@ import { imageUrl, snapshotSchema, type Snapshot } from "./model.ts";
 import { CAPY_CSS, mountCapyEffect, type CapyEffect } from "./capy-effect.ts";
 
 export const LOCAL_CHANGE = "bb:aura:changed";
-export const TARGETS = ':is([id="thread-detail-timeline-panel"], [id="root-compose-main-panel"])';
+export const PANEL_TARGETS = ':is([id="thread-detail-timeline-panel"], [id="root-compose-main-panel"])';
+/** Any element a plugin marks to carry the full wallpaper, as conversations do. It positions itself; Aura only fills it. */
+export const SURFACE_TARGET = "[data-aura-surface]";
+export const TARGETS = `:is(${PANEL_TARGETS}, ${SURFACE_TARGET})`;
 export const NEW_THREAD_TARGET = '[id="root-compose-main-panel"]';
 export function targetsFor(snapshot: Snapshot): string { return snapshot.settings.newThreadOnly ? NEW_THREAD_TARGET : TARGETS; }
 export function backgroundRules(selector: string): string { return `${selector}{position:relative;isolation:isolate;}`; }
+function panelsFor(snapshot: Snapshot): string { return snapshot.settings.newThreadOnly ? NEW_THREAD_TARGET : PANEL_TARGETS; }
 
 // Center only the full New thread compose layout. Auto margins collapse when
 // the draft grows taller than the viewport, keeping it reachable by scrolling.
@@ -154,12 +158,11 @@ export function mountBackground(signal: AbortSignal): () => void {
       node instanceof Element && (node.matches(TARGETS) || node.querySelector(TARGETS) !== null)));
     if (relevant && !pending) { pending = true; queueMicrotask(reconcile); }
   });
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["id"] });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["id", "data-aura-surface"] });
   const controller = new AbortController();
   function apply(snapshot: Snapshot): void {
     current = snapshot;
-    const target = targetsFor(snapshot);
-    const css = snapshot.settings.enabled ? `${backgroundRules(target)}\n${CAPY_CSS}\n${COMPOSE_LAYOUT}\n${snapshot.settings.newThreadOnly ? "" : READING_SURFACE}` : "";
+    const css = snapshot.settings.enabled ? `${backgroundRules(panelsFor(snapshot))}\n${CAPY_CSS}\n${COMPOSE_LAYOUT}\n${snapshot.settings.newThreadOnly ? "" : READING_SURFACE}` : "";
     if (css !== lastCss) { style.textContent = css; lastCss = css; }
     reconcile();
   }

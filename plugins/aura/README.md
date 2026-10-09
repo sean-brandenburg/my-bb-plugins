@@ -1,5 +1,9 @@
 # Aura
 
+Forked from [MateoCerquetella/bb-plugins](https://github.com/MateoCerquetella/bb-plugins/tree/main/plugins/aura)
+at `d38e2d0` (0.2.2). This fork adds plugin surfaces (below). Reinstall the Git
+release to go back to upstream.
+
 Personal PNG/JPG backgrounds, Capy's animated dithering effect, and six saved
 slots for BB. Open **Settings → Aura**, or **+ → Actions → Aura** in a thread panel.
 
@@ -81,6 +85,15 @@ Half-wallpaper mode applies only to the New thread screen.
 The New thread composer is vertically centered on the full compose screen; short
 windows and long drafts remain scrollable. These styles follow Aura's enable and
 scope settings and are removed when Aura is disabled.
+
+## Plugin surfaces
+
+Another plugin can show the wallpaper on its own page by rendering an empty,
+positioned element with `data-aura-surface` behind its content, for example
+`<div data-aura-surface aria-hidden class="pointer-events-none absolute inset-0 -z-10">`
+inside a `relative isolate` page root. Aura fills it with the full wallpaper,
+the way it fills conversations, and leaves it bare when Aura is disabled or set
+to New thread only. Aura doesn't position the element; the plugin does.
 
 ## Effect and verification
 

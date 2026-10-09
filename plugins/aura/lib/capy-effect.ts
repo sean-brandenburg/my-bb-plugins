@@ -51,7 +51,7 @@ export function mountCapyEffect(parent: HTMLElement, initial: BackgroundSettings
     ink.style.backgroundSize = settings.fit;
     // The settings toggle affects New thread only: show the top half of the
     // wallpaper with a fade to the theme background at the midpoint.
-    const conversation = parent.id === "thread-detail-timeline-panel";
+    const conversation = parent.id === "thread-detail-timeline-panel" || parent.hasAttribute("data-aura-surface");
     fade.style.opacity = "0";
     focus.style.opacity = "0";
     if (settings.dimmerEnabled && !conversation) ink.dataset.halfWallpaper = "";

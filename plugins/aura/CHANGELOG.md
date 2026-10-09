@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- Fill any element marked `data-aura-surface` with the full wallpaper, so plugin pages (the Kanban board) can share the thread background.
+
 ## 0.2.2
 
 - Add theme-aware reading surfaces to New thread controls and recent threads.

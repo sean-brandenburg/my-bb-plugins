@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import { mountBackground, notifyChange, TARGETS } from "../lib/background.ts";
+import { mountBackground, notifyChange, PANEL_TARGETS } from "../lib/background.ts";
 import { defaults } from "../lib/model.ts";
 
 test("applies scoped backgrounds, disables cleanly and ignores a late fetch after disposal", async () => {
@@ -17,7 +17,7 @@ test("applies scoped backgrounds, disables cleanly and ignores a late fetch afte
     assert.equal(document.querySelectorAll('style[data-aura]').length, 1);
     notifyChange({ settings: defaults, image: null, slots: [], activeSlot: null });
     assert.match(document.head.textContent!, /thread-detail-timeline-panel/);
-    assert.ok(document.head.textContent!.includes(TARGETS));
+    assert.ok(document.head.textContent!.includes(PANEL_TARGETS));
     assert.match(document.head.textContent!, /data-root-compose-mobile-recents.*letter-spacing:\.02em; text-transform:none/s);
     assert.match(document.head.textContent!, /data-root-compose-mobile-recents.*data-overflow-fade.*display:none/s);
     assert.match(document.head.textContent!, /:root:not\(\.dark\).*data-root-compose-mobile-recents.*background:color-mix\(in oklab,var\(--background\) 94%,transparent\)/s);
@@ -54,6 +54,37 @@ test("applies scoped backgrounds, disables cleanly and ignores a late fetch afte
     await new Promise(resolve => setTimeout(resolve, 0));
     notifyChange({ settings: defaults, image: null, slots: [], activeSlot: null });
     assert.equal(document.querySelectorAll('style[data-aura]').length, 0);
+  } finally {
+    dispose(); dom.window.close(); Object.assign(globalThis, saved);
+  }
+});
+
+test("fills opted-in plugin surfaces with the full wallpaper, and leaves them out of New thread only", async () => {
+  const dom = new JSDOM('<html><head></head><body><div id="root-compose-main-panel"></div></body></html>', { pretendToBeVisual: true });
+  const saved = { window: globalThis.window, document: globalThis.document, CustomEvent: globalThis.CustomEvent, fetch: globalThis.fetch, Element: globalThis.Element, HTMLElement: globalThis.HTMLElement, MutationObserver: globalThis.MutationObserver };
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, CustomEvent: dom.window.CustomEvent, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver });
+  dom.window.HTMLCanvasElement.prototype.getContext = (() => null) as typeof dom.window.HTMLCanvasElement.prototype.getContext;
+  globalThis.fetch = () => new Promise(() => {});
+  const controller = new AbortController();
+  const dispose = mountBackground(controller.signal);
+  try {
+    const photo = { version: "b".repeat(24), name: "wallpaper.png", mime: "image/png" as const, bytes: 100 };
+    notifyChange({ settings: defaults, image: photo, slots: [], activeSlot: null });
+    const surface = document.createElement("div");
+    document.body.append(surface);
+    surface.setAttribute("data-aura-surface", "");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(surface.querySelectorAll(".aura-capy-layer").length, 1);
+    assert.equal(surface.querySelector(".aura-capy-ink[data-half-wallpaper]"), null, "Surfaces get the full wallpaper, like conversations");
+    assert.ok(!document.head.textContent!.includes("data-aura-surface"), "A surface positions itself; Aura must not override it");
+    const added = document.createElement("section");
+    added.innerHTML = '<div data-aura-surface=""></div>';
+    document.body.append(added);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(added.querySelectorAll(".aura-capy-layer").length, 1);
+    notifyChange({ settings: { ...defaults, newThreadOnly: true }, image: photo, slots: [], activeSlot: null });
+    assert.equal(document.querySelectorAll("[data-aura-surface] .aura-capy-layer").length, 0);
+    assert.equal(document.querySelectorAll("#root-compose-main-panel .aura-capy-layer").length, 1);
   } finally {
     dispose(); dom.window.close(); Object.assign(globalThis, saved);
   }
