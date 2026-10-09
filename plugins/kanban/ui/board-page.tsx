@@ -359,7 +359,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
 /** Column-shaped placeholders while the board loads; the delay keeps a fast load from flashing them. */
 function BoardSkeleton() {
   return (
-    <div role="status" className={cn("flex items-start gap-3 [animation-delay:150ms]", enter.fade)}>
+    <div role="status" className={cn("flex gap-3 [animation-delay:150ms]", enter.fade)}>
       <span className="sr-only">Loading board…</span>
       {[3, 2, 1].map((cards, index) => (
         <div key={index} aria-hidden className="flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-background/75 p-2">

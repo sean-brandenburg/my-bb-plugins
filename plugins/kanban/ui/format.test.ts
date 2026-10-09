@@ -91,7 +91,8 @@ describe("shortAge", () => {
     expect(shortAge(now - 20_000, now)).toBe("now");
     expect(shortAge(now - 12 * 60_000, now)).toBe("12m");
     expect(shortAge(now - 5 * 3_600_000, now)).toBe("5h");
-    expect(shortAge(now - 47 * 3_600_000, now)).toBe("47h");
+    expect(shortAge(now - 23 * 3_600_000, now)).toBe("23h");
+    expect(shortAge(now - 47 * 3_600_000, now)).toBe("1d");
     expect(shortAge(now - 3 * 86_400_000, now)).toBe("3d");
     expect(shortAge(now + 60_000, now)).toBe("now");
   });
