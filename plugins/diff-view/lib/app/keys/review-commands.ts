@@ -57,7 +57,7 @@ export interface ReviewEnv {
   openThread: (threadId: string) => void;
   toggleFinding: (item: InlineFinding, selected: boolean) => void;
   explain: ((path: string, side: "old" | "new", startLine: number, endLine: number) => void) | null;
-  setDisplay: (setting: "mode" | "layout") => void;
+  toggleLayout: () => void;
   refresh: () => void;
   focusSendBar: () => boolean;
   openOverlay: (overlay: "help" | "files") => void;
@@ -339,8 +339,8 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
         env.notify(next === "github" ? "New comments go to the GitHub PR" : "New comments stay local");
       }
       return;
-    case "display":
-      env.setDisplay(command.setting);
+    case "layout":
+      env.toggleLayout();
       return;
     case "refresh":
       env.refresh();
@@ -368,7 +368,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     }
     case "peek": {
       const symbols = model?.symbols;
-      if (symbols === undefined) env.notify("Symbol peeks are in the structural view (gm switches to it)");
+      if (symbols === undefined) env.notify("Symbol peeks need a structural diff, which this file has none of");
       else if (row === -1) env.notify("Move onto a line to peek at a symbol on it");
       else {
         const names = symbols.at(row, cursor.side);

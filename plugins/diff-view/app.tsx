@@ -19,7 +19,7 @@ import "bb-motion/motion.css";
 import { POP, cx, enter, speed } from "bb-motion";
 import { DIFF_CHANGED } from "./events";
 import type { rpcContract } from "./server";
-import { DiffDisplayControls, DiffRefreshButton, DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "./lib/app/diff-view";
+import { DiffRefreshButton, DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "./lib/app/diff-view";
 import { registerDiffViewIcons } from "./lib/app/icons";
 import { errorMessage } from "./lib/app/format";
 import { requestFocus } from "./lib/app/state";
@@ -128,7 +128,6 @@ function ThreadChangesPanel({ threadId }: PluginThreadPanelProps) {
       threadId={threadId}
       toolbar={
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
-          <DiffDisplayControls />
           <span className="ml-auto">
             <DiffRefreshButton instanceKey={instanceKey(threadId)} />
           </span>

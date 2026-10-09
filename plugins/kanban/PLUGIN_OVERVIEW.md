@@ -20,7 +20,7 @@ A kanban board where every card is a BB thread.
 - **Subtasks** on any card, written by you (also while creating the card) or
   by the card's agent, with agents started on them one thread each or one
   thread working through them in order.
-- A **changes page** per card: structural or text diff, viewed marks, and line
+- A **changes page** per card: structural diff (a line diff where difftastic cannot diff a file), viewed marks, and line
   comments that stay local for an agent or post to the PR as GitHub drafts.
 - **PR review pipeline**: run your `code-review` skill on a PR card, pick the
   findings worth fixing and apply them with `apply-review`; synced PR comments

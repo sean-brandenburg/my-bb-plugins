@@ -38,7 +38,7 @@ import { enter } from "./ui/motion";
 import { SkeletonLines } from "./ui/skeleton";
 
 export type { DiffSource, DiffViewLabels } from "./source";
-export { DiffDisplayControls, DiffRefreshButton } from "./toolbar";
+export { DiffRefreshButton } from "./toolbar";
 
 /** Comments waiting to be sent, handed to the host's submit bar. */
 export interface PendingComments {
@@ -302,10 +302,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       openThread: onOpenThread,
       toggleFinding,
       explain: explainHunk,
-      setDisplay: (setting) => {
-        if (setting === "mode") setDiffPreferences({ mode: preferences.mode === "text" ? "structural" : "text" });
-        else setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" });
-      },
+      toggleLayout: () => setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" }),
       refresh: () => requestReload(instanceKey),
       focusSendBar: () => {
         // The bar's first action, past any checkbox or toggle that only sets an option for it.

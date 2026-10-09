@@ -2,12 +2,10 @@ import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "reac
 import type { ReactNode } from "react";
 import type { DiffSide, HunkExplanation, SemanticChange, StructuralDiff, SymbolLookup } from "../../types";
 import { checkedLineRange } from "../../line-range";
-import { Button, COMPACT } from "../ui/button";
 import { cn } from "../utils";
 import { FAST, PRESS, SHIMMER, enter } from "../ui/motion";
 import { errorMessage } from "../format";
 import { useDiffSource } from "../source";
-import { setDiffPreferences } from "../state";
 import { useHostThemeName } from "../theme";
 import { rangesOverlap } from "../ranges";
 import type { PatchAnnotationProps } from "../patch-annotations";
@@ -36,7 +34,6 @@ const LARGE_FILE_PREVIEW_ROWS = 60;
 /** How far past the preview a whole-file diff may run before it is cut to the preview. */
 const LARGE_FILE_PREVIEW_SLACK = 10;
 
-const NO_ROWS: FileNavModel = { rows: [], cutToHunk: false, element: () => null };
 
 /** A line-number drag in progress: one side's lines from `anchor` to `current`, in either direction. */
 interface LineDrag {
@@ -65,7 +62,10 @@ export function StructuralPatch({
   onExplain,
   semantics,
   changedRanges,
+  fallback,
 }: PatchAnnotationProps & {
+  /** The file's text diff, shown instead when difftastic cannot diff it. */
+  fallback: ReactNode;
   onOpenFile: (lookup: SymbolLookup, definition: SymbolLookup["definitions"][number]) => void;
   explanations: HunkExplanation[];
   /** Null when the data source cannot explain hunks. */
@@ -129,7 +129,8 @@ export function StructuralPatch({
     return { rows, visible, previewLimit, displayed, nav };
   }, [diff, revealed, findings, threads, showAll]);
   const navModel = useMemo<FileNavModel | null>(() => {
-    if (error !== null || (diff !== null && !diff.available)) return NO_ROWS;
+    // The fallback text diff publishes its own rows.
+    if (error !== null || (diff !== null && !diff.available)) return null;
     if (shape === null) return null;
     const { displayed, nav, visible, previewLimit } = shape;
     const sideLines = { LEFT: diff!.oldText.split("\n"), RIGHT: diff!.newText.split("\n") };
@@ -179,19 +180,17 @@ export function StructuralPatch({
       document.removeEventListener("pointercancel", cancel);
     };
   }, [drag, onStartComment]);
-  if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
-  if (diff === null || shape === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
-  if (!diff.available) {
+  if (error !== null || (diff !== null && !diff.available)) {
     return (
-      <div className={cn("m-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground", enter.fade)}>
-        <p>Structural diff unavailable.</p>
-        <p className="mt-1 text-xs">{diff.reason}</p>
-        <Button type="button" variant="secondary" className={cn(COMPACT, "mt-2")} onClick={() => setDiffPreferences({ mode: "text" })}>
-          Show text diff
-        </Button>
-      </div>
+      <>
+        <p className="px-3 pt-1.5 text-[11px] text-muted-foreground" title={error ?? diff?.reason ?? undefined}>
+          Shown as a line diff: difftastic could not diff this file
+        </p>
+        {fallback}
+      </>
     );
   }
+  if (diff === null || shape === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   const oldLines = diff.oldText.split("\n");
   const newLines = diff.newText.split("\n");
   const oldChanges = new Map(diff.oldChanges.map((entry) => [entry.line, entry]));

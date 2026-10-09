@@ -64,7 +64,7 @@ export function FileSection({
   semantics: SemanticChange[];
   changedRanges: Array<[number, number]>;
 }) {
-  const { layout, mode } = useDiffPreferences();
+  const { layout } = useDiffPreferences();
   const onHeader = useFileCursor(file.path)?.cursor.line === null;
   const reveal = useOpenedSinceMount(!collapsed) ? cn(enter.rise, FAST) : undefined;
   // Sections past the cap are below the fold when the list mounts; animating hundreds of full diffs at once costs a
@@ -108,8 +108,19 @@ export function FileSection({
             ))}
       {collapsed ? null : (
         <LazyMount root={scrollRoot} estimateLines={file.additions + file.deletions + 6} className={reveal}>
-          {() =>
-            file.patch !== null && mode === "structural" && !file.vendored ? (
+          {() => {
+            const textDiff =
+              file.patch === null ? null : (
+                <DiffErrorBoundary key={file.path} fallback={
+                    <>
+                      <NoRows path={file.path} />
+                      <Diff patch={file.patch} path={file.path} view={layout} className="text-xs" />
+                    </>
+                  }>
+                  <AnnotatedPatch key={file.path} {...annotations} patch={file.patch} />
+                </DiffErrorBoundary>
+              );
+            return file.patch !== null && !file.vendored ? (
               <StructuralPatch
                 key={`structural-${file.path}`}
                 {...annotations}
@@ -118,16 +129,10 @@ export function FileSection({
                 onExplain={onExplain}
                 semantics={semantics}
                 changedRanges={changedRanges}
+                fallback={textDiff}
               />
-            ) : file.patch !== null ? (
-              <DiffErrorBoundary key={file.path} fallback={
-                  <>
-                    <NoRows path={file.path} />
-                    <Diff patch={file.patch} path={file.path} view={layout} className="text-xs" />
-                  </>
-                }>
-                <AnnotatedPatch key={file.path} {...annotations} patch={file.patch} />
-              </DiffErrorBoundary>
+            ) : textDiff !== null ? (
+              textDiff
             ) : (
               <>
                 <NoRows path={file.path} />
@@ -140,8 +145,8 @@ export function FileSection({
                 />
                 <p className="p-4 text-sm text-muted-foreground">No text diff for this file (binary or too large).</p>
               </>
-            )
-          }
+            );
+          }}
         </LazyMount>
       )}
     </section>

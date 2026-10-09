@@ -25,7 +25,7 @@ export type ReviewCommand =
   | { kind: "explain" }
   | { kind: "viewed" }
   | { kind: "target" }
-  | { kind: "display"; setting: "mode" | "layout" }
+  | { kind: "layout" }
   | { kind: "refresh" }
   | { kind: "send" }
   | { kind: "findFile" }
@@ -104,8 +104,7 @@ const SEQUENCES: Record<string, ReviewCommand> = {
   K: { kind: "explain" },
   v: { kind: "viewed" },
   t: { kind: "target" },
-  gm: { kind: "display", setting: "mode" },
-  gl: { kind: "display", setting: "layout" },
+  gl: { kind: "layout" },
   R: { kind: "refresh" },
   s: { kind: "send" },
   "/": { kind: "findFile" },
@@ -187,7 +186,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["x"], action: "Include or exclude the review finding under the cursor in the apply round" },
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
-      { keys: ["gm", "gl"], action: "Text or structural, split or unified" },
+      { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },
       { keys: ["R"], action: "Refresh the diff" },
       { keys: ["Esc"], action: "Leave line selection" },
       { keys: ["?"], action: "This sheet" },

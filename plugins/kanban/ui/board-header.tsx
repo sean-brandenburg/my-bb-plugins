@@ -3,7 +3,7 @@ import { useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
 import { enter, usePopOnChange, POPOVER_MOTION } from "bb-motion";
-import { DiffDisplayControls, DiffRefreshButton } from "bb-diff-view/app/diff-view";
+import { DiffRefreshButton } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
 import { BOARD_CHANGED } from "../shared/events";
@@ -255,7 +255,6 @@ export function BoardHeader({ subPath }: { subPath: string }) {
             <span className="shrink-0">· {ticket.pr !== null ? `${ticket.pr.repo.split("/")[1]}#${ticket.pr.number}` : ticket.id}</span>
           </span>
         ) : null}
-        <DiffDisplayControls />
         {ticket !== null ? <ReviewThreadButtons ticket={ticket} /> : null}
         <CodeReviewThreadsMenu subjectId={diffTicketId} />
         <DiffRefreshButton instanceKey={diffInstanceKey(diffTicketId)} />

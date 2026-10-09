@@ -126,10 +126,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   thread's changes the same way, as its card when it has one; submitting
   comments from a thread without a card creates one first. A thread's own
   Changes button and side-panel tab come from the `diff-view` plugin.
-- **Structural diff** (default; a Text / Structural toggle in the title bar
-  switches): runs [difftastic](https://github.com/Wilfred/difftastic)
+- **Structural diff**: runs [difftastic](https://github.com/Wilfred/difftastic)
   (`brew install difftastic`; path configurable in settings) on both sides of
-  each file and lays the result out like GitHub's split view: three lines of
+  each file (a file it cannot diff, or every file when it is missing, shows
+  the line diff instead, with a note saying so) and lays the result out like GitHub's split view: three lines of
   context around each change, collapsed gaps with ↑/↓ expanders and the
   enclosing function after `@@`, Shiki syntax colouring from bb's code theme,
   difftastic's changed spans tinted on top, and moved blocks in violet with a

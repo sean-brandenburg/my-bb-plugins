@@ -11,8 +11,9 @@ plugins embed.
   plugin adds no page to the left sidebar.
 - The view: every changed file in one scroll with sticky headers, a resizable
   file tree once the container is at least 48rem wide (hidden in a narrow side
-  panel), structural (difftastic) or text (Pierre) diffs, split (the default)
-  or unified, long lines always wrapped, viewed marks, and ⌘-hover and ⌘-click symbol peeks in the
+  panel), structural (difftastic) diffs, with a text (Pierre) diff for any file
+  difftastic cannot diff (`gl` switches those between split, the default, and
+  unified), long lines always wrapped, viewed marks, and ⌘-hover and ⌘-click symbol peeks in the
   thread's checkout.
 - **Comments**: "+" on a line or "Comment on file", with replies. Drag the "+"
   or the line numbers (or shift-click a second line number) to comment on a
@@ -44,8 +45,8 @@ plugins embed.
   vim-mode plugin, Escape twice). `v` marks a file viewed and moves on,
   `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
   `zr` shows more unchanged lines, `K` asks for an explanation of the hunk,
-  `gd` peeks at a symbol on the line, `gm`/`gl` switch text or structural and
-  split or unified, `R` refreshes, and
+  `gd` peeks at a symbol on the line, `gl` switches line-diff files between
+  split and unified, `R` refreshes, and
   `?` lists every key.
 
 Settings: hide vendored files (default on) and the `difft` path. Comments and
