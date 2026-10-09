@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
@@ -10,7 +10,8 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus, localDay, threadStatusText } from "./format";
 import { type Rpc, type ProjectOption, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
-import { collapseRightPanel, TICKET_TAB } from "./page-state";
+import { collapseRightPanel, pageUi, TICKET_TAB } from "./page-state";
+import { focusBoard, requestCardFocus, useCardKeys } from "./card-keys";
 import { ExternalLink, ThreadStatusDot, Select, ProjectSelect, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
@@ -32,6 +33,8 @@ function TicketDetails({
   onOpenDiff,
   tickets,
   onOpenTicket,
+  onBack,
+  focusOnMount = false,
 }: {
   ticket: Ticket;
   columns: Column[];
@@ -46,6 +49,9 @@ function TicketDetails({
   onOpenDiff: (ticketId: string) => void;
   tickets: readonly Ticket[];
   onOpenTicket: (ticketId: string) => void;
+  /** Back to the board with the card left open. */
+  onBack?: () => void;
+  focusOnMount?: boolean;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -83,9 +89,31 @@ function TicketDetails({
   collect(ticket.id);
   const parentOptions = tickets.filter((entry) => entry.id !== ticket.id && !descendants.has(entry.id));
   const pendingPop = usePopOnChange(ticket.pendingDiffComments);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const keys = useCardKeys(rootRef, ticket.id, focusOnMount, {
+    onThread: () => {
+      if (ticket.threadId !== null) onOpenThread(ticket.threadId);
+    },
+    onDiff: () => {
+      if (ticket.pr !== null || ticket.threadId !== null) onOpenDiff(ticket.id);
+    },
+    onHelp: () => pageUi.set({ dialog: "keys" }),
+    onBack,
+  });
+  // Moving to a subtask or parent from the keyboard keeps the keyboard in the card.
+  const openTicket = (ticketId: string) => {
+    if (rootRef.current?.contains(document.activeElement)) requestCardFocus(ticketId);
+    onOpenTicket(ticketId);
+  };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onKeyDown={keys.onKeyDown}
+      onFocus={keys.onFocus}
+      className="flex flex-col gap-4 outline-none [&_[data-kanban-cursor]]:ring-2 [&_[data-kanban-cursor]]:ring-ring"
+    >
       <header className="flex flex-col gap-1">
         <input
           value={title}
@@ -99,7 +127,7 @@ function TicketDetails({
           className="-mx-1 w-full rounded bg-transparent px-1 text-base font-semibold leading-6 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         {parent !== null ? (
-          <button type="button" className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground" onClick={() => onOpenTicket(parent.id)}>
+          <button type="button" className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground" onClick={() => openTicket(parent.id)}>
             <Icon name="ChevronUp" className="size-3" />
             <span className="truncate">{parent.title}</span>
           </button>
@@ -234,7 +262,7 @@ function TicketDetails({
         ) : null}
       </dl>
 
-      <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={onOpenTicket} onOpenThread={onOpenThread} />
+      <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
 
       {ticket.pr !== null ? (
         <ReviewPanel
@@ -266,6 +294,7 @@ function TicketDetails({
         defaultOpen
       >
         <textarea
+          data-kanban-main-input=""
           aria-label={ticket.kind === "adhoc" ? "Description" : "Notes"}
           value={description}
           rows={ticket.kind === "adhoc" ? 6 : 3}
@@ -386,12 +415,13 @@ export function TicketDialog(props: Omit<TicketDetailsProps, "ticket"> & { ticke
   if (props.ticket === null) return null;
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : props.onClose())}>
-      <DialogContent className="sm:max-w-xl">
+      {/* The card places focus itself; Radix would put it in the title, where vim-mode starts typing. */}
+      <DialogContent className="sm:max-w-xl" onOpenAutoFocus={(event) => event.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="sr-only">Card {props.ticket.id}</DialogTitle>
           <DialogDescription className="sr-only">Edit the card, move it, or open its thread.</DialogDescription>
         </DialogHeader>
-        <TicketDetails {...props} ticket={props.ticket} />
+        <TicketDetails {...props} ticket={props.ticket} focusOnMount />
       </DialogContent>
     </Dialog>
   );
@@ -417,6 +447,7 @@ export function TicketTab() {
       event.preventDefault();
       target.clear();
       collapseRightPanel();
+      focusBoard(target.target.ticketId);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -443,10 +474,11 @@ export function TicketTab() {
   };
   // Keyed so switching cards rises the new one in with fresh per-card state.
   return (
-    <div key={ticket.id} data-kanban-keys="" className={enter.rise}>
+    <div key={ticket.id} className={enter.rise}>
       <TicketDetails
         {...detailProps}
         ticket={ticket}
+        onBack={() => focusBoard(ticket.id)}
         onClose={() => {
           target.clear();
           collapseRightPanel();

@@ -54,7 +54,7 @@ export function ColumnView({
   onDragEnd: () => void;
   onDragOver: (target: DropTarget, event: DragEvent<HTMLElement>) => void;
   onDrop: (target: DropTarget, event: DragEvent<HTMLElement>) => void;
-  onOpen: (ticket: Ticket) => void;
+  onOpen: (ticket: Ticket, viaKeyboard: boolean) => void;
   onOpenThread: (threadId: string) => void;
   onReview: (ticket: Ticket) => void;
   onOpenDiff: (ticket: Ticket) => void;
@@ -123,7 +123,7 @@ export function ColumnView({
               today={today}
               isDone={isDone}
               isDragging={draggingId === ticket.id}
-              onOpen={() => onOpen(ticket)}
+              onOpen={(viaKeyboard) => onOpen(ticket, viaKeyboard)}
               onOpenThread={() => {
                 if (ticket.threadId !== null) onOpenThread(ticket.threadId);
               }}

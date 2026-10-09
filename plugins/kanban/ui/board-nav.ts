@@ -36,20 +36,49 @@ export const KEYMAP: Record<string, BoardCommand> = {
   "?": { kind: "help" },
 };
 
+export interface KeyHelpSection {
+  title: string;
+  keys: readonly { keys: readonly string[]; action: string }[];
+}
+
 /** What the shortcuts dialog lists, in display order. */
-export const BOARD_KEY_HELP: readonly { keys: readonly string[]; action: string }[] = [
-  { keys: ["h", "l"], action: "Previous / next column" },
-  { keys: ["j", "k"], action: "Next / previous card" },
-  { keys: ["gg", "G"], action: "First / last card in the column" },
-  { keys: ["0", "$"], action: "First / last column" },
-  { keys: ["H", "L"], action: "Move card to the previous / next column" },
-  { keys: ["J", "K"], action: "Move card down / up" },
-  { keys: ["o", "Enter"], action: "Open card" },
-  { keys: ["t"], action: "Open the card's thread" },
-  { keys: ["d"], action: "View the card's changes" },
-  { keys: ["a"], action: "New card in this column" },
-  { keys: ["?"], action: "Show these shortcuts" },
+export const KEY_HELP: readonly KeyHelpSection[] = [
+  {
+    title: "Board",
+    keys: [
+      { keys: ["h", "l"], action: "Previous / next column" },
+      { keys: ["j", "k"], action: "Next / previous card" },
+      { keys: ["gg", "G"], action: "First / last card in the column" },
+      { keys: ["0", "$"], action: "First / last column" },
+      { keys: ["H", "L"], action: "Move card to the previous / next column" },
+      { keys: ["J", "K"], action: "Move card down / up" },
+      { keys: ["o", "Enter"], action: "Open card" },
+      { keys: ["t"], action: "Open the card's thread" },
+      { keys: ["d"], action: "View the card's changes" },
+      { keys: ["a"], action: "New card in this column" },
+      { keys: ["?"], action: "Show these shortcuts" },
+    ],
+  },
+  {
+    title: "Open card",
+    keys: [
+      { keys: ["j", "k"], action: "Next / previous field or button" },
+      { keys: ["gg", "G"], action: "First / last field or button" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Scroll half a page" },
+      { keys: ["Enter", "Space"], action: "Press the button, or start typing in the field" },
+      { keys: ["i"], action: "Start typing in the field, or the description" },
+      { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
+      { keys: ["h"], action: "Back to the board, leaving the card open" },
+      { keys: ["t", "d"], action: "Open the card's thread / changes" },
+    ],
+  },
 ];
+
+/** Steps a cursor through `length` stops, clamped at both ends; from no stop it lands on the first. */
+export function stepIndex(index: number, step: 1 | -1, length: number): number {
+  if (index === -1) return 0;
+  return Math.min(Math.max(index + step, 0), length - 1);
+}
 
 function locate(layout: BoardLayout, id: string): { column: number; row: number } | null {
   for (let column = 0; column < layout.length; column += 1) {

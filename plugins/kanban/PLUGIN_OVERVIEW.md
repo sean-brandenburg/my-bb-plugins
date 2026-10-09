@@ -5,7 +5,8 @@ A kanban board where every card is a BB thread.
 - A **Kanban** page in the left sidebar with drag-and-drop columns and a Todo
   list view.
 - Vim-style **keyboard navigation** on the board: `hjkl` to move between
-  cards, `HJKL` to move a card, `?` for the full list.
+  cards, `HJKL` to move a card, `j`/`k` through an open card's fields and
+  buttons, `?` for the full list.
 - Cards from **sources** you configure: GitHub searches (by default your open
   PRs and PRs waiting on your review) and Jira JQL queries. Cards move to Done
   when the PR merges or closes, the Jira issue is done, or (if the source says

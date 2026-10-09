@@ -20,6 +20,7 @@ import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
 import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 import { useBoardKeys } from "./board-keys";
+import { requestCardFocus } from "./card-keys";
 import { BoardKeysDialog } from "./board-keys-dialog";
 
 export function BoardPage({ subPath }: { subPath: string }) {
@@ -60,7 +61,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
   const doneId = board === null ? null : doneColumnId(board.columns);
   const sourceTags = useMemo(() => new Set((board?.sources ?? []).flatMap((source) => source.tags)), [board]);
   const appPanel = useAppPanel();
-  const showTicket = (ticketId: string) => {
+  const showTicket = (ticketId: string, focus = false) => {
+    if (focus) requestCardFocus(ticketId);
     const opened = appPanel.openFixedTab({ surface: { kind: "current" }, tab: TICKET_TAB, target: { ticketId } });
     if (!opened) setSelectedId(ticketId);
   };
@@ -132,7 +134,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         return;
       }
       case "open":
-        if (ticket !== undefined) showTicket(ticket.id);
+        if (ticket !== undefined) showTicket(ticket.id, true);
         return;
       case "thread":
         if (ticket?.threadId != null) openThread(ticket.threadId);
@@ -219,6 +221,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         ref={boardRef}
         tabIndex={-1}
         data-kanban-keys=""
+        data-kanban-board=""
         onFocus={(event) => {
           const ticketId = (event.target as Element).closest<HTMLElement>("[data-ticket-id]")?.dataset.ticketId;
           if (ticketId !== undefined) lastCardId.current = ticketId;
@@ -264,7 +267,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
               }
             }}
             onDrop={(target, event) => void onDrop(target, event)}
-            onOpen={(ticket) => showTicket(ticket.id)}
+            onOpen={(ticket, viaKeyboard) => showTicket(ticket.id, viaKeyboard)}
             onOpenThread={openThread}
             onReview={(ticket) => void reviewPr(ticket)}
             onOpenDiff={(ticket) => openDiff(ticket.id)}

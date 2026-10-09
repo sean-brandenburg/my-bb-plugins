@@ -40,7 +40,8 @@ export function CardView({
   today: string;
   isDone: boolean;
   isDragging: boolean;
-  onOpen: () => void;
+  /** `viaKeyboard` moves focus into the opened card. */
+  onOpen: (viaKeyboard: boolean) => void;
   onOpenThread: () => void;
   onOpenReview: () => void;
   onReview: () => void;
@@ -74,11 +75,11 @@ export function CardView({
       style={stagger(staggerIndex)}
       role="button"
       tabIndex={0}
-      onClick={onOpen}
+      onClick={() => onOpen(false)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen();
+          onOpen(true);
         }
       }}
       className={cn(

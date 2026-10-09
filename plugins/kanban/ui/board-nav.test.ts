@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placementIndex, cursorAfter, movePlacement } from "./board-nav";
+import { cursorAfter, movePlacement, placementIndex, stepIndex } from "./board-nav";
 
 const layout = [["a1", "a2", "a3"], [], ["c1"], ["d1", "d2"]];
 
@@ -65,5 +65,15 @@ describe("placementIndex", () => {
   it("places it last when it goes after every visible card", () => {
     expect(placementIndex(column, visible, 3)).toBe(5);
     expect(placementIndex([], [], 0)).toBe(0);
+  });
+});
+
+describe("stepIndex", () => {
+  it("lands on the first stop from none, and clamps at both ends", () => {
+    expect(stepIndex(-1, 1, 3)).toBe(0);
+    expect(stepIndex(-1, -1, 3)).toBe(0);
+    expect(stepIndex(0, 1, 3)).toBe(1);
+    expect(stepIndex(2, 1, 3)).toBe(2);
+    expect(stepIndex(0, -1, 3)).toBe(0);
   });
 });
