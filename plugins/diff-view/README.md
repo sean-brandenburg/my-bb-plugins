@@ -15,7 +15,8 @@ plugins embed.
   difftastic cannot diff (`gl` switches those between split, the default, and
   unified), long lines always wrapped, viewed marks, and ⌘-hover and ⌘-click symbol peeks in the
   thread's checkout.
-- **Comments**: "+" on a line or "Comment on file", with replies. Drag the "+"
+- **Comments**: "+" on a line, or the comment icon that appears on a file
+  header under the pointer or the cursor, with replies. Drag the "+"
   or the line numbers (or shift-click a second line number) to comment on a
   range of lines, as on GitHub. "Send N to the thread" sends every unsent
   comment to the thread's agent as one message. Hosts whose comments can go to

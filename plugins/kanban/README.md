@@ -195,7 +195,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   view).
 - **Vendored files**: files under `vendor/`, `node_modules/`, `third_party/`,
   `bower_components/`, `.yarn/`, `Pods/` and `Carthage/Checkouts/` are left
-  out of the changes view (the stats line says how many were hidden). Turn off
+  out of the changes view (the stats line's tooltip says how many were hidden). Turn off
   "Hide vendored files in the changes view" in the plugin settings to show them;
   even then they stay collapsed and use the text diff, never difftastic.
 - **Diff comments**: hover a line in the changes view and press the "+" gutter
@@ -203,7 +203,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   side of the diff. Drag the "+" or the line numbers, or shift-click a second
   line number, to comment on a range instead; it posts to GitHub as a
   multi-line comment, and the text view keeps a range inside one hunk, as
-  GitHub requires. "Comment on file" leaves a file-level note. On PR cards a
+  GitHub requires. The comment icon on a file header (shown under the pointer
+  or the cursor), or `O`, leaves a file-level note. On PR cards a
   **Comments go to Local / GitHub PR** switch in the strip above the diff sets
   where every new comment and reply goes: local comments stay on the board for
   an agent, GitHub ones are drafts until you post them. It starts on GitHub for
