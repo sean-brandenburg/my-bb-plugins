@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { KEY_HELP } from "./board-nav";
+import { Kbd } from "./primitives";
 
 export function BoardKeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   // Opened by `?`, the dialog has no trigger to hand focus back to, so it would land on the page body.
@@ -29,9 +30,7 @@ export function BoardKeysDialog({ open, onOpenChange }: { open: boolean; onOpenC
                   <div key={action} className="contents">
                     <dt className="flex gap-1">
                       {keys.map((key) => (
-                        <kbd key={key} className="min-w-6 rounded border border-border bg-muted px-1.5 py-0.5 text-center font-mono text-xs">
-                          {key}
-                        </kbd>
+                        <Kbd key={key}>{key}</Kbd>
                       ))}
                     </dt>
                     <dd className="text-muted-foreground">{action}</dd>

@@ -297,15 +297,24 @@ export function SegmentedTabs<T extends string>({
   );
 }
 
-/** j and k step through a Radix menu's items, which otherwise answer only to the arrows. */
+export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
+  return <kbd className={cn("min-w-6 rounded border border-border bg-muted px-1.5 py-0.5 text-center font-mono text-xs", className)}>{children}</kbd>;
+}
+
+/** Moves a Radix menu's highlight one item, from wherever focus is; Radix itself answers only to the arrows. */
+export function stepMenu(menu: HTMLElement, step: 1 | -1): void {
+  const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([data-disabled])'));
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  items[at === -1 ? (step === 1 ? 0 : items.length - 1) : Math.min(items.length - 1, Math.max(0, at + step))]?.focus();
+}
+
+/** j and k step through a menu's items while focus is inside it. */
 export function menuVimKeys(event: KeyboardEvent<HTMLElement>): void {
   const step = event.key === "j" ? 1 : event.key === "k" ? -1 : 0;
   if (step === 0 || event.metaKey || event.ctrlKey || event.altKey) return;
   // Claimed before Radix's typeahead, which would jump to an item starting with the letter.
   event.preventDefault();
-  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([data-disabled])'));
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  items[at === -1 ? 0 : Math.min(items.length - 1, Math.max(0, at + step))]?.focus();
+  stepMenu(event.currentTarget, step);
 }
 
 export const MENU_ITEM_CLASS =

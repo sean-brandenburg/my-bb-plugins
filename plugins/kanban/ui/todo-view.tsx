@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { localDay, parseQuickAdd } from "./format";
 import { type Rpc, useNow } from "./data";
-import { ThreadStatusDot } from "./primitives";
+import { Kbd, ThreadStatusDot } from "./primitives";
 import { tagTone, TagBadges } from "./tags";
 import { PrBadges, JiraBadges, ReviewBadge, DueBadge } from "./badges";
 import { toastError } from "./actions";
@@ -238,9 +238,31 @@ export function TodoView({
           onOpenThread={onOpenThread}
         />
       ))}
+      <p className="hidden flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-border pt-3 text-xs text-muted-foreground md:flex">
+        {TODO_HINTS.map(({ keys, action }) => (
+          <span key={action} className="inline-flex items-center gap-1.5">
+            {keys.map((key) => (
+              <Kbd key={key} className="min-w-5 px-1 py-0 text-[11px]">
+                {key}
+              </Kbd>
+            ))}
+            {action}
+          </span>
+        ))}
+      </p>
     </div>
   );
 }
+
+const TODO_HINTS = [
+  { keys: ["j", "k"], action: "move" },
+  { keys: ["x"], action: "done" },
+  { keys: ["o"], action: "open" },
+  { keys: ["t"], action: "thread" },
+  { keys: ["i"], action: "add" },
+  { keys: ["T"], action: "board" },
+  { keys: ["?"], action: "all keys" },
+] as const;
 
 function TodoSection({
   column,
