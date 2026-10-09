@@ -1,6 +1,4 @@
 export const TITLE_CLICK_DELAY_MS = 250;
-// Phone-width windows keep bb's stock top bar.
-const WIDE_VIEWPORT = "(min-width: 768px)";
 const STYLE_ATTRIBUTE = "data-minimal-top-bar";
 const HIDDEN_ATTRIBUTE = "data-minimal-top-bar-hidden";
 
@@ -17,48 +15,46 @@ const WORKFLOW_ACTION =
   "[data-thread-header-workflow-actions] [data-thread-header-responsive-action]";
 
 export const MINIMAL_TOP_BAR_CSS = `
-@media ${WIDE_VIEWPORT} {
-  /* Top-bar clutter with keyboard equivalents: open in editor/terminal is
-     Cmd+O, close pane is Cmd+W. */
-  button[aria-label^="Open workspace in "],
-  button[aria-label="Choose another app to open workspace"],
-  button[aria-label="Close pane"] {
-    display: none !important;
-  }
-  [${HIDDEN_ATTRIBUTE}] {
-    display: none !important;
-  }
-  /* Thread titles sit centered in the top bar. A click on the title opens
-     the thread menu (see installTitleMenu), so bb's ⋯ trigger is hidden but
-     kept at the title's end, where the menu anchors. */
-  ${TITLE_ROW} > div:first-child {
-    justify-content: center;
-  }
-  ${TITLE_ROW} input {
-    text-align: center;
-  }
-  ${TITLE_GROUP} {
-    gap: 0 !important;
-  }
-  ${TITLE_GROUP} > span:has(> ${MENU_TRIGGER}) {
-    width: 0;
-    overflow: visible;
-  }
-  ${TITLE_GROUP} ${MENU_TRIGGER} {
-    opacity: 0;
-    pointer-events: none;
-  }
-  ${TITLE_ROW} ${THREAD_TITLE} {
-    cursor: pointer;
-    transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
-  }
-  /* The menu opens only once the double-click window has passed, so the
-     title answers the press itself. Half the usual press depth, because the
-     title is wide and a full one squeezes it visibly. */
-  ${TITLE_ROW} ${THREAD_TITLE}:active {
-    transform: scale(calc((1 + var(--bbm-scale-press)) / 2));
-    transition-duration: var(--bbm-duration-instant);
-  }
+/* Top-bar clutter with keyboard equivalents: open in editor/terminal is
+   Cmd+O, close pane is Cmd+W. */
+button[aria-label^="Open workspace in "],
+button[aria-label="Choose another app to open workspace"],
+button[aria-label="Close pane"] {
+  display: none !important;
+}
+[${HIDDEN_ATTRIBUTE}] {
+  display: none !important;
+}
+/* Thread titles sit centered in the top bar. A click on the title opens
+   the thread menu (see installTitleMenu), so bb's ⋯ trigger is hidden but
+   kept at the title's end, where the menu anchors. */
+${TITLE_ROW} > div:first-child {
+  justify-content: center;
+}
+${TITLE_ROW} input {
+  text-align: center;
+}
+${TITLE_GROUP} {
+  gap: 0 !important;
+}
+${TITLE_GROUP} > span:has(> ${MENU_TRIGGER}) {
+  width: 0;
+  overflow: visible;
+}
+${TITLE_GROUP} ${MENU_TRIGGER} {
+  opacity: 0;
+  pointer-events: none;
+}
+${TITLE_ROW} ${THREAD_TITLE} {
+  cursor: pointer;
+  transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+/* The menu opens only once the double-click window has passed, so the
+   title answers the press itself. Half the usual press depth, because the
+   title is wide and a full one squeezes it visibly. */
+${TITLE_ROW} ${THREAD_TITLE}:active {
+  transform: scale(calc((1 + var(--bbm-scale-press)) / 2));
+  transition-duration: var(--bbm-duration-instant);
 }
 `;
 
@@ -77,8 +73,8 @@ function hideCommitButtons(doc: Document, hide: boolean) {
 
 /**
  * A single click on a header title opens the thread menu. It waits briefly so
- * a double-click still reaches bb's rename. Radix opens on pointerdown, so the
- * hidden trigger gets one.
+ * a double-click still reaches bb's rename. Wide windows get a radix dropdown,
+ * which opens on pointerdown; compact ones get a sheet, which opens on click.
  */
 function installTitleMenu(doc: Document, win: Window): () => void {
   let timer = 0;
@@ -106,6 +102,7 @@ function installTitleMenu(doc: Document, win: Window): () => void {
           isPrimary: true,
         }),
       );
+      if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
     }, TITLE_CLICK_DELAY_MS);
   };
   doc.addEventListener("click", onClick, true);
@@ -123,13 +120,12 @@ export function mountMinimalTopBar(doc: Document, win: Window): () => void {
   style.setAttribute(STYLE_ATTRIBUTE, "");
   style.textContent = MINIMAL_TOP_BAR_CSS;
   doc.head.append(style);
-  const wide = win.matchMedia(WIDE_VIEWPORT);
   let frame = 0;
   const schedule = () => {
     if (frame !== 0) return;
     frame = win.requestAnimationFrame(() => {
       frame = 0;
-      hideCommitButtons(doc, wide.matches);
+      hideCommitButtons(doc, true);
     });
   };
   const observer = new MutationObserver(schedule);
@@ -139,12 +135,10 @@ export function mountMinimalTopBar(doc: Document, win: Window): () => void {
     attributes: true,
     attributeFilter: ["data-state", "class"],
   });
-  wide.addEventListener("change", schedule);
   schedule();
   const removeTitleMenu = installTitleMenu(doc, win);
   return () => {
     observer.disconnect();
-    wide.removeEventListener("change", schedule);
     if (frame !== 0) win.cancelAnimationFrame(frame);
     style.remove();
     hideCommitButtons(doc, false);

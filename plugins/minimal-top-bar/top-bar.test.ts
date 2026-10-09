@@ -7,16 +7,6 @@ import {
   TITLE_CLICK_DELAY_MS,
 } from "./top-bar.js";
 
-const viewport = (matches: boolean) => (query: string) =>
-  ({
-    matches,
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }) as unknown as MediaQueryList;
-
-window.matchMedia ??= viewport(true);
-
 const nextFrame = () =>
   new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
@@ -68,19 +58,9 @@ describe("mountMinimalTopBar", () => {
     cleanup();
   });
 
-  it("leaves the Commit button alone at phone width", async () => {
-    vi.spyOn(window, "matchMedia").mockImplementation(viewport(false));
-    document.body.innerHTML = `
-      <div data-thread-header-workflow-actions>
-        <div id="commit" data-thread-header-responsive-action><button>Commit</button></div>
-      </div>`;
-    const cleanup = mountMinimalTopBar(document, window);
-    await nextFrame();
-
-    expect(
-      document.getElementById("commit")!.hasAttribute("data-minimal-top-bar-hidden"),
-    ).toBe(false);
-    cleanup();
+  it("applies at every window width", () => {
+    // bb's compact layout brings back the ⋯ and close buttons, so the restyle can't be limited to wide windows.
+    expect(MINIMAL_TOP_BAR_CSS).not.toContain("@media");
   });
 });
 
@@ -91,13 +71,16 @@ describe("title menu", () => {
         <p><span class="bb-thread-title">A thread</span></p>
         <span><button aria-label="Thread actions"></button></span>
       </div>`;
-    const opened = vi.fn();
-    document
-      .querySelector('button[aria-label="Thread actions"]')!
-      .addEventListener("pointerdown", opened);
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Thread actions"]')!;
+    const opened = vi.fn(() => trigger.setAttribute("aria-expanded", "true"));
+    const clicked = vi.fn();
+    trigger.addEventListener("pointerdown", opened);
+    trigger.addEventListener("click", clicked);
     return {
       title: document.querySelector<HTMLElement>(".bb-thread-title")!,
+      trigger,
       opened,
+      clicked,
     };
   }
 
@@ -110,6 +93,31 @@ describe("title menu", () => {
     expect(opened).not.toHaveBeenCalled();
     vi.advanceTimersByTime(TITLE_CLICK_DELAY_MS);
     expect(opened).toHaveBeenCalledTimes(1);
+
+    cleanup();
+  });
+
+  it("doesn't also click a dropdown that opened on pointerdown", () => {
+    vi.useFakeTimers();
+    const { title, clicked } = renderTitle();
+    const cleanup = mountMinimalTopBar(document, window);
+
+    title.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    vi.advanceTimersByTime(TITLE_CLICK_DELAY_MS);
+    expect(clicked).not.toHaveBeenCalled();
+
+    cleanup();
+  });
+
+  it("clicks the trigger when pointerdown doesn't open a menu, as bb's compact sheet needs", () => {
+    vi.useFakeTimers();
+    const { title, trigger, opened, clicked } = renderTitle();
+    trigger.removeEventListener("pointerdown", opened);
+    const cleanup = mountMinimalTopBar(document, window);
+
+    title.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    vi.advanceTimersByTime(TITLE_CLICK_DELAY_MS);
+    expect(clicked).toHaveBeenCalledTimes(1);
 
     cleanup();
   });

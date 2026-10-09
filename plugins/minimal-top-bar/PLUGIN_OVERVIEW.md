@@ -12,4 +12,4 @@ Clears out bb's top bar: a centered thread title that opens the thread menu, and
 
 ## How it works
 
-A content script adds a stylesheet that hides the top-bar buttons and centers the title, finds bb's Commit button by its text and hides it, and turns a single click on the title into a press of bb's hidden ⋯ trigger, after a short wait so a double-click can still reach rename. bb's top bar markup isn't a plugin contract, so a bb update may need this restyle adjusted; disabling the plugin restores bb's normal top bar. Phone-width windows keep bb's normal controls.
+A content script adds a stylesheet that hides the top-bar buttons and centers the title, finds bb's Commit button by its text and hides it, and turns a single click on the title into a press of bb's hidden ⋯ trigger, after a short wait so a double-click can still reach rename. bb's top bar markup isn't a plugin contract, so a bb update may need this restyle adjusted; disabling the plugin restores bb's normal top bar. It applies at every window width; in compact windows the title opens bb's thread menu sheet instead of the dropdown.
