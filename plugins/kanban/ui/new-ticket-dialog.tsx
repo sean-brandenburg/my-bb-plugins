@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
+import { PRESS, enter, speed } from "bb-motion";
 import type { Column } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { errorMessage, parseQuickAdd, parseTagList } from "./format";
 import { type Rpc, type ProjectOption } from "./data";
-import { Select, Textarea, ProjectSelect } from "./primitives";
+import { Select, Textarea, ProjectSelect, SegmentedTabs } from "./primitives";
 import { toastError } from "./actions";
 
 /** Records microphone audio and transcribes it with bb's voice service. */
@@ -62,6 +63,11 @@ function useDictation(onText: (text: string) => void) {
   return { state, start, stop };
 }
 
+const MODE_OPTIONS = [
+  { value: "single", label: "One card" },
+  { value: "dump", label: "Brain dump" },
+] as const;
+
 export function NewTicketDialog({
   open,
   onOpenChange,
@@ -82,6 +88,9 @@ export function NewTicketDialog({
   onOpenProposals: () => void;
 }) {
   const [mode, setMode] = useState<"single" | "dump">("single");
+  // The dialog scales in on open; only a mode switch animates its body.
+  const [switched, setSwitched] = useState(false);
+  const bodyMotion = switched ? cn(enter.rise, speed.fast) : undefined;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -148,23 +157,20 @@ export function NewTicketDialog({
         <DialogHeader>
           <DialogTitle className="sr-only">New card</DialogTitle>
           <DialogDescription className="sr-only">Create one card, or dictate a brain dump to be planned into several.</DialogDescription>
-          <div role="tablist" aria-label="Mode" className="flex w-fit rounded-md border border-border p-0.5">
-            {(["single", "dump"] as const).map((entry) => (
-              <button
-                key={entry}
-                type="button"
-                role="tab"
-                aria-selected={mode === entry}
-                onClick={() => setMode(entry)}
-                className={cn("rounded px-2.5 py-1 text-xs font-medium", mode === entry ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
-              >
-                {entry === "single" ? "One card" : "Brain dump"}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs
+            label="Mode"
+            value={mode}
+            options={MODE_OPTIONS}
+            onChange={(entry) => {
+              setSwitched(true);
+              setMode(entry);
+            }}
+            className="w-fit"
+            tabClassName="px-2.5 py-1"
+          />
         </DialogHeader>
         {mode === "single" ? (
-          <form onSubmit={submit} className="flex flex-col gap-4">
+          <form onSubmit={submit} className={cn("flex flex-col gap-4", bodyMotion)}>
             <Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title (use #tag for tags)" aria-label="Title" />
             <Textarea aria-label="Description" value={description} onChange={setDescription} placeholder="What needs to happen? (markdown, sent to the agent as the first prompt)" />
             <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Tags, comma or space separated" aria-label="Tags" />
@@ -202,7 +208,7 @@ export function NewTicketDialog({
             </DialogFooter>
           </form>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className={cn("flex flex-col gap-3", bodyMotion)}>
             <p className="text-xs text-muted-foreground">
               Ramble about everything that needs doing. An agent reads the project, splits it into proposed cards with open questions, and you review the result under Proposals when it is ready.
             </p>
@@ -225,6 +231,7 @@ export function NewTicketDialog({
                   onClick={() => (dictation.state === "recording" ? dictation.stop() : void dictation.start())}
                   className={cn(
                     "absolute right-2 top-2 flex size-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground",
+                    PRESS,
                     dictation.state === "recording" && "animate-pulse border-destructive bg-destructive/10 text-destructive",
                     dictation.state === "transcribing" && "opacity-60",
                   )}
@@ -233,8 +240,8 @@ export function NewTicketDialog({
                 </button>
               ) : null}
             </div>
-            {dictation.state === "recording" ? <p className="text-xs text-destructive">Recording… press the mic again to stop and transcribe.</p> : null}
-            {dictation.state === "transcribing" ? <p className="text-xs text-muted-foreground">Transcribing…</p> : null}
+            {dictation.state === "recording" ? <p className={cn("text-xs text-destructive", enter.fade)}>Recording… press the mic again to stop and transcribe.</p> : null}
+            {dictation.state === "transcribing" ? <p className={cn("text-xs text-muted-foreground", enter.fade)}>Transcribing…</p> : null}
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Project the agent should read while planning
               <ProjectSelect projects={projects} value={dumpProject} onChange={setDumpProject} allowNone={false} />

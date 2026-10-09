@@ -1,14 +1,20 @@
 import type { DragEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus, shortSha, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
+import { type Arrival, useEntrance, usePopOnChange } from "./motion";
 
 export function CardView({
   ticket,
+  arrival,
+  staggerIndex,
+  settling,
+  onSettled,
   thread,
   hiddenTags,
   today,
@@ -23,6 +29,11 @@ export function CardView({
   onDragEnd,
 }: {
   ticket: Ticket;
+  arrival: Arrival;
+  staggerIndex: number;
+  /** Just dropped: pops once, then reports back through `onSettled`. */
+  settling: boolean;
+  onSettled: () => void;
   thread: PluginSidebarThread | null | undefined;
   /** Tags applied by the card's source; every card from that source carries them, so they are noise here. */
   hiddenTags: ReadonlySet<string>;
@@ -40,7 +51,8 @@ export function CardView({
 }) {
   const review = ticket.latestReview;
   const ownTags = ticket.tags.filter((tag) => !hiddenTags.has(tag));
-  const iconButton = "flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground";
+  const iconButton = cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS);
+  const entrance = useEntrance(arrival === "intro" ? cn(enter.rise, STAGGER) : arrival === "new" ? enter.pop : undefined);
   // Only states that need the eye get words; a quiet idle thread is just a dot.
   const status = ticket.threadId === null ? null : threadStatusText(thread);
   const loud = status === "working" || status === "needs you" || status === "error" || status === "provisioning";
@@ -55,6 +67,12 @@ export function CardView({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        entrance.onAnimationEnd(event);
+        if (settling) onSettled();
+      }}
+      style={stagger(staggerIndex)}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -65,8 +83,10 @@ export function CardView({
         }
       }}
       className={cn(
-        "group flex cursor-grab flex-col gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm shadow-sm transition-opacity hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
-        isDragging && "opacity-40",
+        "group relative flex cursor-grab flex-col gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm shadow-sm hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
+        // The drag source dims instantly and stays put; lift and press would fight the drag image.
+        isDragging ? "opacity-40" : cn(LIFT, PRESS),
+        settling ? POP : entrance.className,
       )}
     >
       <span className="line-clamp-2 break-words font-medium leading-5">{ticket.title}</span>
@@ -104,7 +124,7 @@ export function CardView({
           ) : null}
         </span>
         {/* Hover actions sit over the counters instead of reserving room for themselves. */}
-        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 bg-card pl-3 opacity-0 transition-opacity [mask-image:linear-gradient(to_right,transparent,black_12px)] focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+        <span className={`pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 bg-card pl-3 opacity-0 ${OPACITY_TRANSITION} [mask-image:linear-gradient(to_right,transparent,black_12px)] focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100`}>
           {ticket.pr !== null ? (
             <button
               type="button"
@@ -144,8 +164,9 @@ const COUNTER_TONE: Record<"quiet" | "attention" | "danger" | "good" | "busy", s
 
 /** A footer stat: an icon and a number, coloured only when it asks for attention. */
 function CardCounter({ icon, count, tone, title }: { icon: string; count?: number | string; tone: keyof typeof COUNTER_TONE; title: string }) {
+  const pop = usePopOnChange(`${icon}|${tone}|${count ?? ""}`);
   return (
-    <span className={cn("inline-flex items-center gap-1 tabular-nums", COUNTER_TONE[tone])} title={title}>
+    <span key={pop.key} onAnimationEnd={pop.onAnimationEnd} className={cn("inline-flex items-center gap-1 tabular-nums", COUNTER_TONE[tone], pop.className)} title={title}>
       <Icon name={icon} className="size-3" />
       {count !== undefined ? count : null}
     </span>

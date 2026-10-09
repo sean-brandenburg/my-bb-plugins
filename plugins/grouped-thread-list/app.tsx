@@ -1,5 +1,6 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
+import "bb-motion/motion.css";
 import { PreferencesSync } from "./app/preferences/PreferencesSync.js";
 import { useFollowNavigation } from "./app/model/use-follow-navigation.js";
 import { ProjectPicker } from "./app/picker/ProjectPicker.js";

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { PRESS, STAGGER, enter, exit, speed, stagger } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import type { CommentApply, PrComment } from "../shared/comments";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { relativeTime, shortSha } from "./format";
 import { type Rpc, usePushPreference, useNow } from "./data";
 import { ExternalLink, PushToggle, Badge, ThreadStatusDot, COMPACT, Group } from "./primitives";
 import { type RunAction, toastError } from "./actions";
+import { type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "./motion";
 
 function commentWhere(comment: PrComment): string {
   if (comment.kind === "review-comment") return `${comment.path ?? "?"}${comment.line === null ? "" : `:${comment.line}`}`;
@@ -22,18 +24,35 @@ function CommentRow({
   comment,
   replies,
   now,
+  index,
+  arrival,
+  exiting,
+  onExited,
   onSelect,
   onAddressed,
 }: {
   comment: PrComment;
   replies: PrComment[];
   now: number;
+  index: number;
+  arrival: Arrival;
+  exiting: boolean;
+  onExited: () => void;
   onSelect: (comment: PrComment, selected: boolean) => void;
   onAddressed: (comment: PrComment, addressed: boolean) => void;
 }) {
   const addressed = comment.addressedAt !== null;
+  const entrance = useEntrance(arrival === "intro" ? cn(enter.rise, speed.fast, STAGGER) : arrival === "new" ? enter.rise : undefined);
+  const addressedPop = usePopOnChange(addressed);
   return (
-    <li className={cn("rounded-md border border-border bg-card p-2.5", (addressed || comment.mine) && "opacity-70")}>
+    <li
+      style={stagger(index)}
+      onAnimationEnd={(event) => {
+        if (exiting && event.target === event.currentTarget) onExited();
+        else entrance.onAnimationEnd(event);
+      }}
+      className={cn("rounded-md border border-border bg-card p-2.5", (addressed || comment.mine) && "opacity-70", exiting ? exit.sink : entrance.className)}
+    >
       <div className="flex items-start gap-2">
         <Checkbox
           checked={comment.selected}
@@ -55,12 +74,19 @@ function CommentRow({
                 type="button"
                 aria-label={addressed ? "Mark as not addressed" : "Mark as addressed"}
                 title={addressed ? "Mark as not addressed" : "Mark as addressed"}
-                className={cn("flex size-6 items-center justify-center rounded hover:bg-state-hover", addressed ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground")}
+                className={cn(
+                  "flex size-6 items-center justify-center rounded hover:bg-state-hover",
+                  PRESS,
+                  addressed ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground",
+                )}
                 onClick={() => onAddressed(comment, !addressed)}
               >
-                <Icon name="CircleCheck" className="size-3.5" />
+                {/* The pop lives on a wrapper so remounting it never takes focus from the button. */}
+                <span key={addressedPop.key} onAnimationEnd={addressedPop.onAnimationEnd} className={cn("flex", addressedPop.className)}>
+                  <Icon name="CircleCheck" className="size-3.5" />
+                </span>
               </button>
-              <ExternalLink href={comment.url} title="Open on GitHub" className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground">
+              <ExternalLink href={comment.url} title="Open on GitHub" className={cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}>
                 <Icon name="ExternalLink" className="size-3.5" />
               </ExternalLink>
             </span>
@@ -143,6 +169,8 @@ export function CommentsPanel({
   const topLevel = comments.filter((comment) => comment.inReplyTo === null && (showAddressed || comment.addressedAt === null));
   const repliesOf = (id: string) => comments.filter((comment) => comment.inReplyTo === id);
   const addressedCount = comments.filter((comment) => comment.addressedAt !== null).length;
+  const arrival = useArrivals(data === null ? null : topLevel.map((comment) => comment.id));
+  const shown = usePresenceList(topLevel, (comment) => comment.id);
 
   if (counts === null || counts.total === 0) return null;
   return (
@@ -205,13 +233,24 @@ export function CommentsPanel({
             </label>
           </div>
           {data === null ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : topLevel.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing open.</p>
+            <p className={cn("text-sm text-muted-foreground", enter.fade)}>Loading…</p>
+          ) : shown.entries.length === 0 ? (
+            <p className={cn("text-sm text-muted-foreground", enter.fade)}>Nothing open.</p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {topLevel.map((comment) => (
-                <CommentRow key={comment.id} comment={comment} replies={repliesOf(comment.id)} now={now} onSelect={(entry, selected) => void select(entry, selected)} onAddressed={(entry, addressed) => void address(entry, addressed)} />
+              {shown.entries.map(({ key, item: comment, exiting }, index) => (
+                <CommentRow
+                  key={key}
+                  comment={comment}
+                  replies={repliesOf(comment.id)}
+                  now={now}
+                  index={index}
+                  arrival={arrival(comment.id)}
+                  exiting={exiting}
+                  onExited={() => shown.onExited(key)}
+                  onSelect={(entry, selected) => void select(entry, selected)}
+                  onAddressed={(entry, addressed) => void address(entry, addressed)}
+                />
               ))}
             </ul>
           )}

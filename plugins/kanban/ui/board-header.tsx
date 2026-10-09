@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
+import { enter } from "bb-motion";
 import { DiffDisplayControls, DiffRefreshButton } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
@@ -13,7 +14,8 @@ import { cn } from "@/lib/utils";
 import { relativeTime, shortSha } from "./format";
 import { useBoard, useOpenThread, useNow } from "./data";
 import { pageUi, usePageUi } from "./page-state";
-import { Badge, COMPACT, MENU_ITEM_CLASS } from "./primitives";
+import { Badge, COMPACT, MENU_ITEM_CLASS, POPOVER_MOTION, SegmentedTabs } from "./primitives";
+import { usePopOnChange } from "./motion";
 import { diffInstanceKey, diffSubjectFromSubPath, findDiffSubjectTicket } from "./diff-page";
 import { toastError } from "./actions";
 
@@ -49,7 +51,7 @@ function BoardSettingsMenu({
         <Button variant="ghost" size="icon" className="relative size-7" aria-label="Board settings">
           <Icon name="Settings" className={cn("size-4", syncing && "animate-spin")} />
           {error !== null ? (
-            <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive" />
+            <span aria-hidden className={cn("absolute right-1 top-1 size-1.5 rounded-full bg-destructive", enter.pop)} />
           ) : null}
         </Button>
       </DropdownMenu.Trigger>
@@ -57,7 +59,7 @@ function BoardSettingsMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 min-w-56 max-w-80 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          className={cn("z-50 min-w-56 max-w-80 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onColumns}>
             <Icon name="Columns2" className="size-4 text-muted-foreground" />
@@ -74,7 +76,7 @@ function BoardSettingsMenu({
             onSelect={(event) => event.preventDefault()}
           >
             <DropdownMenu.ItemIndicator className="absolute left-2">
-              <Icon name="Check" className="size-4" />
+              <Icon name="Check" className={cn("size-4", enter.pop)} />
             </DropdownMenu.ItemIndicator>
             Show subtasks on the board
           </DropdownMenu.CheckboxItem>
@@ -181,7 +183,7 @@ function CodeReviewThreadsMenu({ subjectId }: { subjectId: string }) {
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={4} className="z-50 max-h-96 min-w-64 max-w-96 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+        <DropdownMenu.Content align="end" sideOffset={4} className={cn("z-50 max-h-96 min-w-64 max-w-96 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}>
           {threads.map((thread) => (
             <DropdownMenu.Item key={`${thread.kind}:${thread.threadId}`} className={MENU_ITEM_CLASS} onSelect={() => openThread(thread.threadId)}>
               <Icon name={CODE_REVIEW_THREAD_ICON[thread.kind]} className="size-4 shrink-0 text-muted-foreground" />
@@ -257,20 +259,13 @@ export function BoardHeader({ subPath }: { subPath: string }) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <div role="tablist" aria-label="View" className="flex rounded-md border border-border p-0.5">
-        {(["board", "todo"] as const).map((entry) => (
-          <button
-            key={entry}
-            type="button"
-            role="tab"
-            aria-selected={view === entry}
-            onClick={() => navigate.toPluginPanel("board", { subPath: entry === "board" ? "" : "todo" })}
-            className={cn("rounded px-2 py-0.5 text-xs font-medium", view === entry ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            {entry === "board" ? "Board" : "Todo"}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        label="View"
+        value={view}
+        options={VIEW_OPTIONS}
+        onChange={(entry) => navigate.toPluginPanel("board", { subPath: entry === "board" ? "" : "todo" })}
+        tabClassName="px-2 py-0.5"
+      />
       <BoardSettingsMenu
         board={board}
         syncing={syncing || board?.sync.inProgress === true}
@@ -278,21 +273,34 @@ export function BoardHeader({ subPath }: { subPath: string }) {
         onSources={() => pageUi.set({ dialog: "sources" })}
         onSync={() => void syncNow()}
       />
-      {board !== null && board.dumps.length > 0 ? (
-        <Button type="button" variant="ghost" className={cn(COMPACT, "relative")} onClick={() => navigate.toPluginPanel("board", { subPath: "proposals" })} aria-label="Brain dump proposals">
-          <Icon name="kanban-search-check" className={cn("size-3.5", board.dumps.some((dump) => dump.status === "planning") && "animate-pulse")} />
-          Proposals
-          {board.dumps.filter((dump) => dump.status === "ready").length > 0 ? (
-            <Badge tone="success">{board.dumps.filter((dump) => dump.status === "ready").length}</Badge>
-          ) : board.dumps.some((dump) => dump.status === "failed") ? (
-            <Badge tone="danger">!</Badge>
-          ) : null}
-        </Button>
-      ) : null}
+      {board !== null && board.dumps.length > 0 ? <ProposalsButton board={board} onOpen={() => navigate.toPluginPanel("board", { subPath: "proposals" })} /> : null}
       <Button className={COMPACT} onClick={() => pageUi.set({ dialog: "new", newTicketColumn: null })}>
         <Icon name="Plus" className="size-3.5" />
         New card
       </Button>
     </div>
+  );
+}
+
+const VIEW_OPTIONS = [
+  { value: "board", label: "Board" },
+  { value: "todo", label: "Todo" },
+] as const;
+
+function ProposalsButton({ board, onOpen }: { board: Board; onOpen: () => void }) {
+  const ready = board.dumps.filter((dump) => dump.status === "ready").length;
+  const pop = usePopOnChange(ready);
+  return (
+    <Button type="button" variant="ghost" className={cn(COMPACT, "relative")} onClick={onOpen} aria-label="Brain dump proposals">
+      <Icon name="kanban-search-check" className={cn("size-3.5", board.dumps.some((dump) => dump.status === "planning") && "animate-pulse")} />
+      Proposals
+      {ready > 0 ? (
+        <span key={pop.key} onAnimationEnd={pop.onAnimationEnd} className={cn("inline-flex", pop.className)}>
+          <Badge tone="success">{ready}</Badge>
+        </span>
+      ) : board.dumps.some((dump) => dump.status === "failed") ? (
+        <Badge tone="danger" className={enter.pop}>!</Badge>
+      ) : null}
+    </Button>
   );
 }

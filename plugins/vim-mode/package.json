@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@replit/codemirror-vim-core": "0.1.0",
+    "bb-motion": "file:../motion/lib",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -52,6 +53,11 @@
     "typescript": "^5.7.0",
     "vaul": "^1.1.2",
     "vitest": "^3.2.7"
+  },
+  "pnpm": {
+    "overrides": {
+      "bb-motion": "link:../motion/lib"
+    }
   },
   "scripts": {
     "test": "vitest run && VIM_HOST=prosemirror-paragraphs vitest run test/vim-suite.test.ts && VIM_HOST=prosemirror-breaks vitest run test/vim-suite.test.ts && VIM_HOST=codemirror vitest run test/vim-suite.test.ts",

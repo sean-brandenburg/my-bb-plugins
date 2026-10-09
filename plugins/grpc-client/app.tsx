@@ -1,4 +1,5 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import { ClientView } from "./ui/ClientView";
 
 export default definePluginApp((app) => {

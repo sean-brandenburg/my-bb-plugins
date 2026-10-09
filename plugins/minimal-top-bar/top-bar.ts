@@ -50,6 +50,14 @@ export const MINIMAL_TOP_BAR_CSS = `
   }
   ${TITLE_ROW} ${THREAD_TITLE} {
     cursor: pointer;
+    transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
+  }
+  /* The menu opens only once the double-click window has passed, so the
+     title answers the press itself. Half the usual press depth, because the
+     title is wide and a full one squeezes it visibly. */
+  ${TITLE_ROW} ${THREAD_TITLE}:active {
+    transform: scale(calc((1 + var(--bbm-scale-press)) / 2));
+    transition-duration: var(--bbm-duration-instant);
   }
 }
 `;

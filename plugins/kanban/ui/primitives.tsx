@@ -1,10 +1,12 @@
 import { useState } from "react";
-import type { ReactNode } from "react";
+import type { AnimationEvent, ReactNode } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { CHEVRON, PRESS, STAGGER, TRANSFORM_TRANSITION, enter, exit, speed, stagger, usePresence } from "bb-motion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { type ProjectOption } from "./data";
+import { type Arrival, useEntrance, usePopOnChange } from "./motion";
 
 /** GitHub links open in the system browser: an explicit target bypasses bb's in-app routing. */
 export function ExternalLink({ href, className, children, title }: { href: string; className?: string; children: ReactNode; title?: string }) {
@@ -38,16 +40,19 @@ export function Badge({
   children,
   tone = "neutral",
   title,
+  className,
 }: {
   children: ReactNode;
   tone?: "neutral" | "outline" | "accent" | "warning" | "danger" | "success";
   title?: string;
+  className?: string;
 }) {
   return (
     <span
       title={title}
       className={cn(
         "inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-4",
+        className,
         tone === "neutral" && "bg-muted text-muted-foreground",
         tone === "outline" && "border border-border text-muted-foreground",
         tone === "accent" && "bg-primary/10 text-primary",
@@ -62,12 +67,15 @@ export function Badge({
 }
 
 export function ThreadStatusDot({ thread }: { thread: PluginSidebarThread | null | undefined }) {
+  const status = thread?.runtimeStatus;
+  const busy = status === "active" || status === "starting" || status === "stopping" || status === "provisioning";
+  // The dot's colour, which is what the eye catches; a change pops it.
+  const tone = thread == null ? null : thread.hasPendingInteraction ? "input" : busy ? "busy" : status === "error" ? "error" : "idle";
+  const pop = usePopOnChange(tone);
   if (thread === undefined) {
     return <span title="Thread not loaded" className="size-2 rounded-full bg-border" />;
   }
   if (thread === null) return null;
-  const status = thread.runtimeStatus;
-  const busy = status === "active" || status === "starting" || status === "stopping" || status === "provisioning";
   const label = thread.hasPendingInteraction
     ? "Thread needs your input"
     : thread.isArchived
@@ -75,10 +83,13 @@ export function ThreadStatusDot({ thread }: { thread: PluginSidebarThread | null
       : `Thread ${status}`;
   return (
     <span
+      key={pop.key}
       title={label}
       aria-label={label}
+      onAnimationEnd={pop.onAnimationEnd}
       className={cn(
         "size-2 shrink-0 rounded-full",
+        pop.className,
         thread.hasPendingInteraction && "bg-amber-500",
         !thread.hasPendingInteraction && busy && "animate-pulse bg-primary",
         !thread.hasPendingInteraction && !busy && status === "error" && "bg-destructive",
@@ -167,7 +178,7 @@ export function ProjectSelect({
 }
 
 export const HEADER_ICON_BUTTON =
-  "relative flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  `relative flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground ${PRESS} hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 
 /** Compact control sizing for the card panel: the panel is narrow, so chrome stays small. */
 export const COMPACT = "h-7 gap-1.5 px-2 text-xs [&_[data-icon-root]]:size-3.5";
@@ -187,34 +198,135 @@ export function Group({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // Groups mount inside a panel that already rises in; only a toggle animates the body.
+  const [toggled, setToggled] = useState(false);
+  const body = usePresence(open);
   return (
     <section className="rounded-md border border-border">
       <div className="flex items-center gap-1 pl-1.5 pr-1.5">
         <button
           type="button"
           aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
+          data-bbm-open={open}
+          onClick={() => {
+            setToggled(true);
+            setOpen((value) => !value);
+          }}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded py-1.5 text-left hover:text-foreground"
         >
-          <Icon name="ChevronDown" className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+          <Icon name="ChevronRight" className={cn("size-3.5 shrink-0 text-muted-foreground", CHEVRON)} />
           <span className="text-xs font-semibold text-foreground">{title}</span>
           {summary !== undefined ? <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">{summary}</span> : null}
         </button>
         {menu}
       </div>
-      {open ? <div className="flex flex-col gap-2 border-t border-border px-2.5 py-2.5">{children}</div> : null}
+      {body.mounted ? (
+        <div
+          onAnimationEnd={body.onAnimationEnd}
+          className={cn("flex flex-col gap-2 border-t border-border px-2.5 py-2.5", body.exiting ? exit.fade : toggled && cn(enter.rise, speed.fast))}
+        >
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-export function Property({ label, children }: { label: string; children: ReactNode }) {
+export function Property({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <>
-      <dt className="pt-1 text-xs text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm">{children}</dd>
+      <dt className={cn("pt-1 text-xs text-muted-foreground", className)}>{label}</dt>
+      <dd className={cn("min-w-0 text-sm", className)}>{children}</dd>
     </>
+  );
+}
+
+/** tw-animate entrance and exit for radix menus and popovers; bb-motion retunes their curve. */
+export const POPOVER_MOTION =
+  "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1";
+
+/** A segmented control whose selection pill slides between equal-width options. */
+export function SegmentedTabs<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+  tabClassName,
+}: {
+  label: string;
+  value: T;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+  className?: string;
+  tabClassName?: string;
+}) {
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cn("relative grid rounded-md border border-border p-0.5", className)}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      <span
+        aria-hidden
+        className={cn("pointer-events-none absolute inset-y-0.5 left-0.5 rounded bg-state-active", TRANSFORM_TRANSITION)}
+        style={{ width: `calc((100% - 0.25rem) / ${options.length})`, transform: `translate3d(${index * 100}%, 0, 0)` }}
+      />
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          aria-selected={option.value === value}
+          onClick={() => onChange(option.value)}
+          className={cn("relative rounded text-xs font-medium", PRESS, option.value === value ? "text-foreground" : "text-muted-foreground hover:text-foreground", tabClassName)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
 export const MENU_ITEM_CLASS =
   "flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-state-hover";
+
+/** A list row that cascades in with its list, rises in when added later, and sinks out when removed (see `usePresenceList`). */
+export function MotionListItem({
+  arrival,
+  index,
+  exiting = false,
+  onExited,
+  onAnimationEnd,
+  className,
+  children,
+}: {
+  arrival: Arrival;
+  index: number;
+  exiting?: boolean;
+  onExited?: () => void;
+  onAnimationEnd?: (event: AnimationEvent) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const entrance = useEntrance(arrival === "intro" ? cn(enter.rise, speed.fast, STAGGER) : arrival === "new" ? enter.rise : undefined);
+  return (
+    <li
+      style={stagger(index)}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (exiting) {
+          onExited?.();
+          return;
+        }
+        entrance.onAnimationEnd(event);
+        onAnimationEnd?.(event);
+      }}
+      className={cn(className, exiting ? exit.sink : entrance.className)}
+    >
+      {children}
+    </li>
+  );
+}

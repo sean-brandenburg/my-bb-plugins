@@ -4,6 +4,7 @@ import type { DiffFile, HunkExplanation, SemanticChange, SymbolLookup } from "..
 import { Badge } from "./ui/badge";
 import { Button, COMPACT } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import { CHEVRON, FAST, STAGGER, STAGGER_CAP, enter, stagger, useOpenedSinceMount } from "./ui/motion";
 import { cn } from "./utils";
 import { useDiffPreferences } from "./state";
 import { isGeneratedFile } from "./generated";
@@ -21,6 +22,7 @@ import { DiffErrorBoundary } from "./text/diff-error-boundary";
  */
 export function FileSection({
   file,
+  index,
   sectionRef,
   scrollRoot,
   collapsed,
@@ -36,6 +38,8 @@ export function FileSection({
   changedRanges,
 }: {
   file: DiffFile;
+  /** Position in the file list, for the entrance cascade. */
+  index: number;
   sectionRef: (node: HTMLElement | null) => void;
   scrollRoot: RefObject<HTMLElement | null>;
   collapsed: boolean;
@@ -51,11 +55,14 @@ export function FileSection({
   changedRanges: Array<[number, number]>;
 }) {
   const { layout, mode } = useDiffPreferences();
+  const reveal = useOpenedSinceMount(!collapsed) ? cn(enter.rise, FAST) : undefined;
   return (
-    <section ref={sectionRef} className="border-b border-border">
+    // Sections past the cap are below the fold when the list mounts; animating hundreds of full diffs at once costs
+    // a compositor layer each for nothing.
+    <section ref={sectionRef} className={cn("border-b border-border", index <= STAGGER_CAP && [enter.fade, STAGGER])} style={stagger(index)}>
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5">
-        <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed}>
-          <Icon name="ChevronDown" className={cn("size-3.5 transition-transform", collapsed && "-rotate-90")} />
+        <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
+          <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
         <code className="min-w-0 flex-1 truncate text-xs">
           {file.previousPath !== null ? `${file.previousPath} → ` : ""}
@@ -83,12 +90,12 @@ export function FileSection({
         : annotations.findings
             .filter((entry) => entry.line === null)
             .map((entry) => (
-              <div key={entry.item.finding.id} className="px-3">
+              <div key={entry.item.finding.id} className={cn("px-3", reveal)}>
                 <FindingAnnotation item={entry.item} onToggle={(selected) => annotations.onToggleFinding(entry.item, selected)} onEdit={(edit) => annotations.onEditFinding(entry.item, edit)} />
               </div>
             ))}
       {collapsed ? null : (
-        <LazyMount root={scrollRoot} estimateLines={file.additions + file.deletions + 6}>
+        <LazyMount root={scrollRoot} estimateLines={file.additions + file.deletions + 6} className={reveal}>
           {() =>
             file.patch !== null && mode === "structural" && !file.vendored ? (
               <StructuralPatch

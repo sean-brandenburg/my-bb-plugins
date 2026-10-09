@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { enter } from "bb-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isNotePath, noteTitle, type LinkKind, type LinkResolver } from "../shared/obsidian";
 import { Editor } from "./Editor";
+import { LoadingLines } from "./Loading";
 import { isImagePath } from "./file-kinds";
 import { useNavigationRequest } from "./navigation";
 import { NoteHeader, obsidianUrl, type ViewMode } from "./NoteHeader";
@@ -58,7 +60,7 @@ export function NoteView(props: NoteViewProps) {
     return (
       <div className="ob-note">
         {header}
-        <div className="ob-note-body flex items-start justify-center overflow-auto p-6">
+        <div className={cn("ob-note-body flex items-start justify-center overflow-auto p-6", enter.rise)}>
           {isImagePath(path) && props.previewBase !== null ? (
             <img src={previewUrl(props.previewBase, path)} alt={path} className="max-w-full rounded-md" />
           ) : (
@@ -78,7 +80,7 @@ export function NoteView(props: NoteViewProps) {
   if (note.loadError !== null) {
     return (
       <div className="ob-note">
-        <div className="mx-auto mt-16 max-w-md space-y-3 px-4 text-center text-sm">
+        <div className={cn("mx-auto mt-16 max-w-md space-y-3 px-4 text-center text-sm", enter.rise)}>
           {note.loadError.missing ? (
             <>
               <p className="text-muted-foreground">
@@ -100,7 +102,7 @@ export function NoteView(props: NoteViewProps) {
     return (
       <div className="ob-note">
         {header}
-        <p className="p-6 text-sm text-muted-foreground">Loading…</p>
+        <LoadingLines lines={5} className="ob-note-loading" />
       </div>
     );
   }
@@ -109,7 +111,7 @@ export function NoteView(props: NoteViewProps) {
     <div className="ob-note">
       {header}
       {note.draft !== null ? (
-        <div role="alert" className="ob-conflict">
+        <div role="alert" className={cn("ob-conflict", enter.drop)}>
           <span>You have unsaved changes to this note from an earlier session. Restoring them replaces what's on disk now.</span>
           <Button size="sm" variant="outline" onClick={note.discardDraft}>
             Discard
@@ -120,7 +122,7 @@ export function NoteView(props: NoteViewProps) {
         </div>
       ) : null}
       {note.saveState === "conflict" ? (
-        <div role="alert" className="ob-conflict">
+        <div role="alert" className={cn("ob-conflict", enter.drop)}>
           <span>This note changed on disk while you were editing it.</span>
           <Button size="sm" variant="outline" onClick={() => void note.load()}>
             Load disk version
@@ -130,7 +132,8 @@ export function NoteView(props: NoteViewProps) {
           </Button>
         </div>
       ) : null}
-      <div className={cn("ob-note-body", props.mode !== "edit" && "hidden")}>
+      {/* Opacity only, since CodeMirror measures its layout as it mounts. Unhiding replays the fade on a switch back from reading. */}
+      <div className={cn("ob-note-body", enter.fade, props.mode !== "edit" && "hidden")}>
         <Editor
           path={path}
           content={note.doc.content}
@@ -143,7 +146,7 @@ export function NoteView(props: NoteViewProps) {
         />
       </div>
       {props.mode === "read" ? (
-        <div className="ob-note-body overflow-y-auto">
+        <div className={cn("ob-note-body overflow-y-auto", enter.rise)}>
           <Reader
             path={path}
             content={liveContent ?? note.doc.content}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import { UrlLink, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import type { PluginRpcResult } from "@get-bb/plugin-sdk";
@@ -7,6 +8,7 @@ import type { rpcContract } from "../../rpc-contract";
 import { localTime, plainListText } from "../../shared/daily";
 import { errorMessage } from "../../shared/errors";
 import { noteTitle } from "../../shared/obsidian";
+import { LoadingLines } from "../Loading";
 import { useOpenNote } from "../navigation";
 import { useVaultChanges, type Vault } from "../vault-client";
 import { CaptureInput, openToday, startRoutine } from "./capture";
@@ -15,9 +17,11 @@ type DashboardData = PluginRpcResult<(typeof rpcContract)["dashboard"]>;
 
 const ACTIVITY_REFRESH_MS = 60_000;
 
-function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+const ROW_ENTRANCE = cx(enter.rise, speed.fast, STAGGER);
+
+function Section({ title, count, index, children }: { title: string; count?: number; index: number; children: ReactNode }) {
   return (
-    <section className="mt-7">
+    <section className={cx("mt-7", enter.rise, STAGGER)} style={stagger(index)}>
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
         {count === undefined ? null : <span className="ml-1.5 normal-case tracking-normal">· {count}</span>}
@@ -81,15 +85,16 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
         </p>
         {error === null ? null : <p className="mt-4 text-sm text-destructive">{error}</p>}
 
-        <Section title="Today's inbox" count={data?.today.inbox.length}>
+        <Section title="Today's inbox" count={data?.today.inbox.length} index={0}>
           {data === null ? (
-            <Empty>Loading…</Empty>
+            <LoadingLines lines={2} className="py-1" />
           ) : data.today.inbox.length === 0 ? (
             <Empty>Nothing captured yet today.</Empty>
           ) : (
             <ul className="space-y-1 text-sm">
+              {/* No stagger: entries arrive one at a time as they're logged, and a new one shouldn't wait on its index. */}
               {data.today.inbox.map((line, index) => (
-                <li key={index} className="ob-dash-row whitespace-pre-wrap">
+                <li key={index} className={cx("ob-dash-row whitespace-pre-wrap", enter.rise, speed.fast)}>
                   {plainListText(line)}
                 </li>
               ))}
@@ -98,10 +103,10 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
         </Section>
 
         {data !== null && data.carryForward.items.length > 0 ? (
-          <Section title="Carried forward" count={data.carryForward.items.length}>
+          <Section title="Carried forward" count={data.carryForward.items.length} index={1}>
             <ul className="space-y-1 text-sm">
               {data.carryForward.items.map((item, index) => (
-                <li key={index} className="ob-dash-row">
+                <li key={index} className={cx("ob-dash-row", ROW_ENTRANCE)} style={stagger(index)}>
                   ☐ {plainListText(item)}
                 </li>
               ))}
@@ -114,14 +119,14 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           </Section>
         ) : null}
 
-        <Section title="bb threads today" count={data?.activity.length}>
+        <Section title="bb threads today" count={data?.activity.length} index={2}>
           {data === null || data.activity.length === 0 ? (
             <Empty>No bb thread activity recorded yet today. Threads show up here when they finish a turn.</Empty>
           ) : (
             <ul className="divide-y divide-border rounded-lg border border-border">
-              {data.activity.map((item) => (
-                <li key={item.threadId}>
-                  <button type="button" className="ob-recent-row flex-col !items-start" onClick={() => navigate.toThread(item.threadId)}>
+              {data.activity.map((item, index) => (
+                <li key={item.threadId} className={ROW_ENTRANCE} style={stagger(index)}>
+                  <button type="button" className="ob-recent-row ob-row-press flex-col !items-start" onClick={() => navigate.toThread(item.threadId)}>
                     <span className="flex w-full items-center justify-between gap-3">
                       <span className="truncate font-medium">{item.title}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">
@@ -136,13 +141,13 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           )}
         </Section>
 
-        <Section title="Active tickets" count={activeTickets.length}>
+        <Section title="Active tickets" count={activeTickets.length} index={3}>
           {activeTickets.length === 0 ? (
             <Empty>No open ticket notes. The daily-note routines create one in Tickets/ when you start on a Jira ticket.</Empty>
           ) : (
             <ul className="divide-y divide-border rounded-lg border border-border">
-              {activeTickets.map((ticket) => (
-                <li key={ticket.path} className="flex items-center gap-3 px-3 py-2 text-sm">
+              {activeTickets.map((ticket, index) => (
+                <li key={ticket.path} className={cx("flex items-center gap-3 px-3 py-2 text-sm", ROW_ENTRANCE)} style={stagger(index)}>
                   <button type="button" className="ob-link shrink-0 font-medium" onClick={() => openNote(ticket.path)}>
                     {ticket.key}
                   </button>
@@ -160,11 +165,11 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           {doneTickets > 0 ? <p className="mt-1.5 text-xs text-muted-foreground">{doneTickets} closed ticket notes not shown.</p> : null}
         </Section>
 
-        <Section title="Recently edited">
+        <Section title="Recently edited" index={4}>
           <ul className="divide-y divide-border rounded-lg border border-border">
-            {recent.map((file) => (
-              <li key={file.path}>
-                <button type="button" className="ob-recent-row" onClick={() => openNote(file.path)}>
+            {recent.map((file, index) => (
+              <li key={file.path} className={ROW_ENTRANCE} style={stagger(index)}>
+                <button type="button" className="ob-recent-row ob-row-press" onClick={() => openNote(file.path)}>
                   <span className="truncate">{noteTitle(file.path)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{new Date(file.mtimeMs).toLocaleDateString()}</span>
                 </button>

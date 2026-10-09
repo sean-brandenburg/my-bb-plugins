@@ -87,6 +87,10 @@
   flex-shrink: 0;
   color: var(--muted-foreground);
 }
+.ob-tree-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+}
 .ob-tree-rename {
   flex: 1;
   min-width: 0;
@@ -173,6 +177,23 @@
   font-size: 0.875rem;
 }
 
+/* bb-motion's press scale shrinks a full-width row by ~20px, so wide rows get
+ * a gentler one. bb-motion's reduced-motion tokens don't reach this local
+ * scale, hence its own media query. */
+.ob-row-press {
+  --ob-row-press-scale: 0.99;
+  transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+.ob-row-press:active {
+  transform: scale(var(--ob-row-press-scale));
+  transition-duration: var(--bbm-duration-instant);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-row-press {
+    --ob-row-press-scale: 1;
+  }
+}
+
 .ob-main {
   position: relative;
   display: flex;
@@ -239,6 +260,27 @@
 .ob-note-body {
   flex: 1;
   min-height: 0;
+}
+.ob-note-loading {
+  max-width: 46rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem;
+}
+
+/* Skeletons wait a beat before fading in, so a fast load shows nothing. */
+.ob-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  animation-delay: 180ms;
+}
+.ob-skeleton {
+  position: relative;
+  height: 0.625rem;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--muted) 80%, transparent);
 }
 
 /* Editing view */
@@ -539,6 +581,9 @@ details.ob-callout > summary {
   font-size: 0.85em;
 }
 
+.ob-capture {
+  position: relative;
+}
 .ob-capture-input {
   display: block;
   width: 100%;
@@ -557,14 +602,24 @@ details.ob-callout > summary {
   border-style: solid;
   border-color: var(--ring, var(--primary));
 }
-.ob-capture-dashboard {
+.ob-capture-dashboard > .ob-capture-input {
   min-height: 2.5rem;
   padding: 0.6rem 0.75rem;
   font-size: 0.875rem;
 }
-.ob-capture-dialog-input {
+.ob-capture-dialog-input > .ob-capture-input {
   min-height: 6rem;
   font-size: 0.875rem;
+}
+.ob-capture-check {
+  position: absolute;
+  top: 0;
+  right: 0.5rem;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  color: var(--primary);
+  pointer-events: none;
 }
 .ob-dash-row {
   padding: 0.125rem 0;

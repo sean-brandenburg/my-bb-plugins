@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { DiffSide, HunkExplanation, SemanticChange, StructuralDiff, SymbolLookup } from "../../types";
 import { Button, COMPACT } from "../ui/button";
 import { cn } from "../utils";
+import { FAST, PRESS, SHIMMER, enter } from "../ui/motion";
 import { errorMessage } from "../format";
 import { useDiffSource } from "../source";
 import { setDiffPreferences, useDiffPreferences } from "../state";
@@ -88,10 +89,10 @@ export function StructuralPatch({
   }, [source, path]);
   const symbols = useSymbolNavigation(source);
   if (error !== null) return <p className="p-4 text-sm text-destructive">{error}</p>;
-  if (diff === null) return <p className="p-4 text-sm text-muted-foreground">Running difftastic…</p>;
+  if (diff === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   if (!diff.available) {
     return (
-      <div className="m-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+      <div className={cn("m-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground", enter.fade)}>
         <p>Structural diff unavailable.</p>
         <p className="mt-1 text-xs">{diff.reason}</p>
         <Button type="button" variant="secondary" className={cn(COMPACT, "mt-2")} onClick={() => setDiffPreferences({ mode: "text" })}>
@@ -145,7 +146,7 @@ export function StructuralPatch({
       movedRow !== null && movedRow.first ? (
         <button
           type="button"
-          className="float-right ml-2 rounded border border-violet-500/40 px-1.5 font-sans text-[10px] text-violet-700 hover:bg-violet-500/20 dark:text-violet-300"
+          className={cn("float-right ml-2 rounded border border-violet-500/40 px-1.5 font-sans text-[10px] text-violet-700 hover:bg-violet-500/20 dark:text-violet-300", PRESS)}
           title={side === "LEFT" ? "This block moved; jump to where it went" : "This block moved; jump to where it came from"}
           onClick={() => jumpToRow(movedRow.counterpart)}
         >
@@ -192,7 +193,7 @@ export function StructuralPatch({
     );
   };
   const expanderButton = (label: string, title: string, onClick: () => void) => (
-    <button type="button" title={title} aria-label={title} className="rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300" onClick={onClick}>
+    <button type="button" title={title} aria-label={title} className={cn("rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={onClick}>
       {label}
     </button>
   );
@@ -250,20 +251,20 @@ export function StructuralPatch({
               <span className="ml-auto flex shrink-0 items-center gap-1 font-sans">
                 {explanation === null ? (
                   onExplain === null ? null : (
-                  <button type="button" className="rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground" title="Ask an agent what this hunk does and why" onClick={() => onExplain(span.side, span.start, span.stop)}>
+                  <button type="button" className={cn("rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground", PRESS)} title="Ask an agent what this hunk does and why" onClick={() => onExplain(span.side, span.start, span.stop)}>
                     Explain
                   </button>
                   )
                 ) : explanation.status === "running" ? (
-                  <button type="button" className="rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground" title="Open the explanation thread" onClick={() => onOpenThread(explanation.threadId)}>
+                  <button type="button" className={cn("rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground", PRESS)} title="Open the explanation thread" onClick={() => onOpenThread(explanation.threadId)}>
                     explaining…
                   </button>
                 ) : explanation.status === "failed" ? (
                   <>
-                    <button type="button" className="rounded px-1.5 py-px text-destructive hover:bg-state-hover" onClick={() => onExplain?.(span.side, span.start, span.stop)}>
+                    <button type="button" className={cn("rounded px-1.5 py-px text-destructive hover:bg-state-hover", PRESS)} onClick={() => onExplain?.(span.side, span.start, span.stop)}>
                       explanation failed · retry
                     </button>
-                    <button type="button" className="rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground" onClick={() => onOpenThread(explanation.threadId)}>
+                    <button type="button" className={cn("rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground", PRESS)} onClick={() => onOpenThread(explanation.threadId)}>
                       thread
                     </button>
                   </>
@@ -300,7 +301,7 @@ export function StructuralPatch({
       body.push(
         <tr key="preview-more" className="bg-sky-500/10 text-xs text-muted-foreground">
           <td colSpan={4} className="px-3 py-1.5">
-            <button type="button" className="rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300" onClick={() => setShowAll(true)}>
+            <button type="button" className={cn("rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={() => setShowAll(true)}>
               Show {visible.size - emitted} more {visible.size - emitted === 1 ? "line" : "lines"} of this {diff.status === "deleted" ? "deleted" : "new"} file
             </button>
           </td>
@@ -311,10 +312,12 @@ export function StructuralPatch({
     }
     emitted += 1;
     const startsHunk = row.index === 0 || !visible.has(row.index - 1);
+    // Only rows the reader unfolded fade in; a row stays in `revealed` for good, so the class never re-triggers.
+    const unfolded = revealed.has(row.index) || (showAll && emitted > LARGE_FILE_PREVIEW_ROWS);
     if (startsHunk) body.push(hunkHeader(row.index));
     body.push(
       <Fragment key={row.index}>
-        <tr className="hover:bg-state-hover/40" data-row={row.index}>
+        <tr className={cn("hover:bg-state-hover/40", unfolded && [enter.fade, FAST])} data-row={row.index}>
           {lineCell(row.lhs, "LEFT", row.changed, moved.get(row.index) ?? null)}
           {lineCell(row.rhs, "RIGHT", row.changed, moved.get(row.index) ?? null)}
         </tr>
@@ -341,7 +344,7 @@ export function StructuralPatch({
   if (gapStart !== null && (previewLimit === null || emitted < previewLimit)) body.push(gapRow(gapStart, rows.length));
   const hasChanges = rows.some((row) => row.changed);
   return (
-    <div className={cn("relative", symbols.symbolMode && "symbol-mode")}>
+    <div className={cn("relative", enter.fade, FAST, symbols.symbolMode && "symbol-mode")}>
       <FileLevelComments
         path={path}
         threads={threads.filter((thread) => thread.line === null)}
@@ -363,7 +366,7 @@ export function StructuralPatch({
           <tbody>{body}</tbody>
         </table>
       </div>
-      {symbols.hover !== null ? <SymbolHoverCard symbol={symbols.hover.symbol} data={symbols.symbolData(symbols.hover.symbol)} anchor={symbols.hover.anchor} /> : null}
+      {symbols.hover !== null ? <SymbolHoverCard key={symbols.hover.symbol} symbol={symbols.hover.symbol} data={symbols.symbolData(symbols.hover.symbol)} anchor={symbols.hover.anchor} /> : null}
     </div>
   );
 }

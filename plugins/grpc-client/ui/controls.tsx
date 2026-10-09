@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import { cx, enter, PRESS } from "bb-motion";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { useLateMount } from "./presence";
 
 export function Centered({ children }: { children: ReactNode }) {
   return (
@@ -21,6 +23,7 @@ export function Tabs<T extends string>({ value, options, onChange }: { value: T;
           aria-selected={value === option.id}
           className={cn(
             "rounded-md px-2.5 py-1 text-sm",
+            PRESS,
             value === option.id ? "bg-state-active font-medium text-foreground" : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
           )}
           onClick={() => onChange(option.id)}
@@ -41,7 +44,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
           type="button"
           role="radio"
           aria-checked={value === option.id}
-          className={cn("rounded px-2 py-0.5 text-xs", value === option.id ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+          className={cn("rounded px-2 py-0.5 text-xs", PRESS, value === option.id ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
           onClick={() => onChange(option.id)}
         >
           {option.label}
@@ -62,8 +65,18 @@ export function MenuItem({ children, onClick, disabled, checked }: { children: R
       onClick={onClick}
     >
       <span className="min-w-0 flex-1">{children}</span>
-      {checked ? <Icon name="Check" className="size-3.5 shrink-0" /> : null}
+      {checked ? <CheckMark /> : null}
     </button>
+  );
+}
+
+/** Pops when toggled on, but not when the menu holding it opens. */
+function CheckMark() {
+  const late = useLateMount();
+  return (
+    <span className={cx("flex shrink-0", late && enter.pop)}>
+      <Icon name="Check" className="size-3.5" />
+    </span>
   );
 }
 
@@ -72,6 +85,7 @@ export function Notice({ children, tone = "muted" }: { children: ReactNode; tone
     <p
       className={cn(
         "mb-3 rounded-md px-3 py-2 text-xs",
+        enter.fade,
         tone === "error" && "bg-destructive/10 text-destructive",
         tone === "warning" && "bg-amber-500/10 text-amber-800 dark:text-amber-200",
         tone === "muted" && "bg-muted/50 text-muted-foreground",

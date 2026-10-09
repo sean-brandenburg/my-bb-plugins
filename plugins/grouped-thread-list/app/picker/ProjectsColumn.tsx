@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef } from "react";
+import { enter, POP, PRESS, speed, STAGGER, stagger } from "bb-motion";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import {
@@ -9,6 +10,7 @@ import { isSidebarProjectThread } from "../model/project-thread-groups.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
+import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import type { LeftEntry } from "./picker-model.js";
 
 const ENTRY_ICONS: Record<Exclude<LeftEntry["kind"], "project">, IconName> = {
@@ -37,6 +39,23 @@ function activityState(
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
   };
+}
+
+function UnreadCount({ count }: { count: number }) {
+  const changed = useChangedSinceMount(count);
+  if (count === 0) return null;
+  return (
+    <span
+      key={changed ? count : undefined}
+      aria-hidden="true"
+      className={cn(
+        "shrink-0 text-xs tabular-nums text-muted-foreground",
+        changed && POP,
+      )}
+    >
+      {count}
+    </span>
+  );
 }
 
 function EntryTrailing({
@@ -68,22 +87,14 @@ function EntryTrailing({
       </span>
     );
   }
-  if (entry.kind === "unread" && unreadCount > 0) {
-    return (
-      <span
-        aria-hidden="true"
-        className="shrink-0 text-xs tabular-nums text-muted-foreground"
-      >
-        {unreadCount}
-      </span>
-    );
-  }
+  if (entry.kind === "unread") return <UnreadCount count={unreadCount} />;
   return null;
 }
 
 /** The left column: the fixed entries, a divider, then the projects. */
 export function ProjectsColumn({
   entries,
+  intro,
   selectedIndex,
   focused,
   activeProjectId,
@@ -92,6 +103,8 @@ export function ProjectsColumn({
   onEntryClick,
 }: {
   entries: readonly LeftEntry[];
+  /** The picker just opened: rows cascade in. */
+  intro: boolean;
   selectedIndex: number;
   focused: boolean;
   activeProjectId: string | null;
@@ -123,12 +136,17 @@ export function ProjectsColumn({
           entry.kind === "project" &&
           index > 0 &&
           entries[index - 1]?.kind !== "project";
+        const introStyle = intro ? stagger(index) : undefined;
         return (
           <Fragment key={entry.key}>
             {startsProjects ? (
               <div
                 aria-hidden="true"
-                className="mx-2 my-1 border-t border-border"
+                className={cn(
+                  "mx-2 my-1 border-t border-border",
+                  intro && [enter.fade, STAGGER],
+                )}
+                style={introStyle}
               />
             ) : null}
             <div
@@ -137,11 +155,14 @@ export function ProjectsColumn({
               data-picker-index={index}
               className={cn(
                 "flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-sm",
+                PRESS,
+                intro && [enter.rise, speed.fast, STAGGER],
                 selected &&
                   (focused
                     ? "bg-state-active text-foreground"
                     : "bg-state-hover"),
               )}
+              style={introStyle}
               onClick={() => onEntryClick(index, entry)}
             >
               <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">

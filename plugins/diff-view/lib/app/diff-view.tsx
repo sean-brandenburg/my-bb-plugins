@@ -28,6 +28,9 @@ import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
 import { useTour } from "./tour/use-tour";
+import { cn } from "./utils";
+import { enter } from "./ui/motion";
+import { SkeletonLines } from "./ui/skeleton";
 
 export type { DiffSource, DiffViewLabels } from "./source";
 export { DiffDisplayControls, DiffRefreshButton } from "./toolbar";
@@ -57,6 +60,7 @@ export interface DiffViewProps {
 }
 
 const NO_FINDINGS: ReadonlyMap<string, PlacedFinding[]> = new Map();
+const DIFF_SKELETON = ["38%", "86%", "72%", "91%", "58%", "80%", "66%"];
 
 /** The whole changes view. Narrow containers (a side panel) drop the file tree; wide ones show it beside the diff. */
 export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, labels: labelOverrides, renderSubmitBar, deltaActions, toolbar }: DiffViewProps) {
@@ -177,7 +181,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
           {toolbar}
           {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments }) : null}
 
-          {error !== null ? <p className="px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error !== null ? <p className={cn("px-3 py-2 text-sm text-destructive", enter.fade)}>{error}</p> : null}
           {diff !== null && diff.message !== null ? <p className="px-3 py-2 text-sm text-muted-foreground">{diff.message}</p> : null}
           {diff !== null && diff.files.length > 0 ? (
             <SummaryBar
@@ -209,15 +213,17 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 {delta !== null && delta.files.length > 0 ? (
                   <DeltaStrip delta={delta} newFindingCount={newFindingCount} touchedFindingCount={touchedFindingCount} onJump={jumpTo} actions={deltaActions} />
                 ) : null}
+                {diff === null && error === null ? <SkeletonLines widths={DIFF_SKELETON} label="Loading changes" className="p-4" /> : null}
                 {diff !== null && diff.files.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">
+                  <p className={cn("p-4 text-sm text-muted-foreground", enter.fade)}>
                     {diff.hiddenVendored === null ? "No changes." : `Only vendored files changed (${diff.hiddenVendored.files} hidden by the "Hide vendored files" setting).`}
                   </p>
                 ) : null}
-                {diff?.files.map((file) => (
+                {diff?.files.map((file, index) => (
                   <FileSection
                     key={file.path}
                     file={file}
+                    index={index}
                     sectionRef={(node) => {
                       if (node === null) sectionRefs.current.delete(file.path);
                       else sectionRefs.current.set(file.path, node);

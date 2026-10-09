@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { OPACITY_TRANSITION, enter } from "bb-motion";
 import type { Source, SourceKind } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { parseQuickAdd, parseTagList, slugify } from "./format";
 import { type Rpc, type ProjectOption } from "./data";
-import { Badge, Select } from "./primitives";
+import { Badge, MotionListItem, Select } from "./primitives";
 import { TagBadges } from "./tags";
 import { toastError } from "./actions";
+import { useArrivals, usePresenceList } from "./motion";
 
 const SOURCE_KIND_LABELS: Record<SourceKind, string> = { "github-search": "GitHub search", "jira-jql": "Jira (JQL)" };
 
@@ -72,6 +74,8 @@ export function SourcesDialog({
     }
   };
   const hasJira = draft.some((source) => source.kind === "jira-jql");
+  const arrival = useArrivals(open ? draft.map((source) => source.id) : null);
+  const rows = usePresenceList(draft, (source) => source.id);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -83,13 +87,20 @@ export function SourcesDialog({
           </DialogDescription>
         </DialogHeader>
         {hasJira && jiraSite === null ? (
-          <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <p role="alert" className={cn("rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300", enter.drop)}>
             Jira sources need the Jira site URL, account email, and API token in the plugin settings (Settings → Installed plugins → Kanban).
           </p>
         ) : null}
         <ul className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
-          {draft.map((source) => (
-            <li key={source.id} className={cn("flex flex-col gap-3 rounded-md border border-border p-3", !source.enabled && "opacity-60")}>
+          {rows.entries.map(({ key, item: source, exiting }, index) => (
+            <MotionListItem
+              key={key}
+              arrival={arrival(key)}
+              index={index}
+              exiting={exiting}
+              onExited={() => rows.onExited(key)}
+              className={cn("flex flex-col gap-3 rounded-md border border-border p-3", OPACITY_TRANSITION, !source.enabled && "opacity-60")}
+            >
               <div className="flex items-center gap-2">
                 <span className="shrink-0">
                   <Badge tone="accent">{SOURCE_KIND_LABELS[source.kind]}</Badge>
@@ -184,7 +195,7 @@ export function SourcesDialog({
               <p className="text-[11px] text-muted-foreground">
                 Source id <code>{source.id}</code> is fixed at creation; cards remember which source made them by this id, and <code>bb kanban sources</code> lists it.
               </p>
-            </li>
+            </MotionListItem>
           ))}
         </ul>
         <div className="flex items-center gap-2">

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { NUDGE, cx, enter, speed } from "bb-motion";
 import { experimental_useAppPanel, experimental_usePluginId } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useReplayAnimation } from "@/hooks/useReplayAnimation";
 import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
@@ -21,6 +23,11 @@ function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () =>
   const [value, setValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const nudge = useReplayAnimation(NUDGE);
+  const reject = (reason: string | null) => {
+    setMessage(reason);
+    nudge.play();
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (value.trim() === "" || pending) return;
@@ -28,25 +35,25 @@ function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () =>
     try {
       const result = await rpc.call("configure", { vaultPath: value.trim() });
       if (!result.ok) {
-        setMessage(result.message);
+        reject(result.message);
         return;
       }
       if (result.message !== null) toast.message(result.message);
       onConfigured();
     } catch (cause) {
-      setMessage(errorMessage(cause));
+      reject(errorMessage(cause));
     } finally {
       setPending(false);
     }
   };
   return (
     <div className="h-full overflow-y-auto">
-      <form onSubmit={submit} className="mx-auto mt-20 w-full max-w-lg space-y-3 px-4">
+      <form onSubmit={submit} className={cx("mx-auto mt-20 w-full max-w-lg space-y-3 px-4", enter.rise)}>
         <h2 className="text-lg font-semibold">Open an Obsidian vault</h2>
         <p className="text-sm text-muted-foreground">
           Enter the absolute path of your vault folder on the bb server machine. You can change it later in the plugin's settings.
         </p>
-        <div className="flex gap-2">
+        <div className={cx("flex gap-2", nudge.className)} onAnimationEnd={nudge.onAnimationEnd}>
           <Input
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -59,7 +66,7 @@ function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () =>
           </Button>
         </div>
         {message === null ? null : (
-          <p role="alert" className="text-sm text-destructive">
+          <p key={message} role="alert" className={cx("text-sm text-destructive", enter.rise, speed.fast)}>
             {message}
           </p>
         )}

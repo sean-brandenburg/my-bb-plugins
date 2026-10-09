@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
+import { STAGGER, cx, enter, stagger } from "bb-motion";
 import type { Backlinks } from "../contract";
 import type { rpcContract } from "../rpc-contract";
 import { errorMessage } from "../shared/errors";
 import { isNotePath, noteTitle, parseHeadings } from "../shared/obsidian";
 import { FileMatches } from "./FileMatches";
+import { LoadingLines } from "./Loading";
 import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
 import { useLiveDoc } from "./state";
 import { useVaultChanges } from "./vault-client";
@@ -25,8 +27,9 @@ export function OutlinePanel({ subPath }: { subPath: string }) {
   if (path === null) return <PanelMessage>Open a note to see its outline.</PanelMessage>;
   if (headings.length === 0) return <PanelMessage>No headings in this note.</PanelMessage>;
   const minLevel = Math.min(...headings.map((heading) => heading.level));
+  // Headings are keyed by line and remount as lines shift while typing, so only a note switch animates.
   return (
-    <nav aria-label="Outline" className="ob-panel-list">
+    <nav key={path} aria-label="Outline" className={cx("ob-panel-list", enter.fade)}>
       {headings.map((heading) => (
         <button
           key={`${heading.line}`}
@@ -68,16 +71,18 @@ export function BacklinksPanel({ subPath }: { subPath: string }) {
 
   if (path === null) return <PanelMessage>Open a note to see what links to it.</PanelMessage>;
   if (error !== null) return <PanelMessage>{error}</PanelMessage>;
-  if (data === null) return <PanelMessage>Loading…</PanelMessage>;
+  if (data === null) return <LoadingLines className="px-3 py-3" />;
   if (data.backlinks.length === 0) return <PanelMessage>{`No notes link to ${noteTitle(path)}.`}</PanelMessage>;
   return (
     <div className="ob-panel-list">
       <p className="px-3 pb-1 pt-3 text-xs text-muted-foreground">
         {data.backlinks.length} linked mention{data.backlinks.length === 1 ? "" : "s"}
       </p>
-      {data.backlinks.map((backlink) => (
+      {data.backlinks.map((backlink, index) => (
         <FileMatches
           key={backlink.path}
+          className={cx(enter.rise, STAGGER)}
+          style={stagger(index)}
           path={backlink.path}
           matches={backlink.matches}
           onOpen={(path, line) => openNote(path, { target: line === undefined ? undefined : { line } })}

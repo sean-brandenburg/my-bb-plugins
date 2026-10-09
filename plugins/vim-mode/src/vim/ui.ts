@@ -13,6 +13,23 @@ const VIEWPORT_MARGIN = 4;
 /** bb's prompt box toolbar buttons sit within this distance of the form's bottom. */
 const TOOLBAR_ROW_HEIGHT = 56;
 
+// vim-core sends errors and plain status lines (":set" output, "3 lines
+// yanked") through the same notification; only the wording tells them apart.
+const ERROR_MESSAGE =
+  /^(Error\b|E\d+:|Invalid |Not an editor command|No (match|matches|such mapping|previous|word under cursor)\b|Unknown option|Argument (is )?required|Regular Expression missing|Substitutions should|Trailing characters)/;
+
+export function isErrorMessage(text: string): boolean {
+  return ERROR_MESSAGE.test(text.trim());
+}
+
+interface CursorPlacement {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  heightRatio: number;
+}
+
 function modeLabel(cm: VimEditor): string | null {
   const vim = vimState(cm);
   if (!vim) return null;
@@ -36,6 +53,10 @@ export class VimUi {
   private readonly indicator: HTMLDivElement;
   private readonly modeNode: HTMLSpanElement;
   private readonly keysNode: HTMLSpanElement;
+  /** Reused across renders so a shape change can ease instead of being redrawn. */
+  private cursors: HTMLDivElement[] = [];
+  private blockCursor = false;
+  private label: string | null = null;
   private frame = 0;
   private visible = false;
 
@@ -46,18 +67,18 @@ export class VimUi {
     this.cursorLayer.setAttribute("aria-hidden", "true");
 
     this.bar = document.createElement("div");
-    this.bar.className = "bb-vim-bar";
+    this.bar.className = "bb-vim-bar bbm-rise-in bbm-fast";
     this.bar.setAttribute(UI_ATTRIBUTE, "");
     this.bar.append(cm.panel);
 
     this.indicator = document.createElement("div");
-    this.indicator.className = "bb-vim-indicator";
+    this.indicator.className = "bb-vim-indicator bbm-fade-in bbm-fast";
     this.indicator.setAttribute(UI_ATTRIBUTE, "");
     this.indicator.setAttribute("aria-hidden", "true");
     this.modeNode = document.createElement("span");
     this.modeNode.className = "bb-vim-mode";
     this.keysNode = document.createElement("span");
-    this.keysNode.className = "bb-vim-keys";
+    this.keysNode.className = "bb-vim-keys bbm-fade-in bbm-fast";
     this.indicator.append(this.keysNode, this.modeNode);
 
     const schedule = () => this.schedule();
@@ -70,7 +91,10 @@ export class VimUi {
     cm.on("vim-keypress", schedule);
     // Vim focuses the prompt's input right after this signal, which fails
     // while the bar is still hidden, so render synchronously.
-    cm.on("dialog", () => this.render());
+    cm.on("dialog", () => {
+      this.markError();
+      this.render();
+    });
     cm.on("cursorActivity", schedule);
     cm.on("change", schedule);
   }
@@ -88,6 +112,10 @@ export class VimUi {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.cursorLayer.remove();
+    this.cursorLayer.replaceChildren();
+    this.cursors = [];
+    this.blockCursor = false;
+    this.label = null;
     this.indicator.remove();
     this.bar.remove();
     this.cm.host.element.classList.remove(NORMAL_CLASS);
@@ -112,6 +140,8 @@ export class VimUi {
     this.renderCursors(blockCursor);
 
     const pending = vim?.status ?? "";
+    if (label && this.label && label !== this.label) this.pop(this.modeNode);
+    this.label = label;
     this.modeNode.textContent = label ?? "";
     this.modeNode.hidden = !label;
     this.keysNode.textContent = pending;
@@ -186,10 +216,24 @@ export class VimUi {
     };
   }
 
+  /** Replays the one-shot `bbm-pop`; mode changes are rare enough that the forced reflow is free. */
+  private pop(node: HTMLElement): void {
+    node.classList.remove("bbm-pop");
+    void node.offsetWidth;
+    node.classList.add("bbm-pop");
+  }
+
+  private markError(): void {
+    const dialog = this.cm.state.dialog;
+    if (dialog?.classList.contains("bb-vim-notification") && isErrorMessage(dialog.textContent ?? "")) {
+      dialog.classList.add("bb-vim-error");
+    }
+  }
+
   private renderCursors(blockCursor: boolean): void {
     const { cm } = this;
     const vim = vimState(cm);
-    const pieces: HTMLDivElement[] = [];
+    const placements: CursorPlacement[] = [];
     if (blockCursor && vim) {
       const text = cm.getValue();
       const selections = cm.listSelections();
@@ -198,32 +242,43 @@ export class VimUi {
         let head = cm.indexFromPos(selection.head);
         const anchor = cm.indexFromPos(selection.anchor);
         if (anchor < head && text[head] !== "\n") head--;
-        const piece = this.cursorPiece(head, text, vim.status ? 0.5 : cm.state.overwrite ? 0.2 : 1);
-        if (piece) pieces.push(piece);
+        const placement = this.cursorPlacement(head, text, vim.status ? 0.5 : cm.state.overwrite ? 0.2 : 1);
+        if (placement) placements.push(placement);
       });
     }
-    this.cursorLayer.replaceChildren(...pieces);
+    // Only a switch into a block-cursor mode grows the block; a cursor that
+    // scrolls back into view just reappears. The switch stays pending while
+    // the editor has no coordinates yet, so the first drawn block still grows.
+    const entering = !this.blockCursor;
+    if (!blockCursor || placements.length) this.blockCursor = blockCursor;
+    for (const extra of this.cursors.splice(placements.length)) extra.remove();
+    placements.forEach((placement, index) => {
+      let piece = this.cursors[index];
+      if (!piece) {
+        piece = document.createElement("div");
+        piece.className = entering ? "bb-vim-cursor bb-vim-cursor-enter" : "bb-vim-cursor";
+        this.cursors.push(piece);
+        this.cursorLayer.append(piece);
+      }
+      piece.style.translate = `${placement.left}px ${placement.top}px`;
+      piece.style.width = `${placement.width}px`;
+      piece.style.height = `${placement.height}px`;
+      piece.style.scale = `1 ${placement.heightRatio}`;
+    });
   }
 
-  private cursorPiece(offset: number, text: string, heightRatio: number): HTMLDivElement | null {
+  private cursorPlacement(offset: number, text: string, heightRatio: number): CursorPlacement | null {
     const host = this.cm.host;
     const coords = host.coordsAt(offset);
     if (!coords) return null;
     const bounds = host.scrollElement().getBoundingClientRect();
-    const height = coords.bottom - coords.top;
     if (coords.bottom < bounds.top || coords.top > bounds.bottom) return null;
     let width = coords.right - coords.left;
     const char = text[offset];
     if (!char || char === "\n" || char === "\t" || width < 2) {
       width = Math.max(width, parseFloat(getComputedStyle(host.element).fontSize) * 0.6 || 8);
     }
-    const piece = document.createElement("div");
-    piece.className = "bb-vim-cursor";
-    piece.style.left = `${coords.left}px`;
-    piece.style.top = `${coords.top + height * (1 - heightRatio)}px`;
-    piece.style.width = `${width}px`;
-    piece.style.height = `${height * heightRatio}px`;
-    return piece;
+    return { left: coords.left, top: coords.top, width, height: coords.bottom - coords.top, heightRatio };
   }
 
   destroy(): void {

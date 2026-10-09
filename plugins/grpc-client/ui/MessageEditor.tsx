@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, stagger, STAGGER } from "bb-motion";
 import type { FieldInfo, ScalarName, TypeClosure } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { Appear, EntranceScope, PresenceItem, useListKeys } from "./presence";
 import {
   defaultElement,
   elementLabel,
@@ -179,7 +181,7 @@ function ElementEditor({
           <TextInput value={value as string | undefined} mono placeholder="2006-01-02T15:04:05Z" onChange={onChange} />
           <button
             type="button"
-            className="h-8 shrink-0 rounded-md border border-input px-2.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            className={cx("h-8 shrink-0 rounded-md border border-input px-2.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
             onClick={() => onChange(new Date().toISOString())}
           >
             Now
@@ -207,7 +209,7 @@ function ClearButton({ label, onClick }: { label: string; onClick: () => void })
   return (
     <button
       type="button"
-      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-state-hover hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+      className={cx("rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", REVEAL)}
       aria-label={label}
       title={label}
       onClick={onClick}
@@ -235,7 +237,7 @@ function Docs({ field }: { field: FieldInfo }) {
 /** A labelled single-line row: name and type on the left, the input on the right. */
 function InlineRow({ field, set, onClear, children }: { field: FieldInfo; set: boolean; onClear: () => void; children: ReactNode }) {
   return (
-    <div className="group grid grid-cols-[minmax(8rem,15rem)_minmax(0,1fr)_1.5rem] items-start gap-x-3 py-1" title={field.comment}>
+    <div className={cx("grid grid-cols-[minmax(8rem,15rem)_minmax(0,1fr)_1.5rem] items-start gap-x-3 py-1", REVEAL_HOST)} title={field.comment}>
       <div className="min-w-0 pt-1.5">
         <FieldName field={field} set={set} />
         <Docs field={field} />
@@ -262,24 +264,24 @@ function Section({
 }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="py-1">
+    <Appear className="py-1">
       <div className="rounded-lg border border-border">
-        <div className="group flex items-center gap-2 px-3 py-1.5" title={field.comment}>
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={open} onClick={() => setOpen(!open)}>
-            <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5 shrink-0 text-muted-foreground" />
+        <div className={cx("flex items-center gap-2 px-3 py-1.5", REVEAL_HOST)} title={field.comment}>
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={open} data-bbm-open={open} onClick={() => setOpen(!open)}>
+            <Icon name="ChevronRight" className={cx("size-3.5 shrink-0 text-muted-foreground", CHEVRON)} />
             <FieldName field={field} set={set} />
             {summary ? <span className="shrink-0 text-xs text-muted-foreground">{summary}</span> : null}
           </button>
           {set ? <ClearButton label={`Clear ${field.jsonName}`} onClick={onClear} /> : null}
         </div>
         {open ? (
-          <div className="border-t border-border px-3 py-2">
+          <Appear className="border-t border-border px-3 py-2">
             <Docs field={field} />
             {children}
-          </div>
+          </Appear>
         ) : null}
       </div>
-    </div>
+    </Appear>
   );
 }
 
@@ -288,7 +290,7 @@ function AddButton({ label, onClick, disabled }: { label: string; onClick: () =>
     <button
       type="button"
       disabled={disabled}
-      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      className={cx("inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50", PRESS)}
       onClick={onClick}
     >
       <Icon name="Plus" className="size-3.5" />
@@ -299,7 +301,7 @@ function AddButton({ label, onClick, disabled }: { label: string; onClick: () =>
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" className="mt-1 rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-label={label} title={label} onClick={onClick}>
+    <button type="button" className={cx("mt-1 rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} aria-label={label} title={label} onClick={onClick}>
       <Icon name="Trash2" className="size-3.5" />
     </button>
   );
@@ -309,24 +311,36 @@ function ListEditor({ field, closure, depth, value, onChange }: EditorProps<Json
   const items = Array.isArray(value) ? value : [];
   const update = (next: Json[]) => onChange(next.length === 0 ? undefined : next);
   const messages = isMessageEditor(field);
+  const { keys, forget } = useListKeys(items.length);
   return (
     <div className="space-y-2">
       {items.length === 0 ? <p className="text-xs text-muted-foreground">No items.</p> : null}
       {items.map((item, index) => (
-        <div key={index} className={cn("flex items-start gap-2", messages && "rounded-md bg-muted/30 p-2")}>
-          <span className="mt-1.5 w-5 shrink-0 text-right font-mono text-xs text-muted-foreground">{index}</span>
-          <div className="min-w-0 flex-1">
-            <ElementEditor
-              field={field}
-              closure={closure}
-              depth={depth}
-              value={item}
-              keepEmpty
-              onChange={(next) => update(items.map((current, position) => (position === index ? (next ?? defaultElement(field, closure)) : current)))}
-            />
-          </div>
-          <RemoveButton label={`Remove item ${index}`} onClick={() => update(items.filter((_item, position) => position !== index))} />
-        </div>
+        <PresenceItem
+          key={keys[index]}
+          className={cn("flex items-start gap-2", messages && "rounded-md bg-muted/30 p-2")}
+          onRemove={() => {
+            forget(index);
+            update(items.filter((_item, position) => position !== index));
+          }}
+        >
+          {(remove) => (
+            <>
+              <span className="mt-1.5 w-5 shrink-0 text-right font-mono text-xs text-muted-foreground">{index}</span>
+              <div className="min-w-0 flex-1">
+                <ElementEditor
+                  field={field}
+                  closure={closure}
+                  depth={depth}
+                  value={item}
+                  keepEmpty
+                  onChange={(next) => update(items.map((current, position) => (position === index ? (next ?? defaultElement(field, closure)) : current)))}
+                />
+              </div>
+              <RemoveButton label={`Remove item ${index}`} onClick={remove} />
+            </>
+          )}
+        </PresenceItem>
       ))}
       <AddButton label={`Add ${elementLabel(field)}`} onClick={() => update([...items, defaultElement(field, closure)])} />
     </div>
@@ -371,27 +385,31 @@ function MapEditor({ field, closure, depth, value, onChange }: EditorProps<Json>
       {rows.map((row) => {
         const duplicate = (counts.get(row.key) ?? 0) > 1;
         return (
-          <div key={row.id} className="flex items-start gap-2">
-            <input
-              className={cn(inputClass, "w-40 shrink-0 font-mono text-[13px]", duplicate && "border-destructive")}
-              value={row.key}
-              placeholder={`key (${field.mapKey})`}
-              title={duplicate ? "Duplicate key: only the first entry is sent" : undefined}
-              spellCheck={false}
-              onChange={(event) => update(rows.map((current) => (current.id === row.id ? { ...current, key: event.target.value } : current)))}
-            />
-            <div className="min-w-0 flex-1">
-              <ElementEditor
-                field={field}
-                closure={closure}
-                depth={depth}
-                value={row.value}
-                keepEmpty
-                onChange={(next) => update(rows.map((current) => (current.id === row.id ? { ...current, value: next ?? defaultElement(field, closure) } : current)))}
-              />
-            </div>
-            <RemoveButton label={`Remove ${row.key || "entry"}`} onClick={() => update(rows.filter((current) => current.id !== row.id))} />
-          </div>
+          <PresenceItem key={row.id} className="flex items-start gap-2" onRemove={() => update(rows.filter((current) => current.id !== row.id))}>
+            {(remove) => (
+              <>
+                <input
+                  className={cn(inputClass, "w-40 shrink-0 font-mono text-[13px]", duplicate && "border-destructive")}
+                  value={row.key}
+                  placeholder={`key (${field.mapKey})`}
+                  title={duplicate ? "Duplicate key: only the first entry is sent" : undefined}
+                  spellCheck={false}
+                  onChange={(event) => update(rows.map((current) => (current.id === row.id ? { ...current, key: event.target.value } : current)))}
+                />
+                <div className="min-w-0 flex-1">
+                  <ElementEditor
+                    field={field}
+                    closure={closure}
+                    depth={depth}
+                    value={row.value}
+                    keepEmpty
+                    onChange={(next) => update(rows.map((current) => (current.id === row.id ? { ...current, value: next ?? defaultElement(field, closure) } : current)))}
+                  />
+                </div>
+                <RemoveButton label={`Remove ${row.key || "entry"}`} onClick={remove} />
+              </>
+            )}
+          </PresenceItem>
         );
       })}
       <AddButton label="Add entry" onClick={() => update([...rows, { id: nextId.current++, key: "", value: defaultElement(field, closure) }])} />
@@ -496,9 +514,9 @@ function OneofEditor({
           </select>
         </div>
         {chosen !== undefined ? (
-          <div className="mt-1">
+          <Appear key={chosen.jsonName} className="mt-1">
             <FieldRow field={chosen} closure={closure} depth={depth} message={message} onChange={onChange} inOneof />
-          </div>
+          </Appear>
         ) : null}
       </div>
     </div>
@@ -509,12 +527,15 @@ export function MessageEditor({
   typeName,
   closure,
   depth = 0,
+  cascade = depth === 0,
   value,
   onChange,
 }: {
   typeName: string;
   closure: TypeClosure;
   depth?: number;
+  /** Cascade the fields in when the editor mounts; for the top of a form. */
+  cascade?: boolean;
   value: JsonObject;
   onChange: (next: JsonObject) => void;
 }) {
@@ -528,17 +549,29 @@ export function MessageEditor({
   }
   if (message.fields.length === 0) return <p className="py-1 text-sm text-muted-foreground">This message has no fields.</p>;
   const seenOneofs = new Set<string>();
+  const rows: ReactElement[] = [];
+  for (const field of message.fields) {
+    if (field.oneof === undefined) {
+      rows.push(<FieldRow key={field.number} field={field} closure={closure} depth={depth} message={value} onChange={onChange} />);
+      continue;
+    }
+    if (seenOneofs.has(field.oneof)) continue;
+    seenOneofs.add(field.oneof);
+    const members = message.fields.filter((candidate) => candidate.oneof === field.oneof);
+    rows.push(<OneofEditor key={`oneof:${field.oneof}`} name={field.oneof} members={members} closure={closure} depth={depth} message={value} onChange={onChange} />);
+  }
+  if (depth > 0) return <div>{rows}</div>;
   return (
-    <div>
-      {message.fields.map((field) => {
-        if (field.oneof === undefined) {
-          return <FieldRow key={field.number} field={field} closure={closure} depth={depth} message={value} onChange={onChange} />;
-        }
-        if (seenOneofs.has(field.oneof)) return null;
-        seenOneofs.add(field.oneof);
-        const members = message.fields.filter((candidate) => candidate.oneof === field.oneof);
-        return <OneofEditor key={`oneof:${field.oneof}`} name={field.oneof} members={members} closure={closure} depth={depth} message={value} onChange={onChange} />;
-      })}
-    </div>
+    <EntranceScope>
+      <div>
+        {cascade
+          ? rows.map((row, index) => (
+              <div key={row.key} className={cx(enter.rise, STAGGER)} style={stagger(index)}>
+                {row}
+              </div>
+            ))
+          : rows}
+      </div>
+    </EntranceScope>
   );
 }

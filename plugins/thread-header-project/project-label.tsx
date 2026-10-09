@@ -1,12 +1,20 @@
 import { experimental_useSidebarThreads, type PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
-import { useEffect, useState } from "react";
+import { enter } from "bb-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ensureHeaderSlot,
   HEADER_ANCHOR_ATTRIBUTE,
+  HEADER_NAME_ATTRIBUTE,
   HEADER_ROW,
   HEADER_SLOT_ATTRIBUTE,
+  projectChanged,
+  type ShownProjects,
 } from "./header-project.js";
+
+// The label remounts with every thread, but the header row it sits in stays,
+// so the row remembers what it last showed.
+const shownProjects: ShownProjects = new WeakMap();
 
 // Mounted once per thread header (split panes each get one), then portalled
 // in front of that header's title.
@@ -16,10 +24,37 @@ export function HeaderProject({ projectId, isCompactViewport }: PluginThreadHead
   const project = experimental_useSidebarThreads().projects.find((candidate) => candidate.id === projectId);
   const attributes = { [HEADER_ANCHOR_ATTRIBUTE]: "" };
   // Phones keep bb's stock footer, which still shows the project.
-  const show = slot !== null && project !== undefined && !project.isPersonal && !isCompactViewport;
+  const labelled = project === undefined ? undefined : !project.isPersonal && !isCompactViewport ? project.id : null;
+  const [entering, setEntering] = useState(false);
+  // Recording is not idempotent, so a re-run effect (StrictMode) must not
+  // record the same label twice and cancel its own fade.
+  const decided = useRef<string | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    const row = anchor?.closest(HEADER_ROW);
+    if (!row || labelled === undefined || decided.current === labelled) return;
+    decided.current = labelled;
+    setEntering(projectChanged(shownProjects, row, labelled));
+  }, [anchor, labelled]);
+  const show = slot !== null && project !== undefined && labelled !== null;
+  const nameAttributes = { [HEADER_NAME_ATTRIBUTE]: "" };
   return (
     <span ref={setAnchor} hidden {...attributes}>
-      {show ? createPortal(project.name, slot) : null}
+      {show
+        ? createPortal(
+            // Fades in only when the project changes, not on every thread
+            // switch within it; cleared after, so bb moving the slot on a
+            // rename doesn't replay it.
+            <span
+              key={project.id}
+              className={entering ? enter.fade : undefined}
+              onAnimationEnd={() => setEntering(false)}
+              {...nameAttributes}
+            >
+              {project.name}
+            </span>,
+            slot,
+          )
+        : null}
     </span>
   );
 }

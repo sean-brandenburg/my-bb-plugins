@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type { DiffDelta } from "../types";
 import { shortSha } from "./format";
 import type { DiffSource } from "./source";
+import { cn } from "./utils";
+import { FAST, PRESS, STAGGER, enter, stagger } from "./ui/motion";
 
 /** Changed files named in the strip; the rest are counted as "+N more". */
 const NAMED_FILES = 8;
@@ -31,7 +33,7 @@ export function DeltaStrip({
   actions: ReactNode;
 }) {
   return (
-    <section className="border-b border-border px-3 py-1 text-xs">
+    <section className={cn("border-b border-border px-3 py-1 text-xs", enter.fade)}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-medium">Since you last looked</span>
         <span className="text-muted-foreground">
@@ -39,8 +41,15 @@ export function DeltaStrip({
           {newFindingCount > 0 ? ` · ${newFindingCount} new finding${newFindingCount === 1 ? "" : "s"}` : ""}
           {touchedFindingCount > 0 ? ` · ${touchedFindingCount} finding${touchedFindingCount === 1 ? "" : "s"} touched` : ""}
         </span>
-        {delta.files.slice(0, NAMED_FILES).map((file) => (
-          <button key={file.path} type="button" className="rounded border border-sky-500/40 px-1.5 py-px font-mono text-[11px] text-sky-700 hover:bg-sky-500/15 dark:text-sky-300" title={file.path} onClick={() => onJump(file.path)}>
+        {delta.files.slice(0, NAMED_FILES).map((file, index) => (
+          <button
+            key={file.path}
+            type="button"
+            className={cn("rounded border border-sky-500/40 px-1.5 py-px font-mono text-[11px] text-sky-700 hover:bg-sky-500/15 dark:text-sky-300", enter.pop, FAST, STAGGER, PRESS)}
+            style={stagger(index)}
+            title={file.path}
+            onClick={() => onJump(file.path)}
+          >
             {file.path.split("/").pop()}
           </button>
         ))}

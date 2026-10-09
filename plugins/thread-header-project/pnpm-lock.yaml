@@ -4,9 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  bb-motion: link:../motion/lib
+
 importers:
 
   .:
+    dependencies:
+      bb-motion:
+        specifier: link:../motion/lib
+        version: link:../motion/lib
     devDependencies:
       '@get-bb/plugin-sdk':
         specifier: 0.6.15

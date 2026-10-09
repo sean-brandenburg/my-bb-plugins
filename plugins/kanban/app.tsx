@@ -3,6 +3,7 @@
 // A kanban board page in the sidebar. Every card is a ticket; most tickets are
 // backed by a thread, whose live status shows on the card. Cards drag between
 // columns; the same moves are available to agents through `bb kanban move`.
+import "bb-motion/motion.css";
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { registerDiffViewIcons } from "bb-diff-view/app/icons";
 import { TICKET_TAB } from "./ui/page-state";

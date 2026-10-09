@@ -1,5 +1,6 @@
 export const HEADER_SLOT_ATTRIBUTE = "data-thread-header-project-slot";
 export const HEADER_ANCHOR_ATTRIBUTE = "data-thread-header-project-anchor";
+export const HEADER_NAME_ATTRIBUTE = "data-thread-header-project-name";
 const HEADER_STYLE_ATTRIBUTE = "data-thread-header-project";
 const FOOTER_STYLE_ATTRIBUTE = "data-thread-header-project-footer";
 // Phone widths keep bb's stock footer, so the project stays there; the header
@@ -30,7 +31,6 @@ export const HEADER_CSS = `
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 0.5rem;
   margin-right: 0.5rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
@@ -40,7 +40,13 @@ export const HEADER_CSS = `
 [${HEADER_SLOT_ATTRIBUTE}]:empty {
   display: none;
 }
-[${HEADER_SLOT_ATTRIBUTE}]::after {
+/* The separator belongs to the name so the two fade in together. */
+[${HEADER_NAME_ATTRIBUTE}] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+[${HEADER_NAME_ATTRIBUTE}]::after {
   content: "›";
   color: var(--subtle-foreground);
 }
@@ -72,6 +78,22 @@ export function mountThreadHeaderProject(doc: Document): () => void {
   return () => {
     for (const style of styles) style.remove();
   };
+}
+
+export type ShownProjects = WeakMap<Element, string>;
+
+/**
+ * Records which project a header row now labels (null: none) and says whether
+ * that differs from what it labelled before, so the label should fade in.
+ */
+export function projectChanged(shown: ShownProjects, row: Element, projectId: string | null): boolean {
+  const previous = shown.get(row);
+  if (projectId === null) {
+    shown.delete(row);
+    return false;
+  }
+  shown.set(row, projectId);
+  return previous !== projectId;
 }
 
 /**

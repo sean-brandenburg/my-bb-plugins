@@ -1,4 +1,5 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import { mountThreadHeaderProject } from "./header-project.js";
 import { HeaderProject } from "./project-label.js";
 

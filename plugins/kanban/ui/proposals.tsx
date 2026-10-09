@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { LIFT, OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger } from "bb-motion";
 import type { rpcContract } from "../contract";
 import type { Column } from "../shared/board";
 import { todoColumnId } from "../shared/columns";
@@ -42,14 +43,20 @@ export function ProposalsList({ onOpen }: { onOpen: (id: string) => void }) {
   useRealtime(BOARD_CHANGED, load);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 p-4 md:p-5">
-      {dumps === null ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+      {dumps === null ? <p className={cn("text-sm text-muted-foreground", enter.fade)}>Loading…</p> : null}
       {dumps !== null && dumps.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className={cn("rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground", enter.fade)}>
           No brain dumps yet. Use New card → Brain dump to dictate one.
         </p>
       ) : null}
-      {dumps?.map((dump) => (
-        <button key={dump.id} type="button" onClick={() => onOpen(dump.id)} className="flex flex-col gap-1 rounded-lg border border-border bg-card p-3 text-left hover:border-foreground/30">
+      {dumps?.map((dump, index) => (
+        <button
+          key={dump.id}
+          type="button"
+          onClick={() => onOpen(dump.id)}
+          style={stagger(index)}
+          className={cn("relative flex flex-col gap-1 rounded-lg border border-border bg-card p-3 text-left hover:border-foreground/30", enter.rise, STAGGER, LIFT, PRESS)}
+        >
           <div className="flex items-center gap-2">
             <DumpStatusBadge dump={dump} />
             {dump.proposal !== null ? (
@@ -131,12 +138,12 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
           </Button>
         ) : null}
       </div>
-      {showText ? <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs">{dump.text}</pre> : null}
+      {showText ? <pre className={cn("whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs", enter.rise, speed.fast)}>{dump.text}</pre> : null}
       {dump.status === "planning" ? (
-        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">The agent is reading the project and drafting tickets. This page updates when it finishes; you can leave.</p>
+        <p className={cn("rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground", enter.fade)}>The agent is reading the project and drafting tickets. This page updates when it finishes; you can leave.</p>
       ) : null}
       {dump.status === "failed" ? (
-        <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+        <div className={cn("flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm", enter.rise)}>
           <p className="text-destructive">Planning did not produce a proposal.</p>
           {dump.error !== null ? <pre className="whitespace-pre-wrap text-xs text-muted-foreground">{dump.error}</pre> : null}
           <div>
@@ -151,8 +158,8 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
           {dump.proposal.summary !== "" ? <Markdown content={dump.proposal.summary} className="text-sm" /> : null}
           {dump.proposal.questions.length > 0 && !closed ? (
             <Group title={`Open questions (${dump.proposal.questions.length})`} defaultOpen>
-              {dump.proposal.questions.map((question) => (
-                <div key={question.id} className="flex flex-col gap-1 rounded-md border border-border p-2.5">
+              {dump.proposal.questions.map((question, index) => (
+                <div key={question.id} style={stagger(index)} className={cn("flex flex-col gap-1 rounded-md border border-border p-2.5", enter.rise, speed.fast, STAGGER)}>
                   <div className="flex items-start gap-2 text-sm">
                     <Badge tone="warning">{question.id}</Badge>
                     <span className="min-w-0 flex-1 font-medium">{question.question}</span>
@@ -162,7 +169,7 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
                   {question.options.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {question.options.map((option) => (
-                        <button key={option} type="button" className={cn("rounded-full border px-2 py-0.5 text-xs", answers[question.id] === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground")} onClick={() => setAnswers((current) => ({ ...current, [question.id]: option }))}>
+                        <button key={option} type="button" className={cn("rounded-full border px-2 py-0.5 text-xs", PRESS, answers[question.id] === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground")} onClick={() => setAnswers((current) => ({ ...current, [question.id]: option }))}>
                           {option}
                         </button>
                       ))}
@@ -182,8 +189,12 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
           ) : null}
           <Group title={`Proposed tickets (${included.length}/${drafts.length})`} defaultOpen>
             <ul className="flex flex-col gap-2">
-              {drafts.map((draft) => (
-                <li key={draft.id} className={cn("flex flex-col gap-1.5 rounded-md border border-border bg-card p-2.5", !draft.include && "opacity-60")}>
+              {drafts.map((draft, index) => (
+                <li
+                  key={draft.id}
+                  style={stagger(index)}
+                  className={cn("flex flex-col gap-1.5 rounded-md border border-border bg-card p-2.5", enter.rise, speed.fast, STAGGER, OPACITY_TRANSITION, !draft.include && "opacity-60")}
+                >
                   <div className="flex items-start gap-2">
                     {!closed ? <Checkbox checked={draft.include} onCheckedChange={(checked) => updateDraft(draft.id, { include: checked === true })} aria-label={`Include ${draft.id}`} className="mt-1" /> : null}
                     <Badge>{draft.id}</Badge>
@@ -223,7 +234,7 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
                         <li key={index} className="flex items-center gap-1">
                           <span className="flex-1">{sub.title}</span>
                           {!closed ? (
-                            <button type="button" aria-label={`Remove subtask ${sub.title}`} className="text-muted-foreground hover:text-destructive" onClick={() => updateDraft(draft.id, { subtasks: draft.subtasks.filter((_, i) => i !== index) })}>
+                            <button type="button" aria-label={`Remove subtask ${sub.title}`} className={cn("text-muted-foreground hover:text-destructive", PRESS)} onClick={() => updateDraft(draft.id, { subtasks: draft.subtasks.filter((_, i) => i !== index) })}>
                               <Icon name="X" className="size-3" />
                             </button>
                           ) : null}
@@ -270,7 +281,7 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
               <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2 text-xs text-muted-foreground">
                 Created:
                 {dump.createdTicketIds.map((id) => (
-                  <button key={id} type="button" className="rounded border border-border px-1.5 py-0.5 font-mono hover:text-foreground" onClick={() => onOpenTicket(id)}>
+                  <button key={id} type="button" className={cn("rounded border border-border px-1.5 py-0.5 font-mono hover:text-foreground", PRESS, enter.pop)} onClick={() => onOpenTicket(id)}>
                     {id}
                   </button>
                 ))}

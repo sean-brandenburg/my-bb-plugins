@@ -1,9 +1,11 @@
+import { cx, PRESS } from "bb-motion";
 import { errorMessage, isClientStreaming } from "../shared/common";
 import type { MethodInfo, TypeClosure } from "../shared/schema";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "./controls";
 import { MessageEditor } from "./MessageEditor";
+import { EntranceScope, PresenceItem, useListKeys } from "./presence";
 import { hasUnsafeIntegers, isObject, type Json } from "./proto-json";
 
 function parseRequest(text: string): { ok: true; value: Json } | { ok: false; error: string } {
@@ -31,6 +33,57 @@ function JsonEditor({ text, onText }: { text: string; onText: (text: string) => 
  * The request as a form generated from the input type, or as raw JSON. Text the
  * form cannot round-trip (invalid JSON, unsafe integers) stays in the JSON editor.
  */
+function StreamMessages({ method, closure, messages, write }: { method: MethodInfo; closure: TypeClosure; messages: Json[]; write: (value: Json) => void }) {
+  const { keys, forget } = useListKeys(messages.length);
+  return (
+    <EntranceScope>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">Messages are sent in order, then the stream closes.</p>
+        {messages.map((entry, index) => (
+          <PresenceItem
+            key={keys[index]}
+            className="rounded-lg border border-border"
+            cascadeIndex={index}
+            onRemove={() => {
+              forget(index);
+              write(messages.filter((_entry, position) => position !== index));
+            }}
+          >
+            {(remove) => (
+              <>
+                <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-sm">
+                  <span className="font-medium text-foreground">Message {index + 1}</span>
+                  <button
+                    type="button"
+                    className={cx("rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
+                    aria-label={`Remove message ${index + 1}`}
+                    onClick={remove}
+                  >
+                    <Icon name="Trash2" className="size-3.5" />
+                  </button>
+                </div>
+                <div className="px-3 py-2">
+                  <MessageEditor
+                    typeName={method.input}
+                    closure={closure}
+                    cascade={false}
+                    value={isObject(entry) ? entry : {}}
+                    onChange={(next) => write(messages.map((existing, position) => (position === index ? next : existing)))}
+                  />
+                </div>
+              </>
+            )}
+          </PresenceItem>
+        ))}
+        <Button variant="outline" size="sm" onClick={() => write([...messages, {}])}>
+          <Icon name="Plus" className="size-4" />
+          Add message
+        </Button>
+      </div>
+    </EntranceScope>
+  );
+}
+
 export function RequestBody({
   method,
   closure,
@@ -79,38 +132,7 @@ export function RequestBody({
   const write = (value: Json) => onText(JSON.stringify(value, null, 2));
   if (isClientStreaming(method.kind)) {
     const messages = Array.isArray(parsed.value) ? parsed.value : [parsed.value];
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">Messages are sent in order, then the stream closes.</p>
-        {messages.map((entry, index) => (
-          <div key={index} className="rounded-lg border border-border">
-            <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-sm">
-              <span className="font-medium text-foreground">Message {index + 1}</span>
-              <button
-                type="button"
-                className="rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground"
-                aria-label={`Remove message ${index + 1}`}
-                onClick={() => write(messages.filter((_entry, position) => position !== index))}
-              >
-                <Icon name="Trash2" className="size-3.5" />
-              </button>
-            </div>
-            <div className="px-3 py-2">
-              <MessageEditor
-                typeName={method.input}
-                closure={closure}
-                value={isObject(entry) ? entry : {}}
-                onChange={(next) => write(messages.map((existing, position) => (position === index ? next : existing)))}
-              />
-            </div>
-          </div>
-        ))}
-        <Button variant="outline" size="sm" onClick={() => write([...messages, {}])}>
-          <Icon name="Plus" className="size-4" />
-          Add message
-        </Button>
-      </div>
-    );
+    return <StreamMessages method={method} closure={closure} messages={messages} write={write} />;
   }
   return <MessageEditor typeName={method.input} closure={closure} value={isObject(parsed.value) ? parsed.value : {}} onChange={write} />;
 }

@@ -1,7 +1,10 @@
 import {
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -12,12 +15,39 @@ import {
   experimental_useSidebarNavigation,
   type ExperimentalSidebarNavigationItem,
 } from "@get-bb/plugin-sdk/app";
+import {
+  cx,
+  enter,
+  exit,
+  OPACITY_TRANSITION,
+  PRESS,
+  speed,
+  TRANSFORM_TRANSITION,
+  usePresence,
+} from "bb-motion";
+import {
+  nextIndicator,
+  railItemOffset,
+  type IndicatorState,
+} from "./indicator.js";
 
 /** Space between a rail button and the tooltip or menu beside it. */
 const POPOVER_GAP_PX = 8;
 
-const BUTTON_CLASS =
-  "relative flex size-9 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/80 outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50";
+const BUTTON_CLASS = cx(
+  "relative flex size-9 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/80 outline-none hover:text-sidebar-foreground hover:[transform:translate3d(0,var(--bbm-lift),0)] focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50",
+  PRESS,
+);
+
+// Moving along the rail shows one tooltip after another; only the first eases
+// in, or every step would replay the entrance.
+const TOOLTIP_WARM_MS = 300;
+let lastTooltipHiddenAt = Number.NEGATIVE_INFINITY;
+
+// A tooltip sits right beside its button, so it slides the short distance.
+const TOOLTIP_ENTER_STYLE = {
+  "--bbm-distance-lg": "var(--bbm-distance-sm)",
+} as CSSProperties;
 
 function useAnchorRect(
   anchor: RefObject<HTMLElement | null>,
@@ -40,17 +70,40 @@ function Tooltip({
   children: ReactNode;
 }) {
   const rect = useAnchorRect(anchor, open);
+  const warm = useMemo(
+    () => open && performance.now() - lastTooltipHiddenAt < TOOLTIP_WARM_MS,
+    [open],
+  );
+  // A layout effect, so the leaving tooltip's timestamp is in place before
+  // the next button's tooltip renders.
+  useLayoutEffect(() => {
+    if (!open) return;
+    return () => {
+      lastTooltipHiddenAt = performance.now();
+    };
+  }, [open]);
   if (rect === null) return null;
+  // The outer box only positions; the entrance moves the inner one, so it
+  // can't fight the vertical centering.
   return createPortal(
     <div
       role="tooltip"
-      className="pointer-events-none fixed z-[70] flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+      className="pointer-events-none fixed z-[70] -translate-y-1/2"
       style={{
         left: rect.right + POPOVER_GAP_PX,
         top: rect.top + rect.height / 2,
       }}
     >
-      {children}
+      <div
+        className={cx(
+          "flex items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md",
+          !warm && enter.slideLeft,
+          !warm && speed.fast,
+        )}
+        style={warm ? undefined : TOOLTIP_ENTER_STYLE}
+      >
+        {children}
+      </div>
     </div>,
     document.body,
   );
@@ -81,7 +134,11 @@ function RailButton({
         aria-label={label}
         aria-current={active ? "page" : undefined}
         disabled={disabled}
-        className={`${BUTTON_CLASS} ${active ? "bg-sidebar-accent text-sidebar-foreground" : ""}`}
+        // The active fill is the rail's sliding indicator, not the button's.
+        className={cx(
+          BUTTON_CLASS,
+          active ? "text-sidebar-foreground" : "hover:bg-sidebar-accent",
+        )}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         onFocus={() => setHover(true)}
@@ -141,9 +198,10 @@ function MoreMenu({
   onCustomize: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const presence = usePresence(open);
   const anchor = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const rect = useAnchorRect(anchor, open);
+  const rect = useAnchorRect(anchor, presence.mounted);
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -180,8 +238,18 @@ function MoreMenu({
               ref={menu}
               role="menu"
               aria-label="More navigation"
-              className="fixed z-[70] min-w-44 rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
-              style={{ left: rect.right + POPOVER_GAP_PX, top: rect.top }}
+              className={cx(
+                "fixed z-[70] min-w-44 rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg",
+                presence.exiting ? exit.fade : cx(enter.scale, speed.fast),
+              )}
+              // Portalled outside the plugin root, where only bb's own
+              // utilities apply, so the origin is set inline.
+              style={{
+                left: rect.right + POPOVER_GAP_PX,
+                top: rect.top,
+                transformOrigin: "top left",
+              }}
+              onAnimationEnd={presence.onAnimationEnd}
             >
               {hidden.map((item) => (
                 <button
@@ -216,20 +284,56 @@ function MoreMenu({
   );
 }
 
+function useIndicator(activeIndex: number): IndicatorState {
+  const last = useRef<{ activeIndex: number; state: IndicatorState } | null>(
+    null,
+  );
+  if (last.current?.activeIndex !== activeIndex) {
+    last.current = {
+      activeIndex,
+      state: nextIndicator(last.current?.state ?? null, activeIndex),
+    };
+  }
+  return last.current.state;
+}
+
+/** The active item's fill, sliding between rail items as the route changes. */
+function ActiveIndicator({ activeIndex }: { activeIndex: number }) {
+  const { index, visible, slide } = useIndicator(activeIndex);
+  return (
+    <span
+      aria-hidden
+      className={cx(
+        "pointer-events-none absolute left-1/2 top-0 -ml-[1.125rem] size-9 rounded-md bg-sidebar-accent",
+        TRANSFORM_TRANSITION,
+        OPACITY_TRANSITION,
+      )}
+      style={{
+        transform: `translate3d(0, ${railItemOffset(index)}, 0)`,
+        opacity: visible ? 1 : 0,
+        transitionProperty: slide ? undefined : "opacity",
+      }}
+    />
+  );
+}
+
 export function SlimNavigation() {
   const { items, activeItemId, actions } = experimental_useSidebarNavigation();
   const visible = items.filter((item) => item.isVisible);
   const hidden = items.filter((item) => !item.isVisible);
+  const isActive = (item: ExperimentalSidebarNavigationItem) =>
+    item.id === activeItemId && item.action.kind !== "new-thread";
   return (
     <div
-      className="flex flex-col items-center gap-1 py-2"
+      className="relative flex flex-col items-center gap-1 py-2"
       data-testid="slim-sidebar-navigation"
     >
+      <ActiveIndicator activeIndex={visible.findIndex(isActive)} />
       {visible.map((item) => (
         <ItemButton
           key={item.id}
           item={item}
-          active={item.id === activeItemId && item.action.kind !== "new-thread"}
+          active={isActive(item)}
           onActivate={(openInSplit) =>
             actions.activate(item.id, { openInSplit })
           }

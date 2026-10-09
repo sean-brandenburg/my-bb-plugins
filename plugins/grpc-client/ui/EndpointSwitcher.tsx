@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { cx, enter, exit, PRESS, speed, TRANSFORM_TRANSITION, usePresence } from "bb-motion";
 import type { EndpointSummary, Overview } from "../server/rpc-contract";
 import type { DescriptorState } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
@@ -31,6 +32,7 @@ export function EndpointSwitcher({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useDismiss(root, open, setOpen);
+  const presence = usePresence(open);
 
   const sources = overview.sources.some((source) => source.name === sourceName)
     ? overview.sources
@@ -40,7 +42,7 @@ export function EndpointSwitcher({
     <div ref={root} className="relative min-w-0 flex-1">
       <button
         type="button"
-        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-state-hover"
+        className={cx("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-state-hover", PRESS)}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={`${endpoint.target} · ${sourceName}`}
@@ -49,10 +51,22 @@ export function EndpointSwitcher({
         <span className={cn("size-2 shrink-0 rounded-full", endpoint.protected ? "bg-amber-500" : "bg-emerald-500")} aria-hidden />
         <span className="truncate text-sm font-medium text-foreground">{endpoint.name}</span>
         <span className="min-w-0 truncate text-xs text-muted-foreground">{sourceName}</span>
-        <Icon name="ChevronDown" className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+        <Icon
+          name="ChevronDown"
+          className={cx("ml-auto size-3.5 shrink-0 text-muted-foreground", TRANSFORM_TRANSITION)}
+          style={open ? { transform: "rotate(180deg)" } : undefined}
+        />
       </button>
-      {open ? (
-        <div role="dialog" aria-label="Endpoint" className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-border bg-background p-1.5 shadow-lg">
+      {presence.mounted ? (
+        <div
+          role="dialog"
+          aria-label="Endpoint"
+          className={cx(
+            "absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-border bg-background p-1.5 shadow-lg",
+            presence.exiting ? exit.fade : cx(enter.drop, speed.fast),
+          )}
+          onAnimationEnd={presence.onAnimationEnd}
+        >
           <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Endpoint</p>
           {overview.endpoints.map((option) => (
             <button
@@ -102,7 +116,7 @@ export function EndpointSwitcher({
               </span>
               <button
                 type="button"
-                className="flex items-center gap-1 rounded px-1.5 py-1 hover:bg-state-hover hover:text-foreground disabled:opacity-50"
+                className={cx("flex items-center gap-1 rounded px-1.5 py-1 hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)}
                 disabled={loading}
                 onClick={onReload}
               >

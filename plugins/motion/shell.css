@@ -1,1 +1,199 @@
-/* Motion for bb's own app shell. */
+/*
+ * Motion for bb's own app shell.
+ *
+ * bb's markup isn't a plugin contract, so every rule hangs off a hook that has
+ * been stable in practice (data-* attributes, radix state attributes, aria
+ * labels, and in one case bb's Button class recipe) and simply stops matching
+ * if the hook disappears. This file is appended unlayered after bb's Tailwind
+ * layers, so a declaration here beats any bb utility on the same property;
+ * rules only set the longhands they mean to change.
+ */
+
+:root {
+  /* Full-width rows give less than compact buttons: 0.97 of a 300px row is a
+   * 9px shrink, which reads as a jump rather than a press. */
+  --bbm-shell-press-row: 0.985;
+  /* Checkmarks swap in from well below full size so the confirmation lands. */
+  --bbm-shell-check-scale: 0.6;
+}
+
+@keyframes bbm-shell-settle {
+  from { opacity: 0; transform: translate3d(0, var(--bbm-distance-sm), 0); }
+}
+
+@keyframes bbm-shell-check-in {
+  from { opacity: 0; transform: scale(var(--bbm-shell-check-scale)); }
+}
+
+/* ---------- Tactile press on bb's Button ----------
+ * bb's Button recipe always carries `hover:duration-0`, which zeroes every
+ * transition while hovered. So replacing the transition with a transform-only
+ * one during hover changes nothing about bb's colors (they were instant there
+ * anyway), while the hover-out color fade, which comes from the base state,
+ * is untouched. Pressing and releasing happen while hovered, so both ease.
+ * Touch has no hover state; there the press is instant and the release snaps,
+ * rather than overriding bb's touch color transitions. */
+@media (hover: hover) {
+  :is(button, a, [role="button"])[class*="hover:duration-0"]:not(:disabled, [aria-disabled="true"], [role="switch"], [role="slider"], [aria-roledescription="sortable"], [draggable="true"], [data-bb-plugin-root] *):hover {
+    transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);
+  }
+  :is(button, a, [role="button"])[class*="hover:duration-0"]:not(:disabled, [aria-disabled="true"], [role="switch"], [role="slider"], [aria-roledescription="sortable"], [draggable="true"], [data-bb-plugin-root] *):active {
+    transition-duration: var(--bbm-duration-instant);
+  }
+}
+:is(button, a, [role="button"])[class*="hover:duration-0"]:not(:disabled, [aria-disabled="true"], [role="switch"], [role="slider"], [aria-roledescription="sortable"], [draggable="true"], [data-bb-plugin-root] *):active {
+  transform: scale(var(--bbm-scale-press));
+}
+[data-sidebar="content"] :is(button, a, [role="button"])[class*="hover:duration-0"]:not(:disabled, [aria-disabled="true"], [role="switch"], [aria-roledescription="sortable"], [draggable="true"], [data-bb-plugin-root] *):active {
+  transform: scale(var(--bbm-shell-press-row));
+}
+
+/* ---------- Radix overlays: menus, popovers, selects, tooltips ----------
+ * bb's overlays animate with `data-[state=open]:animate-in`, so motion.css's
+ * bare `.animate-in` curve never reaches them. The popper wrapper exposes the
+ * trigger-relative origin that every radix popper component (dropdown and
+ * context menu, popover, select, tooltip, hover card) copies into its own
+ * `--radix-*-transform-origin`; bb never applies it, so overlays zoomed from
+ * their own center instead of out of their trigger. */
+[data-radix-popper-content-wrapper] > * {
+  transform-origin: var(--radix-popper-transform-origin);
+}
+[data-radix-popper-content-wrapper] > [data-state="open"][class*="animate-in"] {
+  animation-duration: var(--bbm-duration-fast);
+  animation-timing-function: var(--bbm-ease-out);
+}
+/* Tooltips: radix animates the visible box with these states (role=tooltip
+ * sits on a hidden a11y span). Fast, because a tooltip that eases in late
+ * reads as lag. */
+[data-radix-popper-content-wrapper] > [data-state="delayed-open"] {
+  animation-duration: var(--bbm-duration-instant);
+  animation-timing-function: var(--bbm-ease-out);
+}
+/* Sweeping across a toolbar moves between tooltips in skip-delay mode; zooming
+ * every one of them in would make the row flicker, so they only cross-fade. */
+[data-radix-popper-content-wrapper] > [data-state="instant-open"] {
+  --tw-enter-scale: 1;
+  --tw-enter-translate-x: 0;
+  --tw-enter-translate-y: 0;
+  animation-duration: var(--bbm-duration-instant);
+  animation-timing-function: var(--bbm-ease-out);
+}
+[data-radix-popper-content-wrapper] > [data-state="closed"][class*="animate-out"] {
+  animation-duration: var(--bbm-duration-exit);
+  animation-timing-function: var(--bbm-ease-in);
+}
+
+/* ---------- Dialogs ----------
+ * Centered dialogs rise slightly as they scale in. Popovers are role=dialog
+ * too but carry data-side; the mobile drawer has no tw-animate classes. */
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"]:not([data-side]) {
+  --tw-enter-scale: var(--bbm-scale-enter);
+  --tw-enter-translate-y: var(--bbm-distance);
+  animation-duration: var(--bbm-duration-base);
+  animation-timing-function: var(--bbm-ease-out);
+}
+/* The palette sits near the top of the window, so it drops from above. */
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"][data-testid="command-palette"]:not([data-side]) {
+  --tw-enter-translate-y: calc(var(--bbm-distance) * -1);
+}
+:is([role="dialog"], [role="alertdialog"])[data-state="closed"][class*="animate-out"]:not([data-side]) {
+  animation-duration: var(--bbm-duration-exit);
+  animation-timing-function: var(--bbm-ease-in);
+}
+
+/* A dialog's sections settle in one after another behind the dialog itself.
+ * Children with their own animation (spinners) keep it. */
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"]:not([data-side], [data-testid="command-palette"]) > :not([class*="animate-"]) {
+  animation: bbm-shell-settle var(--bbm-duration-base) var(--bbm-ease-out) backwards;
+  animation-delay: calc(var(--bbm-stagger-step) * 4);
+}
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"]:not([data-side], [data-testid="command-palette"]) > :not([class*="animate-"]):nth-child(1) {
+  animation-delay: var(--bbm-stagger-step);
+}
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"]:not([data-side], [data-testid="command-palette"]) > :not([class*="animate-"]):nth-child(2) {
+  animation-delay: calc(var(--bbm-stagger-step) * 2);
+}
+:is([role="dialog"], [role="alertdialog"])[data-state="open"][class*="animate-in"]:not([data-side], [data-testid="command-palette"]) > :not([class*="animate-"]):nth-child(3) {
+  animation-delay: calc(var(--bbm-stagger-step) * 3);
+}
+/* The palette's input must be usable the instant it opens; only its results
+ * settle in, a beat behind. */
+[data-testid="command-palette"][data-state="open"] [data-palette-results-clip] {
+  animation: bbm-shell-settle var(--bbm-duration-base) var(--bbm-ease-out) var(--bbm-stagger-step) backwards;
+}
+
+/* ---------- Page changes ----------
+ * bb remounts [data-page-scroll-viewport] on every route change (thread to
+ * thread, settings, plugin pages). Its first grandchild is the page's content
+ * column; the sticky composer footer is a later sibling, so it stays put while
+ * the conversation settles in. */
+[data-page-scroll-viewport] > * > :first-child {
+  animation: bbm-shell-settle var(--bbm-duration-base) var(--bbm-ease-out) backwards;
+}
+
+/* ---------- New timeline rows ----------
+ * The timeline is virtualized, so a CSS entrance would replay on every row
+ * scrolled into view. timeline-entrance.ts marks only rows appended live. */
+[data-timeline-row-id][data-bbm-new-row] {
+  animation: bbm-rise-in var(--bbm-duration-base) var(--bbm-ease-out) backwards;
+}
+
+/* ---------- Switch thumb ----------
+ * Retimes bb's own `transition-transform` (which moves the thumb with the
+ * `translate` property). Reduced-motion users keep bb's stock timing. */
+@media (prefers-reduced-motion: no-preference) {
+  [role="switch"] > span[data-state] {
+    transition-duration: var(--bbm-duration-fast);
+    transition-timing-function: var(--bbm-ease-in-out);
+  }
+}
+
+/* ---------- Scroll to latest ----------
+ * bb toggles this button with `invisible translate-y-2 opacity-0` under a
+ * `transition-all`. Narrow that to movement and opacity (visibility so it
+ * stays visible while fading out), add a small scale so it pops into place,
+ * and let it leave faster than it arrives. */
+button[aria-label="Scroll to latest event"] {
+  transition-property: opacity, translate, scale, transform, visibility;
+  transition-duration: var(--bbm-duration-base);
+  transition-timing-function: var(--bbm-ease-out);
+}
+button[aria-label="Scroll to latest event"].invisible {
+  scale: var(--bbm-scale-pop);
+  transition-duration: var(--bbm-duration-exit);
+  transition-timing-function: var(--bbm-ease-in);
+}
+button[aria-label="Scroll to latest event"]:active:not(.invisible) {
+  transform: scale(var(--bbm-scale-press));
+  transition-duration: var(--bbm-duration-instant);
+}
+
+/* ---------- Checkmarks ----------
+ * Copy buttons swap their Copy icon for Check, and checked menu items mount a
+ * Check indicator. An animation starts whenever its selector begins to match,
+ * so this fires on the attribute swap even when React reuses the <svg>. */
+:is(button, [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]) [data-icon="Check"]:not([data-bb-plugin-root] *) {
+  animation: bbm-shell-check-in var(--bbm-duration-base) var(--bbm-ease-spring) backwards;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bbm-shell-press-row: 1;
+    --bbm-shell-check-scale: 1;
+  }
+  /* motion.css strips tw-animate's zoom and slide from `.animate-in`, which
+   * bb's state-prefixed overlay classes never match. */
+  :is([data-radix-popper-content-wrapper] > *, [role="dialog"], [role="alertdialog"], [data-bb-portaled-overlay]) {
+    --tw-enter-scale: 1 !important;
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+  }
+  /* bb's translate-y-2 isn't token-driven. */
+  button[aria-label="Scroll to latest event"] {
+    transition-property: opacity, visibility;
+  }
+}

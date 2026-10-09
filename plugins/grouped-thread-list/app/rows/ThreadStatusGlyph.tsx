@@ -1,5 +1,7 @@
+import { enter } from "bb-motion";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,
@@ -44,8 +46,7 @@ function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
   );
 }
 
-export function ThreadStatusGlyph(state: ThreadListIndicatorState) {
-  const kind = resolveThreadListIndicator(state);
+function glyphFor(kind: ThreadListIndicatorKind) {
   switch (kind) {
     case "unread-error":
     case "queued-failed":
@@ -107,4 +108,18 @@ export function ThreadStatusGlyph(state: ThreadListIndicatorState) {
     case "none":
       return null;
   }
+}
+
+export function ThreadStatusGlyph(state: ThreadListIndicatorState) {
+  const kind = resolveThreadListIndicator(state);
+  const changed = useChangedSinceMount(kind);
+  const glyph = glyphFor(kind);
+  if (!changed || glyph === null) return glyph;
+  // The pop lives on a wrapper because the shine and spin glyphs already own
+  // `animation`; keying it by kind replays the pop on every later change.
+  return (
+    <span key={kind} className={cn("inline-flex shrink-0", enter.pop)}>
+      {glyph}
+    </span>
+  );
 }

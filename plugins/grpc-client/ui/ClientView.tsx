@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { toast } from "sonner";
+import { cx, enter, exit, PRESS, speed, usePresence } from "bb-motion";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { CallResult } from "../contract";
 import type { HistoryEntry, Overview, rpcContract } from "../server/rpc-contract";
@@ -123,6 +124,9 @@ export function ClientView() {
   const [timeout, setTimeoutText] = useState("");
   const [leftTab, setLeftTab] = useState<"methods" | "history">("methods");
   const [listOpen, setListOpen] = useState(false);
+  const overlayPresence = usePresence(listOpen);
+  /** Set once the user reopens the docked list, so it slides in then but not on first paint. */
+  const [listReopened, setListReopened] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   /** Latest result per endpoint + method; `recordedAt` marks one restored from history. */
@@ -262,7 +266,10 @@ export function ClientView() {
   };
   const showList = () => {
     if (overlayList) setListOpen(true);
-    else setListCollapsed(false);
+    else {
+      setListCollapsed(false);
+      setListReopened(true);
+    }
   };
 
   const list = (
@@ -270,8 +277,10 @@ export function ClientView() {
       className={cn(
         "relative flex min-h-0 flex-col border-r border-border bg-background",
         overlayList ? "absolute inset-y-0 left-0 z-20 w-80 max-w-[85%] shadow-xl" : "shrink-0",
+        overlayList ? (overlayPresence.exiting ? exit.fade : enter.slideLeft) : listReopened && enter.slideLeft,
       )}
       style={overlayList ? undefined : { width: listWidth }}
+      onAnimationEnd={overlayList ? overlayPresence.onAnimationEnd : undefined}
     >
       <div className="flex items-center gap-1 border-b border-border px-1.5 py-1.5">
         <EndpointSwitcher
@@ -288,6 +297,7 @@ export function ClientView() {
           type="button"
           className={cn(
             "rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+            PRESS,
             leftTab === "history" && "bg-state-active text-foreground",
           )}
           aria-label="Call history"
@@ -298,13 +308,13 @@ export function ClientView() {
           <Icon name="grpc-client/history" className="size-4" />
         </button>
         {overlayList ? (
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-label="Close method list" onClick={() => setListOpen(false)}>
+          <button type="button" className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Close method list" onClick={() => setListOpen(false)}>
             <Icon name="X" className="size-4" />
           </button>
         ) : (
           <button
             type="button"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
             aria-label="Collapse method list"
             title="Collapse method list"
             onClick={() => setListCollapsed(true)}
@@ -356,7 +366,7 @@ export function ClientView() {
           ) : null}
           {requestTab === "metadata" ? <MetadataEditor rows={metadata} endpoint={endpoint.name} onChange={setMetadata} /> : null}
           {requestTab === "options" ? (
-            <div className="max-w-xl space-y-5 text-sm">
+            <div className={cx("max-w-xl space-y-5 text-sm", enter.rise)}>
               <label className="block space-y-1">
                 <span className="font-medium text-foreground">Deadline</span>
                 <span className="flex items-center gap-2">
@@ -396,18 +406,18 @@ export function ClientView() {
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       {errors.length > 0 ? (
-        <div role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive">
+        <div role="alert" className={cx("border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive", enter.drop)}>
           {errors.join(" · ")}
         </div>
       ) : null}
       {current?.status === "error" && serviceData !== null ? (
-        <div role="alert" className="border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive">
+        <div role="alert" className={cx("border-b border-border bg-destructive/5 px-4 py-2 text-xs text-destructive", enter.drop)}>
           Reloading the protos failed, so the last good copy is shown: {current.error}
         </div>
       ) : null}
 
       <div className="relative flex min-h-0 flex-1">
-        {(overlayList ? listOpen : !listCollapsed) ? list : null}
+        {(overlayList ? overlayPresence.mounted : !listCollapsed) ? list : null}
         {method === null ? (
           <Centered>
             {serviceData === null ? (
@@ -436,7 +446,7 @@ export function ClientView() {
               {listDocked ? null : (
                 <button
                   type="button"
-                  className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
+                  className={cx("shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
                   aria-label="Show method list"
                   title="Show method list"
                   onClick={showList}
@@ -444,7 +454,7 @@ export function ClientView() {
                   <Icon name="PanelLeft" className="size-4" />
                 </button>
               )}
-              <div className="flex min-w-0 items-center gap-1.5">
+              <div key={method.fullName} className={cx("flex min-w-0 items-center gap-1.5", enter.fade, speed.fast)}>
                 <h2 className="truncate text-sm font-semibold text-foreground" title={method.fullName}>
                   {method.name}
                 </h2>
@@ -453,7 +463,7 @@ export function ClientView() {
                 {method.comment ? (
                   <button
                     type="button"
-                    className={cn("shrink-0 rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", showComment && "text-foreground")}
+                    className={cn("shrink-0 rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS, showComment && "text-foreground")}
                     aria-label="Show method description"
                     aria-expanded={showComment}
                     title={method.comment}
@@ -499,7 +509,7 @@ export function ClientView() {
                   trigger={
                     <button
                       type="button"
-                      className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", moreOpen && "bg-state-active text-foreground")}
+                      className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS, moreOpen && "bg-state-active text-foreground")}
                       aria-label="More request actions"
                       aria-expanded={moreOpen}
                       title="More"
@@ -552,13 +562,15 @@ export function ClientView() {
                   </MenuItem>
                 </Popover>
                 <Button size="sm" className={cn("ml-1 h-7 px-3", endpoint.protected && "bg-amber-600 text-white hover:bg-amber-600/90")} disabled={sending} onClick={requestSend}>
-                  <Icon name={sending ? "Spinner" : "grpc-client/send"} className="size-3.5" />
+                  <span key={sending ? "sending" : "idle"} className={cx("flex", sending ? cx(enter.fade, speed.fast) : enter.pop)}>
+                    <Icon name={sending ? "Spinner" : "grpc-client/send"} className="size-3.5" />
+                  </span>
                   {sending ? "Sending" : endpoint.protected ? `Send to ${endpoint.name}` : "Send"}
                 </Button>
               </div>
             </div>
             {showComment && method.comment ? (
-              <p className="whitespace-pre-line border-b border-border px-4 py-2 text-sm text-muted-foreground">
+              <p className={cx("whitespace-pre-line border-b border-border px-4 py-2 text-sm text-muted-foreground", enter.drop, speed.fast)}>
                 <span className="mb-1 block font-mono text-xs">{method.fullName}</span>
                 {method.comment}
               </p>

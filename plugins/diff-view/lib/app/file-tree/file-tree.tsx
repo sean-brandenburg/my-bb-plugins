@@ -4,10 +4,18 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { DiffFile } from "../../types";
 import { Badge } from "../ui/badge";
+import { CHEVRON, FAST, STAGGER, enter, stagger } from "../ui/motion";
 import { cn } from "../utils";
 import { isGeneratedFile } from "../generated";
 import { RISK_DOT, riskTint } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
+
+/** Row positions handed out in render order, so a cascade runs top to bottom from wherever it starts. */
+interface Cascade {
+  next: number;
+}
+
+const ROW_ENTER = cn(enter.rise, FAST, STAGGER);
 
 /** A truncating label whose tooltip (the full text, plus optional extra lines) appears only when the text is actually clipped. */
 function TruncatedName({ text, full, className, extra }: { text: string; full: string; className?: string; extra?: string | null }) {
@@ -55,34 +63,39 @@ export function FileTree({
 }) {
   const tree = useMemo(() => buildFileTree(files), [files]);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (path: string) =>
+  // The folder opened last cascades its rows from its own top instead of from the top of the tree.
+  const [lastOpened, setLastOpened] = useState<string | null>(null);
+  const toggle = (path: string) => {
+    if (closed.has(path)) setLastOpened(path);
     setClosed((current) => {
       const next = new Set(current);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
-  const renderDir = (dir: FileTreeDir, depth: number): ReactNode => {
+  };
+  const renderDir = (dir: FileTreeDir, depth: number, cascade: Cascade): ReactNode => {
     const isClosed = closed.has(dir.path);
     return (
       <li key={`dir:${dir.path}`}>
         <button
           type="button"
           onClick={() => toggle(dir.path)}
-          className="flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs text-muted-foreground hover:bg-state-hover"
-          style={{ paddingLeft: 8 + depth * 12 }}
+          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs text-muted-foreground hover:bg-state-hover", ROW_ENTER)}
+          style={{ paddingLeft: 8 + depth * 12, ...stagger(cascade.next++) }}
           aria-expanded={!isClosed}
+          data-bbm-open={!isClosed}
         >
-          <Icon name="ChevronDown" className={cn("size-3 shrink-0 transition-transform", isClosed && "-rotate-90")} />
+          <Icon name="ChevronRight" className={cn("size-3 shrink-0", CHEVRON)} />
           <TruncatedName text={dir.name} full={dir.path} />
           <span className="shrink-0 tabular-nums text-emerald-600 dark:text-emerald-400">+{dir.additions}</span>
           <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">−{dir.deletions}</span>
         </button>
-        {isClosed ? null : <ul>{renderChildren(dir, depth + 1)}</ul>}
+        {isClosed ? null : <ul>{renderChildren(dir, depth + 1, dir.path === lastOpened ? { next: 0 } : cascade)}</ul>}
       </li>
     );
   };
-  const renderFile = (file: DiffFile, depth: number): ReactNode => {
+  const renderFile = (file: DiffFile, depth: number, cascade: Cascade): ReactNode => {
     const count = commentCount(file.path);
     const isViewed = viewed.has(file.path);
     const generated = isGeneratedFile(file);
@@ -93,8 +106,8 @@ export function FileTree({
         <button
           type="button"
           onClick={() => onSelect(file.path)}
-          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", riskTint(fileRisk), file.path === activePath && "bg-state-active")}
-          style={{ paddingLeft: 8 + depth * 12 + 16 }}
+          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", ROW_ENTER, riskTint(fileRisk), file.path === activePath && "bg-state-active")}
+          style={{ paddingLeft: 8 + depth * 12 + 16, ...stagger(cascade.next++) }}
           data-file-tree-path={file.path}
         >
           {isViewed ? <Icon name="Check" className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" /> : fileRisk !== null ? <span className={cn("size-1.5 shrink-0 rounded-full", RISK_DOT[fileRisk])} aria-hidden="true" /> : null}
@@ -114,10 +127,13 @@ export function FileTree({
       </li>
     );
   };
-  const renderChildren = (dir: FileTreeDir, depth: number): ReactNode[] => [...dir.dirs.map((child) => renderDir(child, depth)), ...dir.files.map((file) => renderFile(file, depth))];
+  const renderChildren = (dir: FileTreeDir, depth: number, cascade: Cascade): ReactNode[] => [
+    ...dir.dirs.map((child) => renderDir(child, depth, cascade)),
+    ...dir.files.map((file) => renderFile(file, depth, cascade)),
+  ];
   return (
     <Tooltip.Provider>
-      <ul>{renderChildren(tree, 0)}</ul>
+      <ul>{renderChildren(tree, 0, { next: 0 })}</ul>
     </Tooltip.Provider>
   );
 }

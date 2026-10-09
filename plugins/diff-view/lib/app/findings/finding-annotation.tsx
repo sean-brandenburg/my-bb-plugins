@@ -4,6 +4,7 @@ import type { FindingEdit, FindingSeverity } from "../../types";
 import { Button, COMPACT } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { cn } from "../utils";
+import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { SEVERITY_LABEL, type InlineFinding } from "./findings";
 
 const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
@@ -34,12 +35,13 @@ export function FindingAnnotation({ item, onToggle, onEdit }: { item: InlineFind
     }
   };
   const field = "w-full rounded-md border border-border bg-background px-2 py-1 text-xs";
+  const reveal = useOpenedSinceMount(open) ? cn(enter.rise, FAST) : undefined;
   return (
-    <div data-finding-anchor="" className={cn("my-0.5 border-l-2 pl-2 text-sm", SEVERITY_BORDER[finding.severity], !item.selected && "opacity-60")}>
+    <div data-finding-anchor="" className={cn("my-0.5 border-l-2 pl-2 text-sm", enter.fade, FAST, OPACITY_TRANSITION, SEVERITY_BORDER[finding.severity], !item.selected && "opacity-60")}>
       <div className="flex items-center gap-2 py-0.5 text-xs">
         <Checkbox checked={item.selected} onCheckedChange={(checked) => onToggle(checked === true)} aria-label={`${item.selected ? "Exclude" : "Include"} ${finding.id} in the apply round`} className="size-3.5" />
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-          <Icon name="ChevronDown" className={cn("size-3 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((value) => !value)} aria-expanded={open} data-bbm-open={open}>
+          <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON)} />
           <span className={cn("size-1.5 shrink-0 rounded-full", SEVERITY_DOT[finding.severity])} title={SEVERITY_LABEL[finding.severity]} />
           <span className="shrink-0 font-mono text-muted-foreground">{finding.id}</span>
           <span className="min-w-0 flex-1 truncate text-foreground">{finding.title}</span>
@@ -54,13 +56,13 @@ export function FindingAnnotation({ item, onToggle, onEdit }: { item: InlineFind
         {item.edited ? <span className="shrink-0 text-muted-foreground" title="You reworded this finding">edited</span> : null}
         {item.overridden ? <span className="shrink-0 text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
         {!editing ? (
-          <button type="button" className="rounded px-1 text-muted-foreground hover:bg-state-hover hover:text-foreground" onClick={beginEdit}>
+          <button type="button" className={cn("rounded px-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} onClick={beginEdit}>
             Edit
           </button>
         ) : null}
       </div>
       {open && !editing ? (
-        <div className="flex flex-col gap-1 pb-1.5 text-sm">
+        <div className={cn("flex flex-col gap-1 pb-1.5 text-sm", reveal)}>
           {finding.description !== "" ? <Markdown content={finding.description} /> : <p className="text-muted-foreground">No description.</p>}
           {finding.fix !== null && finding.fix !== "" ? (
             <div className="flex gap-1.5">
@@ -69,14 +71,14 @@ export function FindingAnnotation({ item, onToggle, onEdit }: { item: InlineFind
             </div>
           ) : null}
           {item.edited ? (
-            <button type="button" className="self-start text-xs text-muted-foreground hover:underline" onClick={() => void onEdit(null)}>
+            <button type="button" className={cn("self-start text-xs text-muted-foreground hover:underline", PRESS)} onClick={() => void onEdit(null)}>
               Revert to the reviewer's wording
             </button>
           ) : null}
         </div>
       ) : null}
       {editing ? (
-        <div className="flex flex-col gap-1.5 pb-1.5">
+        <div className={cn("flex flex-col gap-1.5 pb-1.5", enter.fade, FAST)}>
           <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} className={field} aria-label="Finding title" />
           <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} rows={4} className={cn(field, "font-mono")} aria-label="Finding description" placeholder="Description (Markdown)" />
           <textarea value={draft.fix ?? ""} onChange={(event) => setDraft({ ...draft, fix: event.target.value })} rows={3} className={cn(field, "font-mono")} aria-label="Suggested fix" placeholder="Suggested fix (optional)" />

@@ -6,6 +6,8 @@ import {
   FOOTER_LABELS,
   HEADER_SLOT_ATTRIBUTE,
   mountThreadHeaderProject,
+  projectChanged,
+  type ShownProjects,
 } from "./header-project.js";
 
 const headerMarkup = `
@@ -83,5 +85,29 @@ describe("mountThreadHeaderProject", () => {
     expect(document.querySelectorAll("style[data-thread-header-project-footer]")).toHaveLength(1);
     cleanup();
     expect(document.querySelectorAll("style")).toHaveLength(0);
+  });
+});
+
+describe("projectChanged", () => {
+  it("fades the label in only when the row's project changes", () => {
+    const shown: ShownProjects = new WeakMap();
+    const row = byId("title-area");
+    expect(projectChanged(shown, row, "proj_a")).toBe(true);
+    expect(projectChanged(shown, row, "proj_a")).toBe(false);
+    expect(projectChanged(shown, row, "proj_b")).toBe(true);
+  });
+
+  it("fades in again after a thread that showed no project", () => {
+    const shown: ShownProjects = new WeakMap();
+    const row = byId("title-area");
+    projectChanged(shown, row, "proj_a");
+    expect(projectChanged(shown, row, null)).toBe(false);
+    expect(projectChanged(shown, row, "proj_a")).toBe(true);
+  });
+
+  it("keeps each split pane's header separate", () => {
+    const shown: ShownProjects = new WeakMap();
+    projectChanged(shown, byId("title-area"), "proj_a");
+    expect(projectChanged(shown, byId("anchor"), "proj_a")).toBe(true);
   });
 });

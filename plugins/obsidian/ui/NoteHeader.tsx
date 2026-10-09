@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { enter, speed } from "bb-motion";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -61,9 +62,20 @@ function TitleInput({ path, focus, onRename }: { path: string; focus: boolean; o
 const SAVE_LABELS: Record<SaveState, string> = { saved: "Saved", dirty: "Edited", saving: "Saving…", conflict: "Conflict", error: "Save failed" };
 
 function SaveIndicator({ state }: { state: SaveState }) {
+  const [shown, setShown] = useState(state);
+  const [changes, setChanges] = useState(0);
+  if (shown !== state) {
+    setShown(state);
+    setChanges(changes + 1);
+  }
+  // The live region stays mounted so screen readers announce changes; only the label remounts.
+  // A note opening as "Saved" doesn't animate; a save landing pops.
+  const animation = changes === 0 ? undefined : state === "saved" ? enter.pop : cn(enter.fade, speed.fast);
   return (
     <span className={cn("ob-save-state", (state === "conflict" || state === "error") && "text-destructive")} aria-live="polite">
-      {SAVE_LABELS[state]}
+      <span key={changes} className={cn("inline-block", animation)}>
+        {SAVE_LABELS[state]}
+      </span>
     </span>
   );
 }
@@ -85,7 +97,7 @@ export function NoteHeader(props: {
   const { path } = props;
   const isNote = isNotePath(path);
   return (
-    <div className="ob-note-header">
+    <div className={cn("ob-note-header", enter.fade, speed.fast)}>
       <div className="min-w-0 flex-1">
         {dirname(path) === "" ? null : <div className="ob-breadcrumb">{dirname(path).split("/").join(" / ")}</div>}
         {isNote ? (

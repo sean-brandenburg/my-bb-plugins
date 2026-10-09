@@ -1,5 +1,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { ThreadChat } from "@get-bb/plugin-sdk/app";
+import { enter, speed } from "bb-motion";
+import { cn } from "@/lib/utils";
 import type { PreviewScroll } from "./picker-keymap.js";
 import { findTranscriptScroller } from "./use-pinned-to-bottom.js";
 
@@ -62,7 +64,11 @@ export function PreviewPane({
       data-picker-preview-thread-id={threadId}
       data-picker-column="preview"
       onMouseDown={onFocus}
-      className="relative flex min-w-0 flex-1 flex-col border-l border-border"
+      className={cn(
+        "relative flex min-w-0 flex-1 flex-col border-l border-border",
+        enter.slideRight,
+        speed.fast,
+      )}
     >
       <ThreadChat
         key={threadId}

@@ -391,6 +391,32 @@ describe("project picker", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("ignores keys while closing and reopens fresh during the close animation", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const { inspection } = renderPicker();
+    const dialog = await openPickerOnApp();
+    press(dialog, "/");
+    const input = screen.getByRole("textbox", { name: "Filter projects" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "wb" } });
+    press(input, "Enter");
+
+    const { toggleProjectPicker } = await import(
+      "./app/picker/picker-store.js"
+    );
+    act(() => toggleProjectPicker());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    press(dialog, "Enter");
+    expect(inspection.sidebarActionCalls).toEqual([]);
+
+    await openPicker();
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Filter projects" })
+        .value,
+    ).toBe("");
+    expect(selected("Projects")).toBe("Unread");
+  });
+
   it("moves with j/k, switches columns with h/l, and opens a thread with Enter", async () => {
     setPreferencesMirrorStorageForTest(null);
     const { inspection } = renderPicker();

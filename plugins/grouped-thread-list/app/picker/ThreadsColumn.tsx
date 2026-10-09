@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { enter, PRESS, speed, STAGGER, stagger } from "bb-motion";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { threadListIndicatorStateForThread } from "../model/thread-activity.js";
@@ -7,6 +8,7 @@ import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
+import { useChangedSinceMount } from "../ui/use-changed-since-mount.js";
 import {
   formatAge,
   type LeftEntry,
@@ -31,10 +33,34 @@ function showsProjectMonograms(entry: LeftEntry | undefined): boolean {
   return entry?.kind === "pinned" || entry?.kind === "unread";
 }
 
+// Rows here span most of the dialog, where the default press scale would
+// shrink them by tens of pixels.
+const WIDE_ROW_PRESS =
+  "[--bbm-scale-press:0.985] motion-reduce:[--bbm-scale-press:1]";
+
+/** Pops when the row is pinned in view, not when it mounts already pinned. */
+function PinnedMark({ pinned }: { pinned: boolean }) {
+  const changed = useChangedSinceMount(pinned);
+  if (!pinned) return null;
+  return (
+    <Icon
+      name="Pin"
+      className={cn(
+        "size-3 shrink-0 text-muted-foreground",
+        changed && enter.pop,
+      )}
+      aria-label="Pinned"
+    />
+  );
+}
+
+const MESSAGE_CLASS = "px-3 py-2 text-sm text-muted-foreground";
+
 /** The right column: the selected entry's threads, or a status line. */
 export function ThreadsColumn({
   entry,
   rows,
+  intro,
   highlightedIndex,
   column,
   status,
@@ -48,6 +74,8 @@ export function ThreadsColumn({
 }: {
   entry: LeftEntry | undefined;
   rows: readonly ThreadRowModel[];
+  /** The picker just opened: rows cascade in. */
+  intro: boolean;
   highlightedIndex: number;
   column: PickerColumn;
   /** Replaces the rows, e.g. the typed folder path's lookup result. */
@@ -82,9 +110,11 @@ export function ThreadsColumn({
       )}
     >
       {status !== null ? (
-        <div className="px-3 py-2 text-sm text-muted-foreground">{status}</div>
+        <div className={cn(MESSAGE_CLASS, enter.fade, speed.fast)}>
+          {status}
+        </div>
       ) : rows.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-muted-foreground">
+        <div className={cn(MESSAGE_CLASS, enter.fade, speed.fast)}>
           {emptyMessage(entry)}
         </div>
       ) : (
@@ -106,13 +136,19 @@ export function ThreadsColumn({
               data-picker-thread-id={row.thread.id}
               className={cn(
                 "flex h-8 cursor-pointer select-none items-center gap-2 rounded-md pr-2 text-sm",
+                PRESS,
+                WIDE_ROW_PRESS,
+                intro && [enter.rise, speed.fast, STAGGER],
                 selected &&
                   (column === "right"
                     ? "bg-state-active text-foreground"
                     : "bg-state-hover"),
                 row.thread.id === routedThreadId && "font-medium",
               )}
-              style={{ paddingLeft: 8 + row.depth * 16 }}
+              style={{
+                paddingLeft: 8 + row.depth * 16,
+                ...(intro ? stagger(index) : undefined),
+              }}
               onMouseMove={() => {
                 if (!selected || column !== "right") onHover(row.thread.id);
               }}
@@ -132,13 +168,7 @@ export function ThreadsColumn({
               <span className="min-w-0 flex-1 truncate">
                 {row.thread.displayTitle}
               </span>
-              {row.thread.pinnedAt !== null ? (
-                <Icon
-                  name="Pin"
-                  className="size-3 shrink-0 text-muted-foreground"
-                  aria-label="Pinned"
-                />
-              ) : null}
+              <PinnedMark pinned={row.thread.pinnedAt !== null} />
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {formatAge(row.thread.updatedAt, now)}
               </span>

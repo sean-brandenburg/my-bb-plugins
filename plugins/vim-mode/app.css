@@ -15,11 +15,30 @@
   z-index: 2147483000;
 }
 
+/* Placed with `translate` so a move never relayouts; `scale` carries the
+ * shape (full block, operator-pending half block, replace-mode underline) and
+ * eases between them, while position always snaps so motions keep up with
+ * key repeat. */
 .bb-vim-cursor {
   position: fixed;
+  top: 0;
+  left: 0;
   background: #fff;
   mix-blend-mode: difference;
   border-radius: 1px;
+  transform-origin: left bottom;
+  transition: scale var(--bbm-duration-instant) var(--bbm-ease-out);
+}
+
+/* Leaving insert mode: the block grows out of the caret it replaces. */
+.bb-vim-cursor-enter {
+  animation: bb-vim-cursor-in var(--bbm-duration-instant) var(--bbm-ease-out) backwards;
+}
+
+@keyframes bb-vim-cursor-in {
+  from {
+    scale: 0.25 1;
+  }
 }
 
 .bb-vim-bar {
@@ -38,14 +57,8 @@
   font-size: 12px;
   line-height: 16px;
   pointer-events: none;
-  animation: bb-vim-bar-in 90ms ease-out;
-}
-
-@keyframes bb-vim-bar-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
+  /* The bar is one toolbar row tall; bbm-rise-in's default distance is too far. */
+  --bbm-distance: var(--bbm-distance-sm);
 }
 
 .bb-vim-bar[hidden] {
@@ -85,12 +98,19 @@
   pointer-events: auto;
 }
 
+/* Swapping the prompt for its result happens inside a bar that is already
+ * up, so the new content fades in on its own. */
 .bb-vim-dialog,
 .bb-vim-notification {
   display: flex;
   flex: 1;
   align-items: center;
   min-width: 0;
+  animation: bbm-fade-in var(--bbm-duration-fast) var(--bbm-ease-out) backwards;
+}
+
+.bb-vim-notification.bb-vim-error {
+  animation: bbm-nudge var(--bbm-duration-slow) var(--bbm-ease-in-out);
 }
 
 .bb-vim-dialog > div {
@@ -131,4 +151,16 @@
   text-overflow: ellipsis;
   white-space: nowrap !important;
   cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-vim-cursor {
+    transition: none;
+  }
+  .bb-vim-cursor-enter {
+    animation: none;
+  }
+  .bb-vim-notification.bb-vim-error {
+    animation: bbm-fade-in var(--bbm-duration-fast) var(--bbm-ease-out) backwards;
+  }
 }

@@ -51,15 +51,19 @@ export function AnnotatedPatch({
     () => (patch.startsWith("diff --git") ? patch : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${patch}`),
     [patch, path],
   );
+  // Pierre keys annotation slots by index, so an insertion hands every later slot to a different annotation (replaying
+  // entrances, swapping state). Findings change least, then threads (new ones append), then the composer, which is
+  // also the structural view's order on a shared line.
   const annotations = useMemo<DiffLineAnnotation<AnnotationMeta>[]>(() => {
-    const list: DiffLineAnnotation<AnnotationMeta>[] = threads
-      .filter((thread): thread is DiffThread & { line: number } => thread.line !== null)
-      .map((thread) => ({ side: toPierreSide(thread.side), lineNumber: thread.line, metadata: { kind: "thread", thread } }));
-    if (composer !== null && composer.line !== null) {
-      list.push({ side: toPierreSide(composer.side), lineNumber: composer.line, metadata: { kind: "composer" } });
-    }
+    const list: DiffLineAnnotation<AnnotationMeta>[] = [];
     for (const entry of findings) {
       if (entry.line !== null) list.push({ side: "additions", lineNumber: entry.line, metadata: { kind: "finding", finding: entry.item } });
+    }
+    for (const thread of threads) {
+      if (thread.line !== null) list.push({ side: toPierreSide(thread.side), lineNumber: thread.line, metadata: { kind: "thread", thread } });
+    }
+    if (composer !== null && composer.line !== null) {
+      list.push({ side: toPierreSide(composer.side), lineNumber: composer.line, metadata: { kind: "composer" } });
     }
     return list;
   }, [threads, composer, findings]);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { PRESS, enter, speed } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { ReviewPanel } from "./review-panel";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
 import { type RunAction, usePendingAction } from "./actions";
+import { usePopOnChange } from "./motion";
 
 function TicketDetails({
   ticket,
@@ -81,6 +83,7 @@ function TicketDetails({
   };
   collect(ticket.id);
   const parentOptions = tickets.filter((entry) => entry.id !== ticket.id && !descendants.has(entry.id));
+  const pendingPop = usePopOnChange(ticket.pendingDiffComments);
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,7 +143,11 @@ function TicketDetails({
             >
               <Icon name="kanban-diff" className="size-3.5" />
               {ticket.pendingDiffComments > 0 ? (
-                <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-white tabular-nums">
+                <span
+                  key={pendingPop.key}
+                  onAnimationEnd={pendingPop.onAnimationEnd}
+                  className={cn("absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-white tabular-nums", pendingPop.className)}
+                >
                   {ticket.pendingDiffComments}
                 </span>
               ) : null}
@@ -171,7 +178,7 @@ function TicketDetails({
           <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
         </Property>
         {ticket.parentId !== null || showParentPicker ? (
-          <Property label="Parent">
+          <Property label="Parent" className={showParentPicker ? cn(enter.rise, speed.fast) : undefined}>
             <Select
               aria-label="Parent card"
               value={ticket.parentId ?? ""}
@@ -272,7 +279,7 @@ function TicketDetails({
 
       <footer className="flex items-center justify-between gap-2 pt-1">
         {confirmDelete ? (
-          <div className="flex items-center gap-1.5">
+          <div className={cn("flex items-center gap-1.5", enter.rise, speed.fast)}>
             <span className="text-xs text-muted-foreground">Delete this card? Threads are kept.</span>
             <Button
               type="button"
@@ -345,7 +352,7 @@ function DueDateEditor({ ticket, isDone, rpc, run }: { ticket: Ticket; isDone: b
           type="button"
           aria-label="Clear due date"
           title="Clear due date"
-          className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          className={cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
           onClick={() => {
             setValue("");
             save("");
@@ -407,7 +414,7 @@ export function TicketTab() {
   }, [target]);
   if (target === null || ticket === null) {
     return (
-      <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+      <p className={cn("rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground", enter.fade)}>
         {board === null ? "Loading…" : target === null ? "Select a card to see its details here." : "This card no longer exists."}
       </p>
     );
@@ -425,14 +432,17 @@ export function TicketTab() {
     tickets: board!.tickets,
     onOpenTicket: (ticketId: string) => appPanel.openFixedTab({ surface: { kind: "current" }, tab: TICKET_TAB, target: { ticketId } }),
   };
+  // Keyed so switching cards rises the new one in with fresh per-card state.
   return (
-    <TicketDetails
-      {...detailProps}
-      ticket={ticket}
-      onClose={() => {
-        target.clear();
-        collapseRightPanel();
-      }}
-    />
+    <div key={ticket.id} className={enter.rise}>
+      <TicketDetails
+        {...detailProps}
+        ticket={ticket}
+        onClose={() => {
+          target.clear();
+          collapseRightPanel();
+        }}
+      />
+    </div>
   );
 }

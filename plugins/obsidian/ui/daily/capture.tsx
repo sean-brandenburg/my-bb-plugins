@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { toast } from "sonner";
+import { NUDGE, enter, exit, usePresence } from "bb-motion";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/icon";
+import { useReplayAnimation } from "@/hooks/useReplayAnimation";
 import { cn } from "@/lib/utils";
 import type { RoutineMode, rpcContract } from "../../rpc-contract";
 import { errorMessage } from "../../shared/errors";
@@ -13,6 +16,9 @@ type Navigate = ReturnType<typeof useBbNavigate>;
 
 /** The capture box grows with its text up to this height, then scrolls. */
 const MAX_INPUT_HEIGHT_PX = 240;
+
+/** How long the inline checkmark stays after an entry is logged. */
+const LOGGED_CONFIRMATION_MS = 1400;
 
 /**
  * Registration callbacks (commands, message actions) run outside React, so the
@@ -43,16 +49,23 @@ function requireRpc(): VaultRpc {
   return appRpc;
 }
 
-export async function captureText(text: string, threadId?: string): Promise<void> {
+/** Logs to today's inbox and toasts the outcome; true when it was saved. */
+async function logCapture(text: string, threadId?: string): Promise<boolean> {
   try {
     const { path } = await requireRpc().call("capture", { text, threadId });
     toast.success("Logged to today's note", {
       description: path,
       action: { label: "Open", onClick: () => appNavigate?.toPluginPanel(PANEL_PATH, { subPath: path }) },
     });
+    return true;
   } catch (cause) {
     toast.error(`Couldn't log it: ${errorMessage(cause)}`);
+    return false;
   }
+}
+
+export async function captureText(text: string, threadId?: string): Promise<void> {
+  await logCapture(text, threadId);
 }
 
 export async function openToday(): Promise<void> {
@@ -89,7 +102,17 @@ export function CaptureInput({
 }) {
   const [text, setText] = useState(initialText);
   const [pending, setPending] = useState(false);
+  const [loggedCount, setLoggedCount] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const confirmation = usePresence(confirming);
+  const nudge = useReplayAnimation(NUDGE);
   const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => setConfirming(false), LOGGED_CONFIRMATION_MS);
+    return () => clearTimeout(timer);
+  }, [confirming, loggedCount]);
 
   useEffect(() => {
     const element = ref.current;
@@ -102,11 +125,21 @@ export function CaptureInput({
   }, [text]);
 
   const submit = async () => {
-    if (text.trim() === "" || pending) return;
+    if (pending) return;
+    if (text.trim() === "") {
+      nudge.play();
+      return;
+    }
     setPending(true);
-    await captureText(text, threadId);
+    const logged = await logCapture(text, threadId);
     setPending(false);
+    if (!logged) {
+      nudge.play();
+      return;
+    }
     setText("");
+    setLoggedCount((count) => count + 1);
+    setConfirming(true);
     onDone?.();
   };
 
@@ -122,18 +155,28 @@ export function CaptureInput({
   };
 
   return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={text}
-      autoFocus={autoFocus}
-      disabled={pending}
-      onChange={(event) => setText(event.target.value)}
-      onKeyDown={onKeyDown}
-      placeholder="Log to today… (Enter to save)"
-      aria-label="Log to today's daily note"
-      className={cn("ob-capture-input", className)}
-    />
+    <div className={cn("ob-capture", className)}>
+      <textarea
+        ref={ref}
+        rows={1}
+        value={text}
+        autoFocus={autoFocus}
+        disabled={pending}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={onKeyDown}
+        onAnimationEnd={nudge.onAnimationEnd}
+        placeholder="Log to today… (Enter to save)"
+        aria-label="Log to today's daily note"
+        className={cn("ob-capture-input", nudge.className)}
+      />
+      {confirmation.mounted ? (
+        <span aria-hidden className="ob-capture-check">
+          <span key={loggedCount} className={confirmation.exiting ? exit.fade : enter.pop} onAnimationEnd={confirmation.onAnimationEnd}>
+            <Icon name="CircleCheck" fallback="Check" className="size-4" />
+          </span>
+        </span>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mountMinimalTopBar, TITLE_CLICK_DELAY_MS } from "./top-bar.js";
+import {
+  MINIMAL_TOP_BAR_CSS,
+  mountMinimalTopBar,
+  TITLE_CLICK_DELAY_MS,
+} from "./top-bar.js";
 
 const viewport = (matches: boolean) => (query: string) =>
   ({
@@ -145,5 +149,20 @@ describe("title menu", () => {
     title.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     vi.advanceTimersByTime(TITLE_CLICK_DELAY_MS);
     expect(opened).not.toHaveBeenCalled();
+  });
+});
+
+describe("title press feedback", () => {
+  it("eases only the title's transform, with bb-motion's tokens", () => {
+    const rule = (selectorEnd: string) =>
+      MINIMAL_TOP_BAR_CSS.match(
+        new RegExp(`${selectorEnd.replace(/[.:]/g, "\\$&")} \\{([^}]*)\\}`),
+      )?.[1];
+    expect(rule(".bb-thread-title")).toContain(
+      "transition: transform var(--bbm-duration-fast) var(--bbm-ease-out);",
+    );
+    expect(rule(".bb-thread-title:active")).toContain(
+      "transform: scale(calc((1 + var(--bbm-scale-press)) / 2));",
+    );
   });
 });

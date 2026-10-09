@@ -1,4 +1,5 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import { mountSlimSidebar } from "./layout.js";
 import { SlimNavigation } from "./rail.js";
 

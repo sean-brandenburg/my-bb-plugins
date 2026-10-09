@@ -1,4 +1,5 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import { CaptureOverlay, captureText, openCaptureDialog, openToday, startRoutine } from "./ui/daily";
 import { backlinksTab, filesTab, outlineTab } from "./ui/fixed-tabs";
 import { PANEL_PATH } from "./ui/navigation";

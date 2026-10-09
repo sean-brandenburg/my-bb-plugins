@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { OPACITY_TRANSITION, STAGGER, enter, speed, stagger } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
 import type { Finding, FindingSeverity, Review } from "../shared/review";
@@ -11,7 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { shortSha } from "./format";
 import { type Rpc, usePushPreference } from "./data";
-import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
+import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS, POPOVER_MOTION } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
@@ -40,17 +41,20 @@ function SeverityCountBadges({ counts }: { counts: NonNullable<Ticket["latestRev
 
 function FindingCard({
   finding,
+  index,
   selected,
   overridden,
   onToggle,
 }: {
   finding: Finding;
+  /** Position across all severity groups, so the whole report cascades as one list. */
+  index: number;
   selected: boolean | null;
   overridden: boolean;
   onToggle: ((selected: boolean) => void) | null;
 }) {
   return (
-    <li className={cn("rounded-md border border-border bg-card p-2.5", selected === false && "opacity-60")}>
+    <li style={stagger(index)} className={cn("rounded-md border border-border bg-card p-2.5", enter.rise, speed.fast, STAGGER, OPACITY_TRANSITION, selected === false && "opacity-60")}>
       <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
         {selected !== null && onToggle !== null ? (
           <Checkbox
@@ -127,17 +131,18 @@ function StructuredReview({
           ) : null}
         </div>
       ) : null}
-      {grouped.length === 0 ? <p className="text-sm text-muted-foreground">No findings.</p> : null}
-      {grouped.map(({ severity, findings }) => (
+      {grouped.length === 0 ? <p className={cn("text-sm text-muted-foreground", enter.fade)}>No findings.</p> : null}
+      {grouped.map(({ severity, findings }, groupIndex) => (
         <section key={severity} aria-label={SEVERITY_LABEL[severity]}>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {SEVERITY_LABEL[severity]} <span className="font-normal tabular-nums">{findings.length}</span>
           </h3>
           <ul className="flex flex-col gap-2">
-            {findings.map((finding) => (
+            {findings.map((finding, index) => (
               <FindingCard
                 key={finding.id}
                 finding={finding}
+                index={grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index}
                 selected={review.selection[finding.id] ?? null}
                 overridden={finding.id in review.selectionOverrides}
                 onToggle={onToggle === null ? null : (selected) => onToggle(finding.id, selected)}
@@ -221,7 +226,7 @@ export function ReviewPanel({
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+        <DropdownMenu.Content align="end" sideOffset={4} className={cn("z-50 min-w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}>
           {review.apply !== null ? (
             <>
               <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => onOpenThread(review.apply!.threadId)}>
@@ -251,7 +256,7 @@ export function ReviewPanel({
                 onSelect={(event) => event.preventDefault()}
               >
                 <DropdownMenu.ItemIndicator className="absolute left-2">
-                  <Icon name="Check" className="size-4" />
+                  <Icon name="Check" className={cn("size-4", enter.pop)} />
                 </DropdownMenu.ItemIndicator>
                 Skip triage confirmation when applying
               </DropdownMenu.CheckboxItem>
@@ -328,7 +333,7 @@ export function ReviewPanel({
           {showFindings ? (
             <div className="flex flex-col gap-3 text-sm">
               {reviews === null ? (
-                <p className="text-muted-foreground">Loading…</p>
+                <p className={cn("text-muted-foreground", enter.fade)}>Loading…</p>
               ) : (
                 <>
                   {(() => {

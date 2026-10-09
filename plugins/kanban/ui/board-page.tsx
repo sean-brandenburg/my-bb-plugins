@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { DragEvent } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
+import { SHIMMER, enter, speed } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { SourcesDialog } from "./sources-dialog";
 import { TodoView } from "./todo-view";
 import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
+import { useArrivals } from "./motion";
 
 export function BoardPage({ subPath }: { subPath: string }) {
   const trimmed = subPath.replace(/^\/+|\/+$/gu, "");
@@ -33,6 +35,10 @@ export function BoardPage({ subPath }: { subPath: string }) {
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const { dialog, newTicketColumn, showSubtasks } = usePageUi();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The card just dropped, which settles with a pop wherever it landed.
+  const [settledId, setSettledId] = useState<string | null>(null);
+  const columnArrival = useArrivals(board === null ? null : board.columns.map((column) => column.id));
+  const ticketArrival = useArrivals(board === null ? null : board.tickets.map((ticket) => ticket.id));
 
   const ticketsByColumn = useMemo(() => {
     const map = new Map<string, Ticket[]>();
@@ -101,6 +107,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
     if (id === "" || board === null) return;
     const ticket = board.tickets.find((entry) => entry.id === id);
     if (ticket === undefined) return;
+    setSettledId(id);
     // Optimistic reorder so the card lands where it was dropped before the server answers.
     const siblings = (ticketsByColumn.get(target.columnId) ?? []).filter((entry) => entry.id !== id);
     siblings.splice(Math.min(target.index, siblings.length), 0, { ...ticket, columnId: target.columnId });
@@ -124,12 +131,12 @@ export function BoardPage({ subPath }: { subPath: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {error !== null ? (
-        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+        <p role="alert" className={cn("px-4 py-2 text-sm text-destructive", enter.drop)}>
           {error}
         </p>
       ) : null}
       {view === "todo" && board !== null ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className={cn("min-h-0 flex-1 overflow-y-auto", enter.fade, speed.fast)}>
           <TodoView
             board={board}
             threads={threads}
@@ -141,17 +148,21 @@ export function BoardPage({ subPath }: { subPath: string }) {
         </div>
       ) : null}
       <div
-        className={cn("flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto p-4", view === "todo" && "hidden")}
+        // The fade replays each time the board comes back from `hidden` (the todo view).
+        className={cn("flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto p-4", enter.fade, speed.fast, view === "todo" && "hidden")}
         onDragLeave={(event) => {
           if (event.currentTarget === event.target) setDropTarget(null);
         }}
       >
-        {board === null && error === null ? (
-          <p className="text-sm text-muted-foreground">Loading board…</p>
-        ) : null}
-        {board?.columns.map((column) => (
+        {board === null && error === null ? <BoardSkeleton /> : null}
+        {board?.columns.map((column, columnIndex) => (
           <ColumnView
             key={column.id}
+            index={columnIndex}
+            arrival={columnArrival(column.id)}
+            ticketArrival={ticketArrival}
+            settledId={settledId}
+            onSettled={() => setSettledId(null)}
             column={column}
             tickets={ticketsByColumn.get(column.id) ?? []}
             threads={threads}
@@ -164,6 +175,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
               event.dataTransfer.setData("text/plain", ticketId);
               event.dataTransfer.effectAllowed = "move";
               setDraggingId(ticketId);
+              setSettledId(null);
             }}
             onDragEnd={() => {
               setDraggingId(null);
@@ -236,6 +248,23 @@ export function BoardPage({ subPath }: { subPath: string }) {
           />
         </>
       ) : null}
+    </div>
+  );
+}
+
+/** Column-shaped placeholders while the board loads; the delay keeps a fast load from flashing them. */
+function BoardSkeleton() {
+  return (
+    <div role="status" className={cn("flex gap-3 [animation-delay:150ms]", enter.fade)}>
+      <span className="sr-only">Loading board…</span>
+      {[3, 2, 1].map((cards, index) => (
+        <div key={index} aria-hidden className="flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
+          <div className={cn("relative mx-1 my-1.5 h-3.5 w-24 overflow-hidden rounded bg-muted", SHIMMER)} />
+          {Array.from({ length: cards }, (_, card) => (
+            <div key={card} className={cn("relative h-[4.5rem] overflow-hidden rounded-md border border-border bg-card", SHIMMER)} />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

@@ -4,8 +4,10 @@ import {
   useComposer,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
-import { type ReactNode, useEffect, useState } from "react";
+import { cx, enter, exit, POP, speed, STAGGER, stagger, usePresence } from "bb-motion";
+import { type AnimationEventHandler, type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { type Arrival, arrive, type Shown } from "./arrival.js";
 import {
   ANCHOR_ATTRIBUTE,
   COMPOSER,
@@ -26,7 +28,11 @@ import {
 
 const RUNNING_REFRESH_MS = 5000;
 
+// The footer's text is 12px, so values move the small distance as they change.
+const NEAR_STYLE = { "--bbm-distance": "var(--bbm-distance-sm)" } as CSSProperties;
+
 type Sdk = ReturnType<typeof useSdk>;
+type LimitNotice = NonNullable<ReturnType<typeof rateLimitNotice>>;
 
 // Rendered as a hidden composer banner so it is bound to one composer in
 // both layouts, then portalled into that composer's footer.
@@ -82,15 +88,92 @@ function useFooterSlots(anchor: HTMLElement | null): FooterSlots {
   return slots;
 }
 
-function Part(props: { name: PartName; title?: string; children: ReactNode; blocked?: boolean }) {
+interface PartMotion {
+  className?: string;
+  style?: CSSProperties;
+  onAnimationEnd?: AnimationEventHandler;
+}
+
+function Part(props: PartMotion & { name: PartName; title?: string; children: ReactNode; blocked?: boolean }) {
   const attributes = {
     [PART_ATTRIBUTE]: props.name,
     ...(props.blocked ? { "data-blocked": "" } : {}),
   };
   return (
-    <span title={props.title} {...attributes}>
+    <span
+      title={props.title}
+      className={props.className}
+      style={props.style}
+      onAnimationEnd={props.onAnimationEnd}
+      {...attributes}
+    >
       {props.children}
     </span>
+  );
+}
+
+function useArrival(key: string, rank = 0): Arrival {
+  const shown = useRef<Shown | null>(null);
+  shown.current = arrive(shown.current, key, rank);
+  return shown.current.arrival;
+}
+
+// Segments cascade in when the footer shows them; a value that changes after
+// that rises in when it grows and drops in when it shrinks.
+function valueMotion(arrival: Arrival, index: number): PartMotion {
+  if (arrival === "enter") return { className: cx(enter.fade, speed.fast, STAGGER), style: stagger(index) };
+  return { className: cx(arrival === "up" ? enter.rise : enter.drop, speed.fast), style: NEAR_STYLE };
+}
+
+function ChangingPart(props: {
+  name: PartName;
+  value: string;
+  rank?: number;
+  index: number;
+  title?: string;
+  children: ReactNode;
+}) {
+  const arrival = useArrival(props.value, props.rank);
+  return (
+    <Part key={props.value} name={props.name} title={props.title} {...valueMotion(arrival, props.index)}>
+      {props.children}
+    </Part>
+  );
+}
+
+// Rises in when a limit nears, pops once if it then escalates to blocked, and
+// fades out when the window resets.
+function UsageLimit(props: { slot: HTMLElement | undefined; limit: LimitNotice | null }) {
+  const presence = usePresence(props.limit !== null);
+  const last = useRef(props.limit);
+  if (props.limit !== null) last.current = props.limit;
+  if (!props.slot || !presence.mounted || last.current === null) return null;
+  return createPortal(
+    <LimitPart limit={last.current} exiting={presence.exiting} onAnimationEnd={presence.onAnimationEnd} />,
+    props.slot,
+  );
+}
+
+function LimitPart(props: { limit: LimitNotice; exiting: boolean; onAnimationEnd: AnimationEventHandler }) {
+  const { limit } = props;
+  const arrival = useArrival(limit.blocked ? "blocked" : "warning", limit.blocked ? 1 : 0);
+  const motion: PartMotion = props.exiting
+    ? { className: exit.fade }
+    : arrival === "enter"
+      ? { className: cx(enter.rise, speed.fast), style: NEAR_STYLE }
+      : { className: arrival === "up" ? POP : cx(enter.fade, speed.fast) };
+  return (
+    <Part
+      key={String(limit.blocked)}
+      name="limit"
+      title={limit.title}
+      blocked={limit.blocked}
+      onAnimationEnd={props.onAnimationEnd}
+      {...motion}
+    >
+      <Icon name="AlertTriangle" className="size-3.5" aria-hidden />
+      {limit.text}
+    </Part>
   );
 }
 
@@ -116,34 +199,36 @@ function StatusSegments(props: {
       {slots.agent && modelName !== null
         ? createPortal(
             <span className="contents" title={modelTitle}>
-              <Part name="model">{modelName}</Part>
+              {/* Keyed on the selection, not the name, which resolves from the raw id a moment after mount. */}
+              <ChangingPart name="model" value={props.model ?? modelName} index={0}>
+                {modelName}
+              </ChangingPart>
               {effort === null ? null : (
                 <>
-                  <Part name="effort-separator">·</Part>
-                  <Part name="effort">{effort}</Part>
+                  <Part name="effort-separator" {...valueMotion("enter", 1)}>
+                    ·
+                  </Part>
+                  <ChangingPart name="effort" value={props.reasoningLevel ?? effort} index={2}>
+                    {effort}
+                  </ChangingPart>
                 </>
               )}
             </span>,
             slots.agent,
           )
         : null}
-      {slots.usage && limit !== null
-        ? createPortal(
-            <Part name="limit" title={limit.title} blocked={limit.blocked}>
-              <Icon name="AlertTriangle" className="size-3.5" aria-hidden />
-              {limit.text}
-            </Part>,
-            slots.usage,
-          )
-        : null}
+      <UsageLimit slot={slots.usage} limit={limit} />
       {slots.context && context !== null
         ? createPortal(
-            <Part
+            <ChangingPart
               name="tokens-used"
+              value={context.used}
+              rank={usage.context?.usedTokens ?? 0}
+              index={0}
               title={context.window === null ? undefined : `${context.used} of ${context.window} tokens`}
             >
               {context.used}
-            </Part>,
+            </ChangingPart>,
             slots.context,
           )
         : null}

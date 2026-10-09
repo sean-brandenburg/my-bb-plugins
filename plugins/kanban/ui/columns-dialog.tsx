@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
+import { POP } from "bb-motion";
 import type { Column } from "../shared/board";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { type Rpc } from "./data";
 import { slugify } from "./format";
 import { toastError } from "./actions";
+import { MotionListItem } from "./primitives";
+import { useArrivals, usePresenceList } from "./motion";
 
 export function ColumnsDialog({
   open,
@@ -24,15 +28,21 @@ export function ColumnsDialog({
   const [draft, setDraft] = useState<Column[]>(columns);
   const [newName, setNewName] = useState("");
   const [pending, setPending] = useState(false);
+  // The row just moved up or down, which pops where it lands.
+  const [movedId, setMovedId] = useState<string | null>(null);
   useEffect(() => {
     if (open) setDraft(columns);
   }, [open, columns]);
+  const arrival = useArrivals(open ? draft.map((column) => column.id) : null);
+  const rows = usePresenceList(draft, (column) => column.id);
   const move = (index: number, delta: number) => {
+    if (index < 0) return;
     const next = [...draft];
     const target = index + delta;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target]!, next[index]!];
     setDraft(next);
+    setMovedId(next[target]!.id);
   };
   const save = async () => {
     setPending(true);
@@ -56,8 +66,16 @@ export function ColumnsDialog({
           </DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2">
-          {draft.map((column, index) => (
-            <li key={column.id} className="flex items-center gap-2">
+          {rows.entries.map(({ key, item: column, exiting }, index) => (
+            <MotionListItem
+              key={key}
+              arrival={arrival(key)}
+              index={index}
+              exiting={exiting}
+              onExited={() => rows.onExited(key)}
+              onAnimationEnd={() => setMovedId((current) => (current === key ? null : current))}
+              className={cn("flex items-center gap-2", movedId === key && POP)}
+            >
               <Input
                 value={column.name}
                 aria-label={`Name of column ${column.id}`}
@@ -66,10 +84,10 @@ export function ColumnsDialog({
                 }
               />
               <code className="w-24 shrink-0 truncate text-xs text-muted-foreground">{column.id}</code>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="Move up" onClick={() => move(index, -1)}>
+              <Button variant="ghost" size="icon" className="size-7" aria-label="Move up" onClick={() => move(draft.indexOf(column), -1)}>
                 <Icon name="ChevronUp" className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="Move down" onClick={() => move(index, 1)}>
+              <Button variant="ghost" size="icon" className="size-7" aria-label="Move down" onClick={() => move(draft.indexOf(column), 1)}>
                 <Icon name="ChevronDown" className="size-4" />
               </Button>
               <Button
@@ -82,7 +100,7 @@ export function ColumnsDialog({
               >
                 <Icon name="X" className="size-4" />
               </Button>
-            </li>
+            </MotionListItem>
           ))}
         </ul>
         <form

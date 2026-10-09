@@ -1,9 +1,10 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Markdown, experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Badge } from "../ui/badge";
 import { Button, COMPACT } from "../ui/button";
 import { ExternalLink } from "../ui/external-link";
 import { cn } from "../utils";
+import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { relativeTime } from "../format";
 import { useDiffSource } from "../source";
 import { DiffCommentForm } from "./comment-form";
@@ -28,16 +29,22 @@ const LOCAL_STATE_LABEL: Record<LocalCommentState, string> = {
   agent: "agent reply",
 };
 
-function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; thread: DiffThread; isRoot: boolean; now: number }) {
+function entryKey(entry: ThreadEntry): string {
+  return `${entry.source}:${entry.comment.id}`;
+}
+
+/** `arrived` marks a reply that came in while its thread was on screen; it is read once, at mount. */
+function ThreadEntryView({ entry, thread, isRoot, now, arrived = false }: { entry: ThreadEntry; thread: DiffThread; isRoot: boolean; now: number; arrived?: boolean }) {
   const actions = useContext(DiffCommentsContext);
   const { labels } = useDiffSource();
+  const [entrance] = useState(() => (arrived ? cn(enter.rise, FAST) : undefined));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   if (entry.source === "github") {
     const { comment } = entry;
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className={cn("flex flex-col gap-0.5", entrance)}>
         <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
           <Icon name="GitPullRequest" className="size-3 shrink-0" />
           <span className="font-medium text-foreground">{comment.author}</span>
@@ -70,7 +77,7 @@ function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; t
     }
   };
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className={cn("flex flex-col gap-0.5", entrance)}>
       <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
         {state === "agent" ? <Icon name="diff-view-wrench" className="size-3 shrink-0" /> : <Icon name="MessageSquare" className="size-3 shrink-0" />}
         <span className="font-medium text-foreground">{state === "agent" ? "agent" : "you"}</span>
@@ -78,7 +85,7 @@ function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; t
         <span>{relativeTime(comment.createdAt, now)}</span>
         <span className="ml-auto flex items-center gap-1">
           {state === "agent" && comment.authorThreadId !== null ? (
-            <button type="button" className="rounded px-1 hover:bg-state-hover hover:text-foreground" onClick={() => actions.onOpenThread(comment.authorThreadId!)}>
+            <button type="button" className={cn("rounded px-1 hover:bg-state-hover hover:text-foreground", PRESS)} onClick={() => actions.onOpenThread(comment.authorThreadId!)}>
               Open thread
             </button>
           ) : null}
@@ -90,7 +97,7 @@ function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; t
           {unsent && actions.canPostToGithub && (state === "draft" || githubAllowed) ? (
             <button
               type="button"
-              className="rounded px-1 hover:bg-state-hover hover:text-foreground"
+              className={cn("rounded px-1 hover:bg-state-hover hover:text-foreground", PRESS)}
               title={state === "draft" ? labels.makeLocal : "Post this to the pull request instead"}
               onClick={() => void actions.onSetTarget(comment.id, state === "draft" ? "local" : "github")}
             >
@@ -100,7 +107,7 @@ function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; t
           {unsent && !editing ? (
             <button
               type="button"
-              className="rounded px-1 hover:bg-state-hover hover:text-foreground"
+              className={cn("rounded px-1 hover:bg-state-hover hover:text-foreground", PRESS)}
               onClick={() => {
                 setDraft(comment.body);
                 setEditing(true);
@@ -110,14 +117,14 @@ function ThreadEntryView({ entry, thread, isRoot, now }: { entry: ThreadEntry; t
             </button>
           ) : null}
           {unsent || state === "agent" ? (
-            <button type="button" aria-label="Delete comment" title={isRoot ? "Delete this comment and its replies" : "Delete this reply"} className="flex size-5 items-center justify-center rounded hover:bg-state-hover hover:text-destructive" onClick={() => actions.onDelete(comment.id)}>
+            <button type="button" aria-label="Delete comment" title={isRoot ? "Delete this comment and its replies" : "Delete this reply"} className={cn("flex size-5 items-center justify-center rounded hover:bg-state-hover hover:text-destructive", PRESS)} onClick={() => actions.onDelete(comment.id)}>
               <Icon name="Trash2" className="size-3" />
             </button>
           ) : null}
         </span>
       </div>
       {editing ? (
-        <div className="flex flex-col gap-1.5 pb-1">
+        <div className={cn("flex flex-col gap-1.5 pb-1", enter.fade, FAST)}>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -156,14 +163,21 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
   const firstLine = root.comment.body.split("\n").find((text) => text.trim() !== "") ?? "";
   const where = thread.line === null ? (thread.outdated ? "outdated" : "file") : `${thread.side === "LEFT" ? "old " : ""}L${thread.line}`;
   const rootIsLocal = root.source === "local";
+  const reveal = useOpenedSinceMount(open) ? cn(enter.rise, FAST) : undefined;
+  // Replies already here when the thread mounted (or seen before a collapse) arrive with it, not one by one.
+  const seenReplies = useRef<Set<string> | null>(null);
+  const seen = (seenReplies.current ??= new Set(replies.map(entryKey)));
+  useEffect(() => {
+    for (const entry of replies) seen.add(entryKey(entry));
+  });
   return (
     <div
       data-comment-anchor=""
       data-comment-state={unsent ? "pending" : "done"}
-      className={cn("my-1 rounded-md border bg-card text-sm", unsent ? "border-amber-500/60" : "border-border", !threadIsOpen(thread) && "opacity-75")}
+      className={cn("my-1 rounded-md border bg-card text-sm", enter.fade, FAST, OPACITY_TRANSITION, unsent ? "border-amber-500/60" : "border-border", !threadIsOpen(thread) && "opacity-75")}
     >
-      <button type="button" className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <Icon name="ChevronDown" className={cn("size-3 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+      <button type="button" className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs" onClick={() => setOpen((value) => !value)} aria-expanded={open} data-bbm-open={open}>
+        <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON)} />
         <span className="shrink-0 font-mono text-muted-foreground">{where}</span>
         {root.source === "github" ? <Badge tone="outline">GitHub</Badge> : null}
         {thread.resolved === true ? <Badge tone="success">resolved</Badge> : null}
@@ -172,12 +186,12 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
         {replies.length > 0 ? <span className="shrink-0 text-muted-foreground">{replies.length} repl{replies.length === 1 ? "y" : "ies"}</span> : null}
       </button>
       {open ? (
-        <div className="flex flex-col gap-2 px-2.5 pb-2">
+        <div className={cn("flex flex-col gap-2 px-2.5 pb-2", reveal)}>
           <ThreadEntryView entry={root} thread={thread} isRoot now={now} />
           {replies.length > 0 ? (
             <div className="flex flex-col gap-2 border-l-2 border-border pl-3">
               {replies.map((entry) => (
-                <ThreadEntryView key={`${entry.source}:${entry.comment.id}`} entry={entry} thread={thread} isRoot={false} now={now} />
+                <ThreadEntryView key={entryKey(entry)} entry={entry} thread={thread} isRoot={false} now={now} arrived={!seen.has(entryKey(entry))} />
               ))}
             </div>
           ) : null}
@@ -196,7 +210,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
             />
           ) : (
             <div>
-              <button type="button" className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground" onClick={() => setReplying(true)}>
+              <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} onClick={() => setReplying(true)}>
                 Reply
               </button>
             </div>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { definePluginApp, useRpc, useSettings } from "@get-bb/plugin-sdk/app";
+import "bb-motion/motion.css";
 import type { rpcContract } from "./server";
 import "./app.css";
 import { REPORT_MAX_LENGTH, type Reporter } from "./src/report";

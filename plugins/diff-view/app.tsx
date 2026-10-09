@@ -15,6 +15,8 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
+import "bb-motion/motion.css";
+import { POP, cx, enter, speed } from "bb-motion";
 import { DIFF_CHANGED } from "./events";
 import type { rpcContract } from "./server";
 import { DiffDisplayControls, DiffRefreshButton, DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "./lib/app/diff-view";
@@ -81,9 +83,9 @@ function SendToThreadBar({ threadId, pending }: { threadId: string; pending: Pen
     }
   };
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2">
+    <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop, speed.fast)}>
       <span className="text-sm">
-        <span className="font-medium tabular-nums">{count}</span> comment{count === 1 ? "" : "s"} not sent yet
+        <span key={count} className={cx("inline-block font-medium tabular-nums", POP)}>{count}</span> comment{count === 1 ? "" : "s"} not sent yet
       </span>
       <span title="Send them to this thread's agent as one message">
         <Button type="button" className={COMPACT} disabled={sending} onClick={() => void send()}>

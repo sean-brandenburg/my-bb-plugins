@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { CHEVRON, STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -39,6 +40,10 @@ interface FileTreeProps {
 }
 
 const DRAG_TYPE = "application/x-obsidian-vault-path";
+
+// A folder's rows cascade in when it opens. A tighter cap than bb-motion's
+// default keeps a big folder from trickling in; groups inherit it.
+const TREE_STAGGER_CAP = { "--bbm-stagger-cap": 6 } as CSSProperties;
 
 function buildTree(tree: VaultTree): TreeNode[] {
   const root: TreeNode = { name: "", path: "", kind: "folder", children: [] };
@@ -83,7 +88,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
       ref={ref}
       value={value}
       aria-label="New name"
-      className="ob-tree-rename"
+      className={cx("ob-tree-rename", enter.fade, speed.fast)}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(value)}
       onKeyDown={(event) => {
@@ -134,7 +139,7 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
     },
   });
 
-  const renderNode = (node: TreeNode, depth: number): ReactNode => {
+  const renderNode = (node: TreeNode, depth: number, index: number): ReactNode => {
     const isFolder = node.kind === "folder";
     const isOpen = isFolder && expandedSet.has(node.path);
     const label = isFolder ? node.name : isNotePath(node.path) ? noteTitle(node.path) : node.name;
@@ -163,12 +168,14 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         {...(isFolder ? dropProps(node.path) : {})}
       >
-        <Icon
-          name={isFolder ? (isOpen ? "ChevronDown" : "ChevronRight") : fileIcon(node.path)}
-          fallback={isFolder ? "ChevronRight" : "File"}
-          className="ob-tree-icon"
-          aria-hidden
-        />
+        {isFolder ? (
+          // Wrapped because the row is a context-menu trigger: its data-state="open" would rotate a chevron sitting directly in it.
+          <span className="ob-tree-chevron" data-bbm-open={isOpen}>
+            <Icon name="ChevronRight" className={cx("ob-tree-icon", CHEVRON)} aria-hidden />
+          </span>
+        ) : (
+          <Icon name={fileIcon(node.path)} fallback="File" className="ob-tree-icon" aria-hidden />
+        )}
         {renaming === node.path ? (
           <RenameInput
             initial={label}
@@ -183,7 +190,7 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
       </div>
     );
     return (
-      <div key={node.path} role="none">
+      <div key={node.path} role="none" className={cx(enter.rise, speed.fast, STAGGER)} style={stagger(index)}>
         <ContextMenu>
           <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
           <ContextMenuContent>
@@ -215,7 +222,11 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        {isOpen ? <div role="group">{node.children.map((child) => renderNode(child, depth + 1))}</div> : null}
+        {isOpen ? (
+          <div role="group">
+            {node.children.map((child, childIndex) => renderNode(child, depth + 1, childIndex))}
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -225,9 +236,10 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
       role="tree"
       aria-label="Vault files"
       className={cn("ob-tree", dropTarget === "" && "ob-tree-drop")}
+      style={TREE_STAGGER_CAP}
       {...dropProps("")}
     >
-      {nodes.length === 0 ? <p className="px-3 py-2 text-xs text-muted-foreground">This vault is empty.</p> : nodes.map((node) => renderNode(node, 0))}
+      {nodes.length === 0 ? <p className="px-3 py-2 text-xs text-muted-foreground">This vault is empty.</p> : nodes.map((node, index) => renderNode(node, 0, index))}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { DiffCommentTarget, DiffSide } from "../../types";
 import { Button, COMPACT } from "../ui/button";
 import { cn } from "../utils";
+import { FAST, PRESS, enter } from "../ui/motion";
 import { useDiffSource } from "../source";
 import { DiffCommentsContext } from "./context";
 
@@ -16,7 +17,7 @@ function CommentTargetToggle({ target, onChange, canPostToGithub, githubAllowed 
       aria-checked={target === value}
       disabled={disabled}
       title={title}
-      className={cn("rounded px-1.5 py-0.5 disabled:opacity-40", target === value ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+      className={cn("rounded px-1.5 py-0.5 disabled:opacity-40", PRESS, target === value ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
       onClick={() => onChange(value)}
     >
       {label}
@@ -66,7 +67,7 @@ export function DiffCommentForm({
     }
   };
   return (
-    <div className={cn("my-1 flex flex-col gap-2 rounded-md border bg-card p-2.5 text-sm", target === "github" ? "border-sky-500/50" : "border-primary/40")}>
+    <div className={cn("my-1 flex flex-col gap-2 rounded-md border bg-card p-2.5 text-sm", enter.drop, FAST, target === "github" ? "border-sky-500/50" : "border-primary/40")}>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Icon name="MessageSquare" className="size-3.5" />
         {reply ? <span>Reply</span> : (

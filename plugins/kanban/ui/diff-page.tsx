@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
+import { PRESS, enter } from "bb-motion";
 import { DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT } from "./primitives";
 import { toastError } from "./actions";
+import { usePopOnChange } from "./motion";
 
 /** Pairs a changes view with the title-bar controls that refresh it. */
 export function diffInstanceKey(subjectId: string): string {
@@ -90,6 +92,8 @@ function KanbanSubmitBar({ subjectId, pending, onOpenThread, onSubmitted }: { su
   const [autoApprove, setAutoApprove] = useState(false);
   const [submitting, setSubmitting] = useState<"github" | "agent" | null>(null);
   const { local, githubDrafts } = pending;
+  const localPop = usePopOnChange(local.length);
+  const draftsPop = usePopOnChange(githubDrafts.length);
   const submit = async (destination: "github" | "agent") => {
     setSubmitting(destination);
     try {
@@ -105,11 +109,14 @@ function KanbanSubmitBar({ subjectId, pending, onOpenThread, onSubmitted }: { su
     }
   };
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2">
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)}>
       {local.length > 0 ? (
         <>
           <span className="text-sm">
-            <span className="font-medium tabular-nums">{local.length}</span> local comment{local.length === 1 ? "" : "s"}
+            <span key={localPop.key} onAnimationEnd={localPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", localPop.className)}>
+              {local.length}
+            </span>{" "}
+            local comment{local.length === 1 ? "" : "s"}
           </span>
           <PushToggle push={push} onChange={setPush} />
           <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -127,7 +134,10 @@ function KanbanSubmitBar({ subjectId, pending, onOpenThread, onSubmitted }: { su
       {githubDrafts.length > 0 ? (
         <span className={cn("inline-flex items-center gap-3", local.length > 0 && "ml-auto")}>
           <span className="text-sm">
-            <span className="font-medium tabular-nums">{githubDrafts.length}</span> GitHub draft{githubDrafts.length === 1 ? "" : "s"}
+            <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
+              {githubDrafts.length}
+            </span>{" "}
+            GitHub draft{githubDrafts.length === 1 ? "" : "s"}
           </span>
           <span title="New threads post as one review; replies post into their threads">
             <Button type="button" variant="secondary" className={COMPACT} disabled={submitting !== null} onClick={() => void submit("github")}>
@@ -158,7 +168,7 @@ function RereviewDeltaButton({ ticket }: { ticket: Ticket }) {
   return (
     <button
       type="button"
-      className="ml-auto rounded border border-border px-1.5 py-0.5 hover:bg-state-hover disabled:opacity-50"
+      className={cn("ml-auto rounded border border-border px-1.5 py-0.5 hover:bg-state-hover disabled:opacity-50", PRESS)}
       disabled={reviewing || ticket.latestReview?.status === "running"}
       title="Run the code-review skill on just the commits since the last completed review"
       onClick={() => void rereview()}

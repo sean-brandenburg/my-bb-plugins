@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { cx, enter, NUDGE, OPACITY_TRANSITION, PRESS, speed, stagger, STAGGER } from "bb-motion";
 import type { CallResult } from "../contract";
 import { formatResponse } from "../shared/common";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { useFlag } from "./presence";
 
 type Tab = "response" | "headers" | "trailers" | "sent";
 
@@ -68,11 +70,58 @@ function MetadataTable({ entries, empty }: { entries: [string, string][]; empty:
   );
 }
 
-function copy(text: string) {
-  navigator.clipboard.writeText(text).then(
-    () => toast.success("Copied"),
-    () => toast.error("Could not copy to the clipboard"),
+const COPIED_MS = 1200;
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, flagCopied] = useFlag(COPIED_MS);
+  return (
+    <button
+      type="button"
+      className={cx("ml-1 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
+      aria-label={copied ? "Copied" : "Copy response"}
+      title="Copy response"
+      onClick={() => navigator.clipboard.writeText(text).then(flagCopied, () => toast.error("Could not copy to the clipboard"))}
+    >
+      {copied ? (
+        <span key="copied" className={cx("flex", enter.pop)}>
+          <Icon name="Check" className="size-4 text-emerald-600 dark:text-emerald-400" />
+        </span>
+      ) : (
+        <span key="copy" className={cx("flex", enter.fade, speed.fast)}>
+          <Icon name="Copy" className="size-4" />
+        </span>
+      )}
+    </button>
   );
+}
+
+// Identity per result object, so the header and body replay their entrance
+// for each new response but not on unrelated re-renders.
+const resultIds = new WeakMap<CallResult, number>();
+let nextResultId = 0;
+function resultId(result: CallResult): number {
+  let id = resultIds.get(result);
+  if (id === undefined) {
+    id = nextResultId++;
+    resultIds.set(result, id);
+  }
+  return id;
+}
+
+/**
+ * The id of a result that arrived while this view was waiting on it, so only a
+ * call that just failed shakes, not a failed result revisited later.
+ */
+function useArrivedId(id: number | null, sending: boolean): number | null {
+  const previous = useRef({ id, sending });
+  const [arrived, setArrived] = useState<number | null>(null);
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = { id, sending };
+    if (before.sending && !sending && id !== before.id) setArrived(id);
+    else if (id !== arrived) setArrived(null);
+  }, [id, sending, arrived]);
+  return arrived;
 }
 
 function formatDuration(ms: number): string {
@@ -86,9 +135,11 @@ function formatSize(text: string): string {
 
 export function ResponseView({ result, recordedAt, sending }: { result: CallResult | null; recordedAt: number | null; sending: boolean }) {
   const [tab, setTab] = useState<Tab>("response");
+  const id = result === null ? null : resultId(result);
+  const arrivedId = useArrivedId(id, sending);
   if (result === null) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+      <div key={sending ? "sending" : "idle"} className={cx("flex h-full flex-col items-center justify-center gap-2 p-6 text-center", enter.fade)}>
         {sending ? (
           <>
             <Icon name="Spinner" className="size-5 text-muted-foreground" />
@@ -112,21 +163,34 @@ export function ResponseView({ result, recordedAt, sending }: { result: CallResu
   ];
   const statusLabel = result.ok ? "OK" : result.error !== null ? "Failed" : result.status.name;
   return (
-    <div className={cn("flex h-full min-h-0 flex-col transition-opacity", sending && "opacity-50")}>
+    <div className={cn("flex h-full min-h-0 flex-col", OPACITY_TRANSITION, sending && "opacity-50")}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-2.5 text-sm">
-          <span
-            className={cn(
-              "rounded-md px-2 py-0.5 font-mono text-xs font-semibold",
-              result.ok ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-destructive/15 text-destructive",
-            )}
-          >
-            {result.ok || result.error !== null ? statusLabel : `${result.status.code} ${statusLabel}`}
+        <div key={id} className="flex items-center gap-2.5 text-sm">
+          <span className={cx("flex", enter.pop)}>
+            <span
+              className={cn(
+                "rounded-md px-2 py-0.5 font-mono text-xs font-semibold",
+                result.ok ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-destructive/15 text-destructive",
+                !result.ok && arrivedId === id && NUDGE,
+              )}
+            >
+              {result.ok || result.error !== null ? statusLabel : `${result.status.code} ${statusLabel}`}
+            </span>
           </span>
-          <span className="tabular-nums text-muted-foreground">{formatDuration(result.durationMs)}</span>
-          {body !== "" ? <span className="tabular-nums text-muted-foreground">{formatSize(body)}</span> : null}
+          <span className={cx("tabular-nums text-muted-foreground", enter.fade, STAGGER)} style={stagger(1)}>
+            {formatDuration(result.durationMs)}
+          </span>
+          {body !== "" ? (
+            <span className={cx("tabular-nums text-muted-foreground", enter.fade, STAGGER)} style={stagger(2)}>
+              {formatSize(body)}
+            </span>
+          ) : null}
           {recordedAt !== null ? (
-            <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" title={new Date(recordedAt).toLocaleString()}>
+            <span
+              className={cx("rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground", enter.fade, STAGGER)}
+              style={stagger(3)}
+              title={new Date(recordedAt).toLocaleString()}
+            >
               from history · {new Date(recordedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
             </span>
           ) : null}
@@ -140,6 +204,7 @@ export function ResponseView({ result, recordedAt, sending }: { result: CallResu
               aria-selected={tab === entry.id}
               className={cn(
                 "rounded-md px-2.5 py-1 text-sm",
+                PRESS,
                 tab === entry.id ? "bg-state-active text-foreground" : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
               )}
               onClick={() => setTab(entry.id)}
@@ -148,20 +213,10 @@ export function ResponseView({ result, recordedAt, sending }: { result: CallResu
               {entry.count !== undefined ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{entry.count}</span> : null}
             </button>
           ))}
-          {body !== "" ? (
-            <button
-              type="button"
-              className="ml-1 rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground"
-              aria-label="Copy response"
-              title="Copy response"
-              onClick={() => copy(body)}
-            >
-              <Icon name="Copy" className="size-4" />
-            </button>
-          ) : null}
+          {body !== "" ? <CopyButton text={body} /> : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+      <div key={`${id}:${tab}`} className={cx("min-h-0 flex-1 overflow-auto px-4 py-3", enter.rise)}>
         {tab === "response" ? (
           <div className="space-y-3">
             {!result.ok ? (

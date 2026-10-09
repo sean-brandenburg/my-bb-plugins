@@ -1,6 +1,7 @@
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Button, COMPACT } from "./ui/button";
 import { cn } from "./utils";
+import { PRESS } from "./ui/motion";
 import { requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences } from "./state";
 
 /** Text or structural engine, unified or split layout, and line wrapping: preferences shared by every diff view. */
@@ -17,7 +18,7 @@ export function DiffDisplayControls() {
             aria-selected={preferences.mode === mode}
             title={mode === "structural" ? "Syntax-aware diff via difftastic" : "Line diff"}
             onClick={() => setDiffPreferences({ mode })}
-            className={cn("rounded px-2 py-0.5 text-xs", preferences.mode === mode ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+            className={cn("rounded px-2 py-0.5 text-xs", PRESS, preferences.mode === mode ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
           >
             {mode === "text" ? "Text" : "Structural"}
           </button>
@@ -31,7 +32,7 @@ export function DiffDisplayControls() {
             role="tab"
             aria-selected={preferences.layout === layout}
             onClick={() => setDiffPreferences({ layout })}
-            className={cn("rounded px-2 py-0.5 text-xs", preferences.layout === layout ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+            className={cn("rounded px-2 py-0.5 text-xs", PRESS, preferences.layout === layout ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
           >
             {layout === "unified" ? "Unified" : "Split"}
           </button>
@@ -42,7 +43,7 @@ export function DiffDisplayControls() {
         aria-pressed={preferences.wrap}
         title={preferences.wrap ? "Long lines wrap; click to scroll horizontally instead" : "Long lines scroll horizontally; click to wrap"}
         onClick={() => setDiffPreferences({ wrap: !preferences.wrap })}
-        className={cn("rounded-md border border-border px-2 py-0.5 text-xs", preferences.wrap ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+        className={cn("rounded-md border border-border px-2 py-0.5 text-xs", PRESS, preferences.wrap ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
       >
         Wrap
       </button>

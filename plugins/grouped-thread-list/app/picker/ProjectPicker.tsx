@@ -3,8 +3,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type AnimationEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { enter, exit, usePresence } from "bb-motion";
 import {
   experimental_useSidebarThreadActions,
   useBbContext,
@@ -90,7 +92,14 @@ function PickerHints() {
   );
 }
 
-function ProjectPickerDialog() {
+function ProjectPickerDialog({
+  exiting,
+  onExitEnd,
+}: {
+  /** Closed and playing its exit: inert and hidden from assistive tech. */
+  exiting: boolean;
+  onExitEnd: (event: AnimationEvent) => void;
+}) {
   const sidebarActions = experimental_useSidebarThreadActions();
   const { threadId: routedThreadId } = useBbContext();
   const draftIds = useSidebarThreadDraftIds();
@@ -110,6 +119,12 @@ function ProjectPickerDialog() {
   const [threadId, setThreadId] = useState<string | null>(initial.threadId);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  // Rows cascade in only until the first interaction: moving through
+  // projects remounts the whole thread list, which must then appear at once.
+  const [intro, setIntro] = useState(true);
+  const endIntro = () => {
+    if (intro) setIntro(false);
+  };
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -310,7 +325,7 @@ function ProjectPickerDialog() {
   };
 
   const onRootKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.target === inputRef.current) return;
+    if (exiting || event.target === inputRef.current) return;
     if (event.metaKey || event.altKey) return;
     const key = keyName(event);
     // Every key, Shift included, ends a pending double tap.
@@ -339,7 +354,13 @@ function ProjectPickerDialog() {
 
   return (
     <div
-      className={cn("fixed inset-0", behindHostDialog ? "z-40" : "z-[60]")}
+      className={cn(
+        "fixed inset-0",
+        behindHostDialog ? "z-40" : "z-[60]",
+        exiting && "pointer-events-none",
+      )}
+      aria-hidden={exiting || undefined}
+      inert={exiting}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeProjectPicker();
       }}
@@ -351,7 +372,15 @@ function ProjectPickerDialog() {
         tabIndex={-1}
         data-vim-ignore=""
         onKeyDown={onRootKeyDown}
-        className="absolute left-1/2 top-[10vh] flex h-[min(680px,84vh)] w-[min(1240px,96vw)] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none"
+        onKeyDownCapture={endIntro}
+        onPointerDownCapture={endIntro}
+        onAnimationEnd={onExitEnd}
+        // Centered by margins rather than a translate, so the entrance and
+        // exit keyframes own the transform outright.
+        className={cn(
+          "absolute inset-x-0 top-[10vh] mx-auto flex h-[min(680px,84vh)] w-[min(1240px,96vw)] origin-top flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none",
+          exiting ? exit.sink : enter.scale,
+        )}
       >
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
           <Icon name="Search" className="size-4 text-muted-foreground" />
@@ -363,6 +392,7 @@ function ProjectPickerDialog() {
             onFocus={() => setSearching(true)}
             onBlur={() => setSearching(false)}
             onChange={(event) => {
+              endIntro();
               setQuery(event.target.value);
               setThreadId(null);
               setColumn("left");
@@ -384,6 +414,7 @@ function ProjectPickerDialog() {
         <div className="flex min-h-0 flex-1">
           <ProjectsColumn
             entries={leftEntries}
+            intro={intro}
             selectedIndex={leftIndex}
             focused={column === "left"}
             activeProjectId={activeProjectId}
@@ -398,6 +429,7 @@ function ProjectPickerDialog() {
           <ThreadsColumn
             entry={leftEntry}
             rows={rows}
+            intro={intro}
             highlightedIndex={rightIndex}
             column={column}
             status={
@@ -433,5 +465,20 @@ function ProjectPickerDialog() {
 
 export function ProjectPicker() {
   const open = useProjectPickerOpen();
-  return open ? <ProjectPickerDialog /> : null;
+  const presence = usePresence(open);
+  // Every open mounts a fresh dialog, even one that lands while the previous
+  // close is still animating out, so no selection or filter carries over.
+  const [generation, setGeneration] = useState(0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setGeneration((current) => current + 1);
+  }
+  return presence.mounted ? (
+    <ProjectPickerDialog
+      key={generation}
+      exiting={presence.exiting}
+      onExitEnd={presence.onAnimationEnd}
+    />
+  ) : null;
 }

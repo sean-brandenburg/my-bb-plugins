@@ -9,7 +9,7 @@ const PLACEHOLDER_MIN_PX = 80;
 const PLACEHOLDER_MAX_PX = 600;
 
 /** Mounts its content once it scrolls near the viewport, then keeps it mounted; the placeholder height keeps far-off files out of view until then. */
-export function LazyMount({ root, estimateLines, children }: { root: RefObject<HTMLElement | null>; estimateLines: number; children: () => ReactNode }) {
+export function LazyMount({ root, estimateLines, className, children }: { root: RefObject<HTMLElement | null>; estimateLines: number; className?: string; children: () => ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -26,7 +26,7 @@ export function LazyMount({ root, estimateLines, children }: { root: RefObject<H
     return () => observer.disconnect();
   }, [mounted, root]);
   return (
-    <div ref={ref} style={mounted ? undefined : { minHeight: Math.min(Math.max(estimateLines * PLACEHOLDER_LINE_PX, PLACEHOLDER_MIN_PX), PLACEHOLDER_MAX_PX) }}>
+    <div ref={ref} className={className} style={mounted ? undefined : { minHeight: Math.min(Math.max(estimateLines * PLACEHOLDER_LINE_PX, PLACEHOLDER_MIN_PX), PLACEHOLDER_MAX_PX) }}>
       {mounted ? children() : null}
     </div>
   );

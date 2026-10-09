@@ -34,6 +34,7 @@
   "dependencies": {
     "@bufbuild/protobuf": "^2.16.0",
     "@radix-ui/react-slot": "^1.3.0",
+    "bb-motion": "file:../motion/lib",
     "dev": "^0.1.5",
     "zod": "^4.6.5"
   },
@@ -63,5 +64,10 @@
     "tailwind-merge": "^3.4.0",
     "typescript": "^5.7.0",
     "vaul": "^1.1.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "bb-motion": "link:../motion/lib"
+    }
   }
 }

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, stagger, STAGGER } from "bb-motion";
 import type { MethodInfo, ServiceInfo } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -168,14 +170,30 @@ function FilterPanel({
   );
 }
 
-function MethodRow({ method, selected, detail, onSelect }: { method: MethodInfo; selected: boolean; detail?: string; onSelect: () => void }) {
+function MethodRow({
+  method,
+  selected,
+  detail,
+  className,
+  style,
+  onSelect,
+}: {
+  method: MethodInfo;
+  selected: boolean;
+  detail?: string;
+  className?: string;
+  style?: CSSProperties;
+  onSelect: () => void;
+}) {
   return (
     <button
       type="button"
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
         selected ? "bg-state-active text-foreground" : "text-foreground/80 hover:bg-state-hover hover:text-foreground",
+        className,
       )}
+      style={style}
       title={method.comment ?? method.fullName}
       aria-current={selected ? "true" : undefined}
       onClick={onSelect}
@@ -284,7 +302,7 @@ export function MethodList({
             {query !== "" ? (
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                className={cx("absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground", enter.fade, speed.fast, PRESS)}
                 aria-label="Clear search"
                 onClick={() => setQuery("")}
               >
@@ -302,6 +320,7 @@ export function MethodList({
                 type="button"
                 className={cn(
                   "flex h-8 items-center gap-1 rounded-md px-2 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                  PRESS,
                   (active || filtersOpen) && "bg-state-active text-foreground",
                 )}
                 aria-label="Filter methods"
@@ -317,7 +336,7 @@ export function MethodList({
           </Popover>
         </div>
         {active ? (
-          <div className="flex items-center gap-1.5 px-1 text-xs">
+          <div className={cx("flex items-center gap-1.5 px-1 text-xs", enter.fade, speed.fast)}>
             <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground/80 hover:text-foreground" title={summary} onClick={() => setFiltersOpen(true)}>
               {summary}
             </button>
@@ -326,7 +345,7 @@ export function MethodList({
             </span>
             <button
               type="button"
-              className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              className={cx("shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground", PRESS)}
               aria-label="Clear filters"
               title="Clear filters"
               onClick={() => setFilters(NO_FILTERS)}
@@ -336,7 +355,7 @@ export function MethodList({
           </div>
         ) : null}
         {results !== null ? (
-          <p className="px-1 text-xs text-muted-foreground">
+          <p className={cx("px-1 text-xs text-muted-foreground", enter.fade, speed.fast)}>
             {results.length} match{results.length === 1 ? "" : "es"}
             {searchAll && active ? " across all APIs" : ""}
             {results.length > 0 ? " · Enter opens the first" : ""}
@@ -380,15 +399,16 @@ export function MethodList({
             const focused = scope.length === 1 && scope[0] === service.typeName;
             return (
               <div key={service.typeName}>
-                <div className="group flex items-center rounded-md hover:bg-state-hover">
+                <div className={cx("flex items-center rounded-md hover:bg-state-hover", REVEAL_HOST)}>
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1.5 text-left"
                     title={`${service.typeName}${service.comment ? `\n\n${service.comment}` : ""}`}
                     onClick={() => toggle(service.typeName)}
                     aria-expanded={open}
+                    data-bbm-open={open}
                   >
-                    <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5 shrink-0 text-muted-foreground" />
+                    <Icon name="ChevronRight" className={cx("size-3.5 shrink-0 text-muted-foreground", CHEVRON)} />
                     <span className={cn("min-w-0 flex-1 truncate text-sm font-medium", containsSelected ? "text-foreground" : "text-foreground/90")}>
                       {shortName(service.typeName)}
                     </span>
@@ -396,7 +416,7 @@ export function MethodList({
                   {focused ? null : (
                     <button
                       type="button"
-                      className="shrink-0 rounded p-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                      className={cx("shrink-0 rounded p-1 text-muted-foreground hover:text-foreground", REVEAL)}
                       aria-label={`Show only ${shortName(service.typeName)}`}
                       title="Show only this API"
                       onClick={() => setFilters({ ...filters, services: [service.typeName] })}
@@ -408,8 +428,15 @@ export function MethodList({
                 </div>
                 {open ? (
                   <div className="mb-1 ml-3 border-l border-border pl-1.5">
-                    {methods.map((method) => (
-                      <MethodRow key={method.fullName} method={method} selected={method.fullName === selected} onSelect={() => onSelect(method)} />
+                    {methods.map((method, index) => (
+                      <MethodRow
+                        key={method.fullName}
+                        method={method}
+                        selected={method.fullName === selected}
+                        className={cx(enter.rise, speed.fast, STAGGER)}
+                        style={stagger(index)}
+                        onSelect={() => onSelect(method)}
+                      />
                     ))}
                   </div>
                 ) : null}

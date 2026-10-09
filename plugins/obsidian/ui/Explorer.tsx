@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import { experimental_usePluginId } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -8,6 +9,7 @@ import { errorMessage } from "../shared/errors";
 import { dirname } from "../shared/obsidian";
 import { FileMatches } from "./FileMatches";
 import { FileTree, type FileTreeActions } from "./FileTree";
+import { LoadingLines } from "./Loading";
 import { useOpenNote } from "./navigation";
 import { useLocalStorageState, useSearchFocusRequest, useSearchQuery } from "./state";
 import type { VaultActions } from "./vault-actions";
@@ -25,11 +27,18 @@ function SearchResultsList({
   onOpen: (path: string, line?: number) => void;
 }) {
   if (results === null) return <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>;
-  if (results.results.length === 0) return <p className="px-3 py-2 text-xs text-muted-foreground">No matches for “{query}”.</p>;
+  if (results.results.length === 0) return <p className={cx("px-3 py-2 text-xs text-muted-foreground", enter.fade)}>No matches for “{query}”.</p>;
   return (
     <div className="ob-search-results">
-      {results.results.map((result) => (
-        <FileMatches key={result.path} path={result.path} matches={result.matches} onOpen={onOpen} />
+      {results.results.map((result, index) => (
+        <FileMatches
+          key={result.path}
+          path={result.path}
+          matches={result.matches}
+          onOpen={onOpen}
+          className={cx(enter.rise, speed.fast, STAGGER)}
+          style={stagger(index)}
+        />
       ))}
       {results.truncated ? <p className="px-3 py-2 text-xs text-muted-foreground">More results not shown; refine your search.</p> : null}
     </div>
@@ -136,7 +145,7 @@ export function VaultExplorer({ vault, actions, accessory }: { vault: Vault; act
             onOpen={(path, line) => openNote(path, { target: line === undefined ? undefined : { line } })}
           />
         ) : tree === null ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">Loading files…</p>
+          <LoadingLines lines={6} className="px-3 py-2" />
         ) : (
           <FileTree
             tree={tree}

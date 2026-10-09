@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { cn } from "./utils";
 import { scrollToElement } from "./scroll";
+import { enter } from "./ui/motion";
 
 interface Marker {
   /** Position along the scroller, as a fraction of its full height. */
@@ -58,7 +59,7 @@ export function ScrollMarkers({ markers, mainRef }: { markers: Marker[]; mainRef
           key={index}
           type="button"
           tabIndex={-1}
-          className={cn("pointer-events-auto absolute right-0 h-1 w-2 rounded-l-sm", marker.pending ? "bg-amber-500" : "bg-muted-foreground/50")}
+          className={cn("pointer-events-auto absolute right-0 h-1 w-2 rounded-l-sm", enter.fade, marker.pending ? "bg-amber-500" : "bg-muted-foreground/50")}
           style={{ top: `calc(${marker.fraction * 100}% - 2px)` }}
           title={marker.pending ? "Pending comment" : "Comment"}
           onClick={() => {

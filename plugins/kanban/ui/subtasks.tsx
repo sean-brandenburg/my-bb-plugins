@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { STAGGER, enter, speed, stagger } from "bb-motion";
 import type { Column, Ticket } from "../shared/board";
 import { doneColumnId, todoColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -10,17 +11,65 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { parseQuickAdd } from "./format";
 import { type Rpc } from "./data";
-import { Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
+import { Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS, POPOVER_MOTION } from "./primitives";
 import type { RunAction } from "./actions";
+import { type Arrival, useArrivals, useEntrance, usePopOnChange } from "./motion";
 
 function SubtaskProgress({ ticket }: { ticket: Ticket }) {
   if (ticket.children.total === 0) return null;
-  const { done, total } = ticket.children;
+  return <SubtaskProgressBadge done={ticket.children.done} total={ticket.children.total} />;
+}
+
+function SubtaskProgressBadge({ done, total }: { done: number; total: number }) {
+  const pop = usePopOnChange(done);
   return (
-    <Badge tone={done === total ? "success" : "neutral"} title={`${done} of ${total} subtasks done`}>
-      <Icon name="ListTodo" className="size-3" />
-      {done}/{total}
-    </Badge>
+    <span key={pop.key} onAnimationEnd={pop.onAnimationEnd} className={cn("inline-flex", pop.className)}>
+      <Badge tone={done === total ? "success" : "neutral"} title={`${done} of ${total} subtasks done`}>
+        <Icon name="ListTodo" className="size-3" />
+        {done}/{total}
+      </Badge>
+    </span>
+  );
+}
+
+function SubtaskRow({
+  child,
+  index,
+  arrival,
+  columns,
+  thread,
+  isDone,
+  onToggle,
+  onOpenTicket,
+  onOpenThread,
+}: {
+  child: Ticket;
+  index: number;
+  arrival: Arrival;
+  columns: Column[];
+  thread: PluginSidebarThread | null | undefined;
+  isDone: boolean;
+  onToggle: () => void;
+  onOpenTicket: (ticketId: string) => void;
+  onOpenThread: (threadId: string) => void;
+}) {
+  const entrance = useEntrance(arrival === "intro" ? cn(enter.rise, speed.fast, STAGGER) : arrival === "new" ? enter.rise : undefined);
+  return (
+    <li style={stagger(index)} onAnimationEnd={entrance.onAnimationEnd} className={cn("flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-state-hover", entrance.className)}>
+      <Checkbox checked={isDone} aria-label={isDone ? `Reopen "${child.title}"` : `Mark "${child.title}" done`} onCheckedChange={onToggle} />
+      <button type="button" className={cn("min-w-0 flex-1 truncate text-left hover:underline", isDone && "text-muted-foreground line-through")} onClick={() => onOpenTicket(child.id)}>
+        {child.title}
+      </button>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{columns.find((column) => column.id === child.columnId)?.name ?? child.columnId}</span>
+      {child.children.total > 0 ? <SubtaskProgress ticket={child} /> : null}
+      {child.threadId !== null ? (
+        <button type="button" aria-label="Open subtask thread" className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground" onClick={() => onOpenThread(child.threadId!)}>
+          <ThreadStatusDot thread={thread} />
+        </button>
+      ) : (
+        <span className="w-6 shrink-0" />
+      )}
+    </li>
   );
 }
 
@@ -54,6 +103,7 @@ export function SubtasksGroup({
   const open = children.filter((child) => child.columnId !== doneId);
   const unstarted = open.filter((child) => child.threadId === null);
   const canRun = ticket.projectId !== null || ticket.threadId !== null;
+  const arrival = useArrivals(children.map((child) => child.id));
   const add = () => {
     const { title, tags } = parseQuickAdd(draft);
     if (title === "") return;
@@ -77,33 +127,22 @@ export function SubtasksGroup({
     >
       {children.length > 0 ? (
         <ul className="flex flex-col gap-1">
-          {children.map((child) => {
-            const thread = child.threadId === null ? null : threads.get(child.threadId);
-            const isDone = child.columnId === doneId;
-            return (
-              <li key={child.id} className="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-state-hover">
-                <Checkbox
-                  checked={isDone}
-                  aria-label={isDone ? `Reopen "${child.title}"` : `Mark "${child.title}" done`}
-                  onCheckedChange={() =>
-                    void run(() => rpc.call("ticket_move", { id: child.id, columnId: isDone ? (todoId ?? child.columnId) : (doneId ?? child.columnId), index: null }))
-                  }
-                />
-                <button type="button" className={cn("min-w-0 flex-1 truncate text-left hover:underline", isDone && "text-muted-foreground line-through")} onClick={() => onOpenTicket(child.id)}>
-                  {child.title}
-                </button>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{columns.find((column) => column.id === child.columnId)?.name ?? child.columnId}</span>
-                {child.children.total > 0 ? <SubtaskProgress ticket={child} /> : null}
-                {child.threadId !== null ? (
-                  <button type="button" aria-label="Open subtask thread" className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground" onClick={() => onOpenThread(child.threadId!)}>
-                    <ThreadStatusDot thread={thread} />
-                  </button>
-                ) : (
-                  <span className="w-6 shrink-0" />
-                )}
-              </li>
-            );
-          })}
+          {children.map((child, index) => (
+            <SubtaskRow
+              key={child.id}
+              child={child}
+              index={index}
+              arrival={arrival(child.id)}
+              columns={columns}
+              thread={child.threadId === null ? null : threads.get(child.threadId)}
+              isDone={child.columnId === doneId}
+              onToggle={() =>
+                void run(() => rpc.call("ticket_move", { id: child.id, columnId: child.columnId === doneId ? (todoId ?? child.columnId) : (doneId ?? child.columnId), index: null }))
+              }
+              onOpenTicket={onOpenTicket}
+              onOpenThread={onOpenThread}
+            />
+          ))}
         </ul>
       ) : null}
       <form
@@ -134,7 +173,7 @@ export function SubtasksGroup({
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content align="start" sideOffset={4} className="z-50 min-w-64 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+              <DropdownMenu.Content align="start" sideOffset={4} className={cn("z-50 min-w-64 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}>
                 <DropdownMenu.Item
                   className={cn(MENU_ITEM_CLASS, "items-start")}
                   disabled={unstarted.length === 0}
@@ -156,7 +195,7 @@ export function SubtasksGroup({
         ) : null}
       </div>
       {guidanceOpen ? (
-        <div className="flex flex-col gap-1.5 rounded-md border border-border p-2">
+        <div className={cn("flex flex-col gap-1.5 rounded-md border border-border p-2", enter.drop, speed.fast)}>
           <textarea
             autoFocus
             value={guidance}

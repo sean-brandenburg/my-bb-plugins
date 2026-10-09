@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { usePortalScopeProps } from "../portal-scope";
 import { cn } from "../utils";
+import { FAST, enter } from "../ui/motion";
 import type { SymbolData } from "./symbol-peek";
 
 /** Source lines previewed under the definition's location. */
@@ -27,7 +28,7 @@ export function SymbolHoverCard({ symbol, data, anchor }: { symbol: string; data
     <div
       {...portalScope}
       role="tooltip"
-      className="pointer-events-none fixed z-50 w-[36rem] max-w-[90vw] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md"
+      className={cn("pointer-events-none fixed z-50 w-[36rem] max-w-[90vw] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md", enter.scale, FAST, below ? "origin-top-left" : "origin-bottom-left")}
       style={{
         top: below ? anchor.bottom + ANCHOR_GAP_PX : undefined,
         bottom: below ? undefined : window.innerHeight - anchor.top + ANCHOR_GAP_PX,

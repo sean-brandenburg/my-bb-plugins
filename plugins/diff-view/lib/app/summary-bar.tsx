@@ -2,6 +2,7 @@ import type { DiffFile, DiffResult } from "../types";
 import { cn } from "./utils";
 import { shortSha } from "./format";
 import { setDiffPreferences } from "./state";
+import { PRESS, TRANSFORM_TRANSITION, enter } from "./ui/motion";
 
 function DiffStats({ files }: { files: readonly DiffFile[] }) {
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
@@ -33,7 +34,7 @@ export function SummaryBar({
 }) {
   const viewedCount = diff.files.filter((entry) => viewed.has(entry.path)).length;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+    <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground", enter.fade)}>
       <DiffStats files={diff.files} />
       {diff.baseRef !== null ? <span>· against {diff.baseRef}</span> : null}
       {diff.headSha !== null ? <span>· {shortSha(diff.headSha)}</span> : null}
@@ -46,7 +47,7 @@ export function SummaryBar({
         ⌨
       </span>
       {hasThreads ? (
-        <button type="button" className="rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover" title="Scroll to the next comment (c)" onClick={onNextComment}>
+        <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS)} title="Scroll to the next comment (c)" onClick={onNextComment}>
           Next comment
         </button>
       ) : null}
@@ -54,7 +55,7 @@ export function SummaryBar({
         <button
           type="button"
           aria-pressed={showFindings}
-          className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", showFindings && "bg-state-active text-foreground")}
+          className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS, showFindings && "bg-state-active text-foreground")}
           title={showFindings ? "Hide the review's findings in the diff" : "Show the review's findings in the diff"}
           onClick={() => setDiffPreferences({ showFindings: !showFindings })}
         >
@@ -64,7 +65,7 @@ export function SummaryBar({
       <span className="ml-auto inline-flex items-center gap-2 tabular-nums">
         {viewedCount} of {diff.files.length} viewed
         <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-          <span className="block h-full bg-emerald-500 transition-[width]" style={{ width: `${(viewedCount / diff.files.length) * 100}%` }} />
+          <span className={cn("block h-full origin-left bg-emerald-500", TRANSFORM_TRANSITION)} style={{ transform: `scaleX(${viewedCount / diff.files.length})` }} />
         </span>
       </span>
     </div>

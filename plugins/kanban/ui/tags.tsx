@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
+import { PRESS, enter, exit, speed } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { type Rpc } from "./data";
 import type { RunAction } from "./actions";
+import { POPOVER_MOTION } from "./primitives";
+import { type Arrival, useArrivals, useEntrance, usePresenceList } from "./motion";
 
 const TAG_TONES = [
   { chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", dot: "bg-sky-500" },
@@ -27,9 +30,28 @@ export function tagTone(tag: string): (typeof TAG_TONES)[number] {
 
 const TAG_NAME = /^[a-z0-9][a-z0-9._-]*$/u;
 
-function TagChip({ tag, onRemove }: { tag: string; onRemove?: (tag: string) => void }) {
+function TagChip({
+  tag,
+  onRemove,
+  arrival = null,
+  exiting = false,
+  onExited,
+}: {
+  tag: string;
+  onRemove?: (tag: string) => void;
+  arrival?: Arrival;
+  exiting?: boolean;
+  onExited?: () => void;
+}) {
+  const entrance = useEntrance(arrival === "new" ? enter.pop : undefined);
   return (
-    <span className={cn("group/tag inline-flex h-5 max-w-full items-center gap-1 rounded-full border px-2 text-[11px] font-medium leading-none", tagTone(tag).chip)}>
+    <span
+      onAnimationEnd={(event) => {
+        if (exiting && event.target === event.currentTarget) onExited?.();
+        else entrance.onAnimationEnd(event);
+      }}
+      className={cn("group/tag inline-flex h-5 max-w-full items-center gap-1 rounded-full border px-2 text-[11px] font-medium leading-none", tagTone(tag).chip, exiting ? exit.sink : entrance.className)}
+    >
       <span className="truncate">{tag}</span>
       {onRemove !== undefined ? (
         <button
@@ -49,11 +71,25 @@ function TagChip({ tag, onRemove }: { tag: string; onRemove?: (tag: string) => v
 }
 
 export function TagBadges({ tags, onRemove }: { tags: readonly string[]; onRemove?: (tag: string) => void }) {
+  if (onRemove !== undefined) return <EditableTagBadges tags={tags} onRemove={onRemove} />;
   if (tags.length === 0) return null;
   return (
     <>
       {tags.map((tag) => (
-        <TagChip key={tag} tag={tag} {...(onRemove === undefined ? {} : { onRemove })} />
+        <TagChip key={tag} tag={tag} />
+      ))}
+    </>
+  );
+}
+
+/** Tags the user edits in place: added ones pop in, removed ones shrink away before the row closes up. */
+function EditableTagBadges({ tags, onRemove }: { tags: readonly string[]; onRemove: (tag: string) => void }) {
+  const arrival = useArrivals(tags);
+  const { entries, onExited } = usePresenceList(tags, (tag) => tag);
+  return (
+    <>
+      {entries.map((entry) => (
+        <TagChip key={entry.key} tag={entry.key} onRemove={onRemove} arrival={arrival(entry.key)} exiting={entry.exiting} onExited={() => onExited(entry.key)} />
       ))}
     </>
   );
@@ -99,8 +135,9 @@ function TagPicker({ applied, suggestions, onChange }: { applied: readonly strin
           type="button"
           aria-label="Edit tags"
           className={cn(
-            "inline-flex h-5 items-center gap-1 rounded-full border border-dashed border-border px-1.5 text-[11px] text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:border-solid data-[state=open]:border-ring data-[state=open]:text-foreground",
+            "inline-flex h-5 items-center gap-1 rounded-full border border-dashed border-border px-1.5 text-[11px] text-muted-foreground hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:border-solid data-[state=open]:border-ring data-[state=open]:text-foreground",
             applied.length === 0 && "px-2",
+            PRESS,
           )}
         >
           <Icon name="Plus" className="size-3" />
@@ -113,7 +150,7 @@ function TagPicker({ applied, suggestions, onChange }: { applied: readonly strin
           align="start"
           sideOffset={6}
           collisionPadding={8}
-          className="z-50 w-60 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
+          className={cn("z-50 w-60 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg", POPOVER_MOTION)}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             (event.currentTarget as HTMLElement).querySelector("input")?.focus();
@@ -178,7 +215,7 @@ function TagPicker({ applied, suggestions, onChange }: { applied: readonly strin
                   ) : (
                     <>
                       <span className={cn("flex size-4 shrink-0 items-center justify-center rounded border", checked ? "border-primary bg-primary text-primary-foreground" : "border-border")}>
-                        {checked ? <Icon name="Check" className="size-3" /> : null}
+                        {checked ? <Icon name="Check" className={cn("size-3", enter.pop, speed.fast)} /> : null}
                       </span>
                       <span className={cn("size-2 shrink-0 rounded-full", tagTone(row.tag).dot)} aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate">{row.tag}</span>

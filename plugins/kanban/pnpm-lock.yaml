@@ -6,6 +6,7 @@ settings:
 
 overrides:
   bb-diff-view: link:../diff-view/lib
+  bb-motion: link:../motion/lib
 
 importers:
 
@@ -20,6 +21,9 @@ importers:
       bb-diff-view:
         specifier: link:../diff-view/lib
         version: link:../diff-view/lib
+      bb-motion:
+        specifier: link:../motion/lib
+        version: link:../motion/lib
       zod:
         specifier: ^4.6.5
         version: 4.6.5
