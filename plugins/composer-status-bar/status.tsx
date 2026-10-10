@@ -17,6 +17,7 @@ import {
   type FooterSlots,
   PART_ATTRIBUTE,
   type PartName,
+  PICKER_ATTRIBUTE,
   SLOT_ATTRIBUTE,
   ensureFooterSlots,
 } from "./footer-style.js";
@@ -201,6 +202,13 @@ function StatusSegments(props: {
   const effort = useEffortLabel(props.providerId, props.reasoningLevel);
   const environmentId = useThreadEnvironment(props.threadId);
   const pickerValue = pickerValueOf(props);
+  const showsPicker = slots.agent !== undefined && pickerValue !== null;
+  useEffect(() => {
+    const composer = slots.agent?.closest(COMPOSER);
+    if (!showsPicker || !composer) return;
+    composer.setAttribute(PICKER_ATTRIBUTE, "");
+    return () => composer.removeAttribute(PICKER_ATTRIBUTE);
+  }, [showsPicker, slots.agent]);
   const usage = useThreadUsage(props.threadId, props.isRunning);
   const context = formatContext(usage.context);
   const limit = rateLimitNotice(usage.rateLimits, Date.now());
@@ -209,7 +217,7 @@ function StatusSegments(props: {
 
   return (
     <>
-      {slots.agent && pickerValue !== null
+      {showsPicker
         ? createPortal(
             <Part name="model-picker" {...valueMotion("enter", 0)}>
               <ProviderModelPicker
@@ -219,7 +227,7 @@ function StatusSegments(props: {
                 align="end"
               />
             </Part>,
-            slots.agent,
+            slots.agent!,
           )
         : slots.agent && modelName !== null
           ? createPortal(

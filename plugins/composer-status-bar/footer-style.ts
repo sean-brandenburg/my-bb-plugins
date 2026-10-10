@@ -2,6 +2,8 @@ export const SLOT_ATTRIBUTE = "data-composer-status-slot";
 export const ANCHOR_ATTRIBUTE = "data-composer-status-anchor";
 /** Marks the plugin's own pieces so container queries can drop them by priority. */
 export const PART_ATTRIBUTE = "data-composer-status-part";
+/** On the composer while the footer shows its model picker, so bb's copy in the prompt box can step aside. */
+export const PICKER_ATTRIBUTE = "data-composer-status-picker";
 export type PartName = "model-picker" | "model" | "effort-separator" | "effort" | "limit" | "tokens-used";
 const STYLE_ATTRIBUTE = "data-composer-status-bar";
 // Phone widths keep bb's touch-sized footer.
@@ -14,6 +16,7 @@ export const COMPOSER = "[data-app-composer]";
 const FOOTER = "[data-follow-up-composer-footer]";
 const PERMISSION_BUTTON = 'button[aria-label="Permission mode"]';
 const CONTEXT_BUTTON = 'button[aria-label^="Context window"]';
+const NATIVE_MODEL_PICKER = `button[aria-label^="Provider, model and reasoning"]:not([${PART_ATTRIBUTE}] > button)`;
 const LEFT = `${FOOTER} > div:first-child`;
 const RIGHT = `${FOOTER} > div:last-child`;
 const PROJECT = `${LEFT} > div > div[data-option-display]`;
@@ -33,6 +36,21 @@ const MODEL_PICKER = `${part("model-picker")} > button`;
 // narrower footers drop detail in priority order.
 export const FOOTER_CSS = `
 @media ${WIDE_VIEWPORT} {
+  ${COMPOSER} {
+    container: composer-box / inline-size;
+  }
+  /* Matches the footer's 420px cutoff for its own picker, so one of the two is always there. bb's stays laid out but
+     invisible and zero-width, rather than display: none, so its ⇧⌘M shortcut still anchors the menu in the composer. */
+  @container composer-box (min-width: 421px) {
+    ${COMPOSER}[${PICKER_ATTRIBUTE}] ${NATIVE_MODEL_PICKER} {
+      visibility: hidden !important;
+      width: 0 !important;
+      min-width: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+  }
   ${FOOTER} {
     container: composer-status / inline-size;
     gap: 0.5rem !important;
