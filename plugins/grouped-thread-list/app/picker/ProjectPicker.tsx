@@ -495,7 +495,7 @@ function ProjectPickerDialog({
         // Centered by margins rather than a translate, so the entrance and
         // exit keyframes own the transform outright.
         className={cn(
-          "absolute inset-x-0 top-[10vh] mx-auto flex h-[min(680px,84vh)] w-[min(1240px,96vw)] origin-top flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none",
+          "absolute inset-x-0 top-[6vh] mx-auto flex h-[min(840px,88vh)] w-[min(1440px,96vw)] origin-top flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none",
           exiting ? exit.scale : enter.scale,
         )}
       >
