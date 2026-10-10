@@ -23,6 +23,7 @@ const NEW_THREAD = `${LEFT} button[aria-label="New thread in this environment"]`
 const PERMISSION = `${RIGHT} ${PERMISSION_BUTTON}`;
 const CONTEXT = `${RIGHT} ${CONTEXT_BUTTON}`;
 const part = (name: PartName) => `[${PART_ATTRIBUTE}="${name}"]`;
+const MODEL_PICKER = `${part("model-picker")} > button`;
 
 // Layout: where the work happens on the left (project / environment, branch);
 // on the right, usage (limit, context) and then the agent (model · effort,
@@ -74,7 +75,8 @@ export const FOOTER_CSS = `
   /* Controls: an outlined chip at rest, bb's hover fill on hover. */
   ${BRANCH},
   ${PERMISSION},
-  ${CONTEXT} {
+  ${CONTEXT},
+  ${MODEL_PICKER} {
     height: 1.375rem !important;
     margin: 0 !important;
     border-radius: 0.375rem !important;
@@ -143,10 +145,22 @@ export const FOOTER_CSS = `
   }
   [${SLOT_ATTRIBUTE}="agent"] {
     order: 3;
-    margin-left: 0.125rem;
-    padding-left: 0.5rem;
-    border-left: 1px solid var(--border-hairline);
     color: var(--muted-foreground);
+  }
+  /* bb's own model picker, dressed as the chip beside it: no provider logo, "model · effort". */
+  ${MODEL_PICKER} {
+    gap: 0.25rem !important;
+    padding: 0 0.25rem 0 0.5rem !important;
+  }
+  ${MODEL_PICKER} > span > span[aria-hidden]:first-child {
+    display: none !important;
+  }
+  ${MODEL_PICKER} > span > span:last-child::before {
+    content: "· ";
+  }
+  ${MODEL_PICKER} > svg {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
   }
   ${part("effort")} {
     color: var(--subtle-foreground);
@@ -169,7 +183,8 @@ export const FOOTER_CSS = `
   }
   @container composer-status (max-width: 480px) {
     ${part("effort")},
-    ${part("effort-separator")} { display: none !important; }
+    ${part("effort-separator")},
+    ${MODEL_PICKER} > span > span:last-child { display: none !important; }
   }
   @container composer-status (max-width: 420px) {
     [${SLOT_ATTRIBUTE}="agent"] { display: none !important; }
