@@ -1,5 +1,7 @@
 import {
+  type ExperimentalProviderModelPickerValue,
   experimental_Icon as Icon,
+  experimental_ProviderModelPicker as ProviderModelPicker,
   experimental_useProviders,
   useComposer,
   useSdk,
@@ -22,8 +24,6 @@ import {
   type CatalogModel,
   type ContextUsage,
   type RateLimitWindow,
-  compactModel,
-  effortGlyph,
   formatContext,
   rateLimitNotice,
   resolveModelName,
@@ -54,6 +54,8 @@ export function FooterStatus() {
           providerId={composer.selection?.providerId ?? null}
           model={composer.selection?.model ?? null}
           reasoningLevel={composer.selection?.reasoningLevel ?? null}
+          serviceTier={composer.selection?.serviceTier ?? null}
+          onSelect={(value) => composer.setSelection(value)}
         />
       ) : null}
     </span>
@@ -183,16 +185,6 @@ function LimitPart(props: { limit: LimitNotice; nerdFont: boolean; exiting: bool
   );
 }
 
-function CompactModel(props: { name: string }) {
-  const { glyph, text } = compactModel(props.name);
-  return (
-    <>
-      <Glyph glyph={glyph} className="text-[13px]" />
-      {text}
-    </>
-  );
-}
-
 function StatusSegments(props: {
   slots: FooterSlots;
   threadId: string;
@@ -200,44 +192,56 @@ function StatusSegments(props: {
   providerId: string | null;
   model: string | null;
   reasoningLevel: string | null;
+  serviceTier: string | null;
+  onSelect: (value: ExperimentalProviderModelPickerValue) => Promise<unknown>;
 }) {
   const { slots } = props;
   const nerdFont = useNerdFont();
   const modelName = useModelName(props.providerId, props.model);
-  const effort = useEffort(props.providerId, props.reasoningLevel);
+  const effort = useEffortLabel(props.providerId, props.reasoningLevel);
+  const environmentId = useThreadEnvironment(props.threadId);
+  const pickerValue = pickerValueOf(props);
   const usage = useThreadUsage(props.threadId, props.isRunning);
   const context = formatContext(usage.context);
   const limit = rateLimitNotice(usage.rateLimits, Date.now());
   const modelTitle =
-    modelName === null ? undefined : effort === null ? `Model: ${modelName}` : `Model: ${modelName}, effort: ${effort.label}`;
+    modelName === null ? undefined : effort === null ? `Model: ${modelName}` : `Model: ${modelName}, effort: ${effort}`;
 
   return (
     <>
-      {slots.agent && modelName !== null
+      {slots.agent && pickerValue !== null
         ? createPortal(
-            <span className="contents" title={modelTitle}>
-              {/* Keyed on the selection, not the name, which resolves from the raw id a moment after mount. */}
-              <ChangingPart name="model" value={props.model ?? modelName} index={0}>
-                {nerdFont ? <CompactModel name={modelName} /> : modelName}
-              </ChangingPart>
-              {effort === null ? null : nerdFont && effort.glyph !== null ? (
-                <ChangingPart name="effort" value={props.reasoningLevel ?? effort.label} rank={effort.rank} index={1}>
-                  <Glyph glyph={effort.glyph} label={`Effort: ${effort.label}`} className="text-[13px]" />
-                </ChangingPart>
-              ) : (
-                <>
-                  <Part name="effort-separator" {...valueMotion("enter", 1)}>
-                    ·
-                  </Part>
-                  <ChangingPart name="effort" value={props.reasoningLevel ?? effort.label} index={2}>
-                    {effort.label}
-                  </ChangingPart>
-                </>
-              )}
-            </span>,
+            <Part name="model-picker" {...valueMotion("enter", 0)}>
+              <ProviderModelPicker
+                value={pickerValue}
+                onChange={(value) => void props.onSelect(value).catch(() => undefined)}
+                routing={environmentId === null ? undefined : { kind: "environment", environmentId }}
+                align="end"
+              />
+            </Part>,
             slots.agent,
           )
-        : null}
+        : slots.agent && modelName !== null
+          ? createPortal(
+              <span className="contents" title={modelTitle}>
+                {/* Keyed on the selection, not the name, which resolves from the raw id a moment after mount. */}
+                <ChangingPart name="model" value={props.model ?? modelName} index={0}>
+                  {modelName}
+                </ChangingPart>
+                {effort === null ? null : (
+                  <>
+                    <Part name="effort-separator" {...valueMotion("enter", 1)}>
+                      ·
+                    </Part>
+                    <ChangingPart name="effort" value={props.reasoningLevel ?? effort} index={2}>
+                      {effort}
+                    </ChangingPart>
+                  </>
+                )}
+              </span>,
+              slots.agent,
+            )
+          : null}
       <UsageLimit slot={slots.usage} limit={limit} nerdFont={nerdFont} />
       {slots.context && context !== null
         ? createPortal(
@@ -294,20 +298,46 @@ function useModelName(providerId: string | null, model: string | null): string |
   return name;
 }
 
-interface Effort {
-  label: string;
-  /** Null when the provider doesn't list the level, so its place on the gauge is unknown. */
-  glyph: string | null;
-  rank: number;
-}
-
-function useEffort(providerId: string | null, level: string | null): Effort | null {
+function useEffortLabel(providerId: string | null, level: string | null): string | null {
   const { providers } = experimental_useProviders();
   if (level === null) return null;
-  const levels = providers.find((candidate) => candidate.id === providerId)?.reasoningLevels ?? [];
-  const index = levels.findIndex((candidate) => candidate.id === level);
-  if (index === -1) return { label: level, glyph: null, rank: 0 };
-  return { label: levels[index].label, glyph: effortGlyph(level, index, levels.length), rank: index };
+  const provider = providers.find((candidate) => candidate.id === providerId);
+  return provider?.reasoningLevels?.find((candidate) => candidate.id === level)?.label ?? level;
+}
+
+/** The picker needs a complete selection; until the composer has one the footer shows the plain text. */
+function pickerValueOf(selection: {
+  providerId: string | null;
+  model: string | null;
+  reasoningLevel: string | null;
+  serviceTier: string | null;
+}): ExperimentalProviderModelPickerValue | null {
+  if (selection.providerId === null || selection.model === null || selection.reasoningLevel === null) return null;
+  return {
+    providerId: selection.providerId,
+    model: selection.model,
+    reasoningLevel: selection.reasoningLevel as ExperimentalProviderModelPickerValue["reasoningLevel"],
+    ...(selection.serviceTier === null ? {} : { serviceTier: selection.serviceTier }),
+  };
+}
+
+// Some providers' model catalogs depend on the workspace, so the picker routes through the thread's environment.
+function useThreadEnvironment(threadId: string): string | null {
+  const sdk = useSdk();
+  const [environmentId, setEnvironmentId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    sdk.threads.get({ threadId }).then(
+      (thread) => {
+        if (!cancelled) setEnvironmentId(thread.environmentId ?? null);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk, threadId]);
+  return environmentId;
 }
 
 interface ThreadUsage {

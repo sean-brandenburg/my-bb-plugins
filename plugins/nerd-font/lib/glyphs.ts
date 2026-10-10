@@ -25,18 +25,6 @@ export const GLYPH = {
   bug: glyph(0xf00e4),
   timerSand: glyph(0xf051f),
   timerSandFull: glyph(0xf078c),
-  gaugeEmpty: glyph(0xf0873),
-  gaugeLow: glyph(0xf0875),
-  gauge: glyph(0xf029a),
-  gaugeFull: glyph(0xf0874),
-  fire: glyph(0xf0238),
-  fireAlert: glyph(0xf15d7),
-  rocketLaunch: glyph(0xf14de),
-  crown: glyph(0xf01a5),
-  feather: glyph(0xf06d3),
-  leaf: glyph(0xf032a),
-  bookOpen: glyph(0xf05da),
-  robot: glyph(0xf06a9),
   file: glyph(0xe612),
 } as const;
 

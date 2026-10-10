@@ -2,7 +2,7 @@ export const SLOT_ATTRIBUTE = "data-composer-status-slot";
 export const ANCHOR_ATTRIBUTE = "data-composer-status-anchor";
 /** Marks the plugin's own pieces so container queries can drop them by priority. */
 export const PART_ATTRIBUTE = "data-composer-status-part";
-export type PartName = "model" | "effort-separator" | "effort" | "limit" | "tokens-used";
+export type PartName = "model-picker" | "model" | "effort-separator" | "effort" | "limit" | "tokens-used";
 const STYLE_ATTRIBUTE = "data-composer-status-bar";
 // Phone widths keep bb's touch-sized footer.
 const WIDE_VIEWPORT = "(min-width: 768px)";
@@ -147,12 +147,6 @@ export const FOOTER_CSS = `
     padding-left: 0.5rem;
     border-left: 1px solid var(--border-hairline);
     color: var(--muted-foreground);
-  }
-  /* With a Nerd Font the model is a family glyph and its version. */
-  ${part("model")} {
-    display: flex;
-    align-items: center;
-    gap: 0.1875rem;
   }
   ${part("effort")} {
     color: var(--subtle-foreground);
