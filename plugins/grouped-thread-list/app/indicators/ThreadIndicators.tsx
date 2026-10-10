@@ -346,7 +346,7 @@ export function ThreadIndicators() {
   return (
     <div
       data-thread-indicators=""
-      className="flex flex-wrap items-start justify-center gap-1 px-2 pb-2"
+      className="flex flex-wrap items-start justify-center gap-2 px-2 pb-2"
     >
       <span
         aria-hidden="true"
@@ -365,7 +365,7 @@ export function ThreadIndicators() {
             />
             <CornerBadge
               value={running}
-              className="-bottom-0.5 bg-sidebar-accent text-sidebar-foreground"
+              className="-bottom-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
             />
           </>
         }
@@ -402,7 +402,7 @@ export function ThreadIndicators() {
             <Icon name="Pin" className="size-[18px]" />
             <CornerBadge
               value={pinned}
-              className="-top-0.5 bg-sidebar-accent text-sidebar-foreground"
+              className="-top-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
             />
           </>
         }
