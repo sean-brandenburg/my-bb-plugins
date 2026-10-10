@@ -282,7 +282,7 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
           <Button variant="ghost" size="icon" className="size-7" aria-label="Collapse all folders" onClick={() => setExpanded([])}>
             <Icon name="ChevronsUp" fallback="ChevronUp" className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Hide files (b)" onClick={onHide}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label="Hide files (t)" onClick={onHide}>
             <Icon name="PanelLeftClose" fallback="ChevronLeft" className="size-4" />
           </Button>
         </div>

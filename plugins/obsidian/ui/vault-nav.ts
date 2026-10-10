@@ -57,7 +57,7 @@ export const KEYMAP: Record<string, VaultCommand> = {
   S: { kind: "routine", mode: "start" },
   W: { kind: "routine", mode: "wrap" },
   "-": { kind: "panel", tab: "files" },
-  b: { kind: "sidebar" },
+  t: { kind: "sidebar" },
   Escape: { kind: "escape", fromField: false },
   "?": { kind: "help" },
 };
@@ -94,7 +94,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["/"], action: "Search the vault; Enter opens the first match" },
       { keys: ["n", "N"], action: "Open the next / previous search match" },
       { keys: ["-"], action: "The file sidebar, with the cursor on the open note" },
-      { keys: ["b"], action: "Show / hide the file sidebar" },
+      { keys: ["t"], action: "Show / hide the file sidebar" },
       { keys: ["gO", "gb"], action: "Outline / backlinks of the open note" },
       { keys: ["gh", "gt"], action: "Vault home / today's daily note" },
       { keys: ["⌘⇧L"], action: "Log to today's daily note" },
@@ -139,7 +139,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["zM"], action: "Collapse all folders" },
       { keys: ["i"], action: "Log to today" },
       { keys: ["Esc"], action: "Cancel a cut, clear the search, then back to the note" },
-      { keys: ["b"], action: "Hide the sidebar and go back to the note" },
+      { keys: ["t"], action: "Hide the sidebar and go back to the note" },
     ],
   },
   {

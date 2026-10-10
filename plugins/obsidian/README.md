@@ -6,7 +6,7 @@ preview, a reading view, and Outline / Backlinks tabs in the right panel.
 
 ## Features
 
-- File tree in a sidebar on the Vault page's left (`b` or its button hides
+- File tree in a sidebar on the Vault page's left (`t` or its button hides
   it). Folders, drag-and-drop moves, rename (F2 or the inline title),
   new note/folder, delete to the vault's `.trash/`.
 - Editor (CodeMirror 6): markup hides off the active line, `[[` autocompletes
@@ -36,7 +36,7 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
   path or a wikilink, `O` opens in Obsidian, `dd` deletes. Escape leaves the
   editor (twice with vim-mode, which handles editing keys inside it). ⌘↵ in the
   editor follows the link under the cursor.
-- File sidebar: `h` from a note or the home moves into it, `b` shows or hides
+- File sidebar: `h` from a note or the home moves into it, `t` shows or hides
   it. `j`/`k`, `h`/`l`, `gg`/`G` walk the tree; `l` shows a file, `o`/Enter
   opens it and moves to it; `a`/`A` new note/folder, `r` rename, `x` then `p`
   moves, `dd` deletes, `zM` collapses all, `i` logs to today.

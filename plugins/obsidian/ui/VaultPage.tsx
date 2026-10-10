@@ -325,7 +325,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
         </aside>
       ) : (
         <div className="ob-sidebar-rail">
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Show files (b)" onClick={() => setSidebarOpen(true)}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label="Show files (t)" onClick={() => setSidebarOpen(true)}>
             <Icon name="PanelLeftOpen" fallback="ChevronRight" className="size-4" />
           </Button>
         </div>
