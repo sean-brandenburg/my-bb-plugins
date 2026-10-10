@@ -38,11 +38,11 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
   editor follows the link under the cursor.
 - File sidebar: `h` from a note or the home moves into it, `t` shows or hides
   it. `j`/`k`, `h`/`l`, `gg`/`G` walk the tree, and `k` from its top row climbs
-  to the log and search boxes (`l`, `i` or Enter types in one, Escape stops),
-  then the buttons, which `h`/`l` step across (the home's buttons and log box
-  work the same way); `l` shows a file, `o`/Enter
+  to the search box (`l`, `i` or Enter types in it, Escape stops), then the
+  buttons, which `h`/`l` step across (the home's buttons and log box work the
+  same way); `l` shows a file, `o`/Enter
   opens it and moves to it; `a`/`A` new note/folder, `r` rename, `x` then `p`
-  moves, `dd` deletes, `zM` collapses all, `i` logs to today.
+  moves, `dd` deletes, `zM` collapses all, `i` types in the search box.
 - Anywhere: `/` searches the vault (Enter opens the first match), `n`/`N` open
   the next/previous match, `-` jumps to the open note in the file sidebar, `gO`/`gb` to
   Outline/Backlinks, `gh`/`gt` go home/to today. Escape in the sidebar or a tab
@@ -50,7 +50,7 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
 
 ## Daily notes
 
-- **Capture**: ⌘⇧L anywhere in bb, the "Log to today" box in the file sidebar and on the Vault home, "Save to today's daily note" on any chat message, or `bb obsidian log "…"` from agents. Entries are appended with a timestamp to the daily note's Inbox section. The note is created from the template if needed, and the append merges with edits you have open.
+- **Capture**: ⌘⇧L anywhere in bb, the "Log to today" box on the Vault home, "Save to today's daily note" on any chat message, or `bb obsidian log "…"` from agents. Entries are appended with a timestamp to the daily note's Inbox section. The note is created from the template if needed, and the append merges with edits you have open.
 - **Activity**: every bb thread that finishes a turn is recorded per day (title, project, last reply): `bb obsidian activity`. Turn it off with *Record bb thread activity*.
 - **Routines**: **Start day** / **Wrap up** (Vault home, today's note, command palette, `bb obsidian start|wrap`) start a Claude thread running `/daily-note start|wrap` in a bb project rooted at the vault. That project is created on first use.
 - **Vault home**: today's inbox, carried-forward items, active `Tickets/` notes, and recently edited notes.

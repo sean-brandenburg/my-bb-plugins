@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import { experimental_usePluginId } from "@get-bb/plugin-sdk/app";
@@ -54,8 +54,8 @@ function SearchResultsList({
   );
 }
 
-/** Vault header, search, file tree, and an optional `accessory` under the search box. */
-export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Vault; actions: VaultActions; accessory?: ReactNode; onHide: () => void }) {
+/** Vault header, search, and file tree. */
+export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; actions: VaultActions; onHide: () => void }) {
   const pluginId = experimental_usePluginId();
   const openNote = useOpenNote();
   const global = useGlobalCommands();
@@ -158,8 +158,6 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
     if (intent === "search") {
       searchRef.current?.focus();
       searchRef.current?.select();
-    } else if (intent === "capture") {
-      root?.querySelector<HTMLElement>(".ob-capture-input")?.focus();
     } else {
       revealCurrent();
     }
@@ -195,7 +193,7 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
         });
       case "edit":
         if (editFieldAtCursor()) return true;
-        root?.querySelector<HTMLElement>(".ob-capture-input")?.focus();
+        searchRef.current?.focus();
         return true;
       case "newNote":
         treeActions.newNote(folderAt(path));
@@ -331,7 +329,6 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
             className="ob-search-input"
           />
         </div>
-        {accessory}
       </div>
       <div ref={bodyRef} className="ob-sidebar-body">
         {error !== null ? <p className="px-3 py-2 text-xs text-destructive">{error}</p> : null}

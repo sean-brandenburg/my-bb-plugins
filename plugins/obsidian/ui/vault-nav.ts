@@ -125,8 +125,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
   {
     title: "File sidebar",
     keys: [
-      { keys: ["j", "k"], action: "Next / previous file, folder, or search match; k past the top reaches the search and log boxes, then the buttons" },
-      { keys: ["l", "i", "Enter"], action: "On the search or log box: start typing (Esc stops)" },
+      { keys: ["j", "k"], action: "Next / previous file, folder, or search match; k past the top reaches the search box, then the buttons" },
+      { keys: ["l", "i", "Enter"], action: "On the search box: start typing (Esc stops)" },
       { keys: ["h", "l"], action: "On those buttons: previous / next button" },
       { keys: ["gg", "G"], action: "First / last row" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
@@ -139,7 +139,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["y", "Y"], action: "Copy the path / a wikilink" },
       { keys: ["dd"], action: "Delete" },
       { keys: ["zM"], action: "Collapse all folders" },
-      { keys: ["i"], action: "Log to today" },
+      { keys: ["i"], action: "Type in the search box" },
       { keys: ["Esc"], action: "Cancel a cut, clear the search, then back to the note" },
       { keys: ["t"], action: "Hide the sidebar and go back to the note" },
     ],

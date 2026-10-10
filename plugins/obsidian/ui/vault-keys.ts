@@ -47,7 +47,7 @@ function insideAnySurface(element: Element): boolean {
 }
 
 /** What a surface should put focus on when the keys move to it; the default is its cursor row. */
-export type FocusIntent = "search" | "capture";
+export type FocusIntent = "search";
 
 const focusRequests = createStore<{ surface: Surface; intent?: FocusIntent } | null>(null);
 

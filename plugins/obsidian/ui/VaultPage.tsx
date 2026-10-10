@@ -9,7 +9,7 @@ import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
 import { dateKeyOfDailyPath } from "../shared/daily";
-import { CaptureInput, DailyNoteActions, Dashboard, startRoutine } from "./daily";
+import { DailyNoteActions, Dashboard, startRoutine } from "./daily";
 import { ATTACHMENT_EXTENSIONS } from "./file-kinds";
 import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
 import { focusEditor } from "./Editor";
@@ -321,7 +321,6 @@ export function VaultPage({ subPath }: { subPath: string }) {
           <VaultExplorer
             vault={vault}
             actions={actions}
-            accessory={<CaptureInput className="mt-1.5" />}
             onHide={() => {
               setSidebarOpen(false);
               requestSurfaceFocus("page");
