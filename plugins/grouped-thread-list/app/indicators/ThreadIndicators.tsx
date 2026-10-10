@@ -295,14 +295,18 @@ function FlyoutEmpty({ children }: { children: ReactNode }) {
   return <div className="px-2 py-2 text-sm text-muted-foreground">{children}</div>;
 }
 
-/** Hides zero, so an idle sidebar shows bare icons. */
-function Count({ value, className }: { value: number; className?: string }) {
+const BADGE_CLASS =
+  "pointer-events-none absolute -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[10px] font-medium tabular-nums leading-none";
+
+/** A count in the icon's corner; zero shows no badge, so an idle sidebar shows bare icons. */
+function CornerBadge({ value, className }: { value: number; className: string }) {
   const pop = usePopOnChange(value);
   if (value === 0) return null;
   return (
     <span
       key={pop.key}
-      className={cn("tabular-nums leading-4", className, pop.className)}
+      aria-hidden="true"
+      className={cn(BADGE_CLASS, className, pop.className)}
       onAnimationEnd={pop.onAnimationEnd}
     >
       {formatBadgeCount(value)}
@@ -351,31 +355,18 @@ export function ThreadIndicators() {
       <IndicatorButton
         label={describeInbox(needsYou, running)}
         start={UNREAD_START}
-        className="flex-col gap-0.5 py-1.5"
+        className="size-9"
         face={
           <>
-            <span className="flex items-center gap-1 text-[10px] font-medium">
-              <Icon
-                name="Mail"
-                className={cn("size-3.5", needsYou === 0 && "opacity-50")}
-              />
-              <Count
-                value={needsYou}
-                className="rounded-full bg-primary px-1 text-primary-foreground"
-              />
-            </span>
-            <span className="flex items-center gap-1 text-[10px]">
-              <Icon
-                name="Loading"
-                className={cn(
-                  "size-3.5",
-                  running > 0
-                    ? "animate-spin motion-reduce:animate-none"
-                    : "opacity-50",
-                )}
-              />
-              <Count value={running} />
-            </span>
+            <Icon name="Mail" className="size-[18px]" />
+            <CornerBadge
+              value={needsYou}
+              className="-top-0.5 bg-primary text-primary-foreground"
+            />
+            <CornerBadge
+              value={running}
+              className="-bottom-0.5 bg-sidebar-accent text-sidebar-foreground"
+            />
           </>
         }
         flyout={(close) =>
@@ -409,9 +400,10 @@ export function ThreadIndicators() {
         face={
           <>
             <Icon name="Pin" className="size-[18px]" />
-            <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-sidebar-accent px-0.5 text-[10px] text-sidebar-foreground empty:hidden">
-              <Count value={pinned} />
-            </span>
+            <CornerBadge
+              value={pinned}
+              className="-top-0.5 bg-sidebar-accent text-sidebar-foreground"
+            />
           </>
         }
         flyout={(close) =>

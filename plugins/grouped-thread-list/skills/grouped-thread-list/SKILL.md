@@ -7,10 +7,10 @@ description: "Inspect or change the Project switcher plugin: its double-Shift pr
 
 The Project switcher plugin (id `grouped-thread-list`) owns bb's sidebar
 thread-list slot. Instead of a thread list it shows two indicators under the
-sidebar navigation: an inbox button with the number of threads that need you
-(the picker's Unread "Needs you" group, in a filled pill) over the number
-running (its "Running" group), and a pin button with the number of pinned
-threads (Pinned's roots). Zero counts are hidden. Hovering a button lists up to
+sidebar navigation: an inbox icon with corner badges for the threads that
+need you (the picker's Unread "Needs you" group, top, filled) and the threads
+running (its "Running" group, bottom), and a pin icon with a badge for the
+pinned threads (Pinned's roots). Zero counts are hidden. Hovering a button lists up to
 eight threads per group with their status glyph, project monogram, and age;
 clicking a row opens that thread (Cmd/Ctrl+Click in a split), and the check on
 an unread row marks it read. Clicking a button opens the picker on Unread or
