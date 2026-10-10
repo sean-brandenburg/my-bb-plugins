@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { PRESS, SOFT, STAGGER, cx, enter, speed, stagger } from "bb-motion";
-import { UrlLink, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import type { PluginRpcResult } from "@get-bb/plugin-sdk";
 import type { FileEntry } from "../../contract";
 import type { rpcContract } from "../../rpc-contract";
-import { localTime, plainListText } from "../../shared/daily";
+import { plainListText } from "../../shared/daily";
 import { errorMessage } from "../../shared/errors";
 import { noteTitle } from "../../shared/obsidian";
 import { LoadingLines } from "../Loading";
@@ -38,7 +38,6 @@ function Empty({ children }: { children: ReactNode }) {
 export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly FileEntry[] }) {
   const { rpc, status } = vault;
   const openNote = useOpenNote();
-  const navigate = useBbNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,29 +118,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           </Section>
         ) : null}
 
-        <Section title="bb threads today" count={data?.activity.length} index={2}>
-          {data === null || data.activity.length === 0 ? (
-            <Empty>No bb thread activity recorded yet today. Threads show up here when they finish a turn.</Empty>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {data.activity.map((item, index) => (
-                <li key={item.threadId} className={ROW_ENTRANCE} style={stagger(index)}>
-                  <button type="button" className={cx("ob-recent-row", PRESS, SOFT, "flex-col !items-start")} data-nav-row="item" onClick={() => navigate.toThread(item.threadId)}>
-                    <span className="flex w-full items-center justify-between gap-3">
-                      <span className="truncate font-medium">{item.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {item.projectName} · {localTime(new Date(item.firstAt))}–{localTime(new Date(item.lastAt))}
-                      </span>
-                    </span>
-                    {item.lastText === "" ? null : <span className="line-clamp-2 text-xs text-muted-foreground">{item.lastText}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        <Section title="Active tickets" count={activeTickets.length} index={3}>
+        <Section title="Active tickets" count={activeTickets.length} index={2}>
           {activeTickets.length === 0 ? (
             <Empty>No open ticket notes. The daily-note routines create one in Tickets/ when you start on a Jira ticket.</Empty>
           ) : (
@@ -165,7 +142,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           {doneTickets > 0 ? <p className="mt-1.5 text-xs text-muted-foreground">{doneTickets} closed ticket notes not shown.</p> : null}
         </Section>
 
-        <Section title="Recently edited" index={4}>
+        <Section title="Recently edited" index={3}>
           <ul className="divide-y divide-border rounded-lg border border-border">
             {recent.map((file, index) => (
               <li key={file.path} className={ROW_ENTRANCE} style={stagger(index)}>

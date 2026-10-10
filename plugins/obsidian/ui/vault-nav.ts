@@ -22,6 +22,7 @@ export type VaultCommand =
   | { kind: "openInObsidian" }
   | { kind: "routine"; mode: "start" | "wrap" }
   | { kind: "panel"; tab: PanelTab }
+  | { kind: "sidebar" }
   | { kind: "home" }
   | { kind: "today" }
   | { kind: "escape"; fromField: boolean }
@@ -56,6 +57,7 @@ export const KEYMAP: Record<string, VaultCommand> = {
   S: { kind: "routine", mode: "start" },
   W: { kind: "routine", mode: "wrap" },
   "-": { kind: "panel", tab: "files" },
+  b: { kind: "sidebar" },
   Escape: { kind: "escape", fromField: false },
   "?": { kind: "help" },
 };
@@ -91,7 +93,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
     keys: [
       { keys: ["/"], action: "Search the vault; Enter opens the first match" },
       { keys: ["n", "N"], action: "Open the next / previous search match" },
-      { keys: ["-"], action: "Files, with the cursor on the open note" },
+      { keys: ["-"], action: "The file sidebar, with the cursor on the open note" },
+      { keys: ["b"], action: "Show / hide the file sidebar" },
       { keys: ["gO", "gb"], action: "Outline / backlinks of the open note" },
       { keys: ["gh", "gt"], action: "Vault home / today's daily note" },
       { keys: ["⌘⇧L"], action: "Log to today's daily note" },
@@ -102,6 +105,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
     title: "Note",
     keys: [
       { keys: ["j", "k"], action: "Scroll down / up" },
+      { keys: ["h"], action: "Over to the file sidebar" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
       { keys: ["Ctrl-f", "Ctrl-b"], action: "A page down / up" },
       { keys: ["gg", "G"], action: "Top / bottom" },
@@ -119,7 +123,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
     ],
   },
   {
-    title: "Files",
+    title: "File sidebar",
     keys: [
       { keys: ["j", "k"], action: "Next / previous file, folder, or search match" },
       { keys: ["gg", "G"], action: "First / last row" },
@@ -135,6 +139,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["zM"], action: "Collapse all folders" },
       { keys: ["i"], action: "Log to today" },
       { keys: ["Esc"], action: "Cancel a cut, clear the search, then back to the note" },
+      { keys: ["b"], action: "Hide the sidebar and go back to the note" },
     ],
   },
   {
@@ -143,6 +148,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["j", "k"], action: "Next / previous row" },
       { keys: ["gg", "G"], action: "First / last row" },
       { keys: ["o", "Enter"], action: "Open it" },
+      { keys: ["h"], action: "On vault home: over to the file sidebar" },
       { keys: ["i"], action: "On vault home: log to today" },
       { keys: ["Esc"], action: "Leave a text box; from a panel, back to the note" },
     ],

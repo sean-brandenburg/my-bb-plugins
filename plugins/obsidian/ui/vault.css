@@ -8,6 +8,22 @@
   color: var(--foreground);
 }
 
+/* The file tree, on the page's left like Obsidian's own. */
+.ob-sidebar {
+  width: 16rem;
+  flex-shrink: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+.ob-sidebar-rail {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  border-right: 1px solid var(--border);
+}
+
 .ob-explorer {
   display: flex;
   height: 100%;

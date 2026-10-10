@@ -55,7 +55,7 @@ function SearchResultsList({
 }
 
 /** Vault header, search, file tree, and an optional `accessory` under the search box. */
-export function VaultExplorer({ vault, actions, accessory }: { vault: Vault; actions: VaultActions; accessory?: ReactNode }) {
+export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Vault; actions: VaultActions; accessory?: ReactNode; onHide: () => void }) {
   const pluginId = experimental_usePluginId();
   const openNote = useOpenNote();
   const global = useGlobalCommands();
@@ -234,6 +234,9 @@ export function VaultExplorer({ vault, actions, accessory }: { vault: Vault; act
         setCutPath(null);
         return true;
       }
+      case "sidebar":
+        onHide();
+        return true;
       case "collapseAll":
         setExpanded([]);
         requestAnimationFrame(focusList);
@@ -278,6 +281,9 @@ export function VaultExplorer({ vault, actions, accessory }: { vault: Vault; act
           </Button>
           <Button variant="ghost" size="icon" className="size-7" aria-label="Collapse all folders" onClick={() => setExpanded([])}>
             <Icon name="ChevronsUp" fallback="ChevronUp" className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="size-7" aria-label="Hide files (b)" onClick={onHide}>
+            <Icon name="PanelLeftClose" fallback="ChevronLeft" className="size-4" />
           </Button>
         </div>
       </div>
@@ -337,7 +343,6 @@ export function VaultExplorer({ vault, actions, accessory }: { vault: Vault; act
           />
         )}
       </div>
-      {actions.deleteDialog}
     </div>
   );
 }

@@ -2,21 +2,21 @@ Work in your Obsidian vault without leaving bb.
 
 ## What you get
 
-- A **Vault** page in the sidebar with your folders and notes.
+- A **Vault** page in the sidebar, with your folders and notes down its left side.
 - An editor with live preview: links, checkboxes, and highlights render
   inline, and `[[` suggests notes as you type.
 - A reading view with embeds, callouts, and properties.
 - **Outline** and **Backlinks** tabs in the right panel.
 - Search across every note.
 - Vim-style keys for the notes, file tree, search, outline, and backlinks:
-  `j`/`k` to move, `/` to search, `-` for the file tree, `?` for the full list.
+  `j`/`k` to move, `/` to search, `h` or `-` for the file tree, `?` for the full list.
 - A **daily note**: ⌘⇧L or "Save to today's daily note" on any chat message
   logs to today's inbox, and every bb thread that finishes a turn is recorded
   for the day.
 - **Start day** and **Wrap up**, which run your `/daily-note` routine in a
   thread inside the vault.
-- A **Vault home** with today's inbox, carried-forward items, today's threads,
-  active tickets, and recently edited notes.
+- A **Vault home** with today's inbox, carried-forward items, active tickets,
+  and recently edited notes.
 - `@` mentions for any note, or today's daily note, as thread context.
 
 ## How it works

@@ -3,16 +3,18 @@ import { toast } from "sonner";
 import { NUDGE, cx, enter, speed, useReplay } from "bb-motion";
 import { experimental_useAppPanel, experimental_usePluginId } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
 import { dateKeyOfDailyPath } from "../shared/daily";
-import { DailyNoteActions, Dashboard, startRoutine } from "./daily";
+import { CaptureInput, DailyNoteActions, Dashboard, startRoutine } from "./daily";
 import { ATTACHMENT_EXTENSIONS } from "./file-kinds";
 import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
 import { focusEditor } from "./Editor";
-import { backlinksTab, filesTab, outlineTab } from "./fixed-tabs";
+import { VaultExplorer } from "./Explorer";
+import { backlinksTab, outlineTab } from "./fixed-tabs";
 import { copyToClipboard, useGlobalCommands } from "./global-keys";
 import { KeysDialog } from "./KeysDialog";
 import { obsidianUrl } from "./NoteHeader";
@@ -25,7 +27,7 @@ import type { PanelTab, VaultCommand } from "./vault-nav";
 
 const RECENT_LIMIT = 12;
 
-const PANEL_TABS = { files: filesTab, outline: outlineTab, backlinks: backlinksTab } as const;
+const PANEL_TABS = { outline: outlineTab, backlinks: backlinksTab } as const;
 
 /** How far j and k scroll a note, matching vim-mode's scroll mode in threads. */
 const LINE_STEP_PX = 60;
@@ -131,18 +133,23 @@ export function VaultPage({ subPath }: { subPath: string }) {
   const [, setQuery] = useSearchQuery();
 
   const [mode, setMode] = useLocalStorageState<ViewMode>(`${pluginId}:mode`, "edit");
+  const [sidebarOpen, setSidebarOpen] = useLocalStorageState<boolean>(`${pluginId}:sidebar`, true);
   const appPanel = experimental_useAppPanel();
-  const openTab = useCallback((tab: PanelTab) => appPanel.openFixedTab({ surface: { kind: "current" }, tab: PANEL_TABS[tab] }), [appPanel]);
+  // Files live in the page's own left sidebar; outline and backlinks in bb's right panel.
+  const openTab = useCallback(
+    (tab: PanelTab) => (tab === "files" ? setSidebarOpen(true) : appPanel.openFixedTab({ surface: { kind: "current" }, tab: PANEL_TABS[tab] })),
+    [appPanel, setSidebarOpen],
+  );
   usePanelTabRequests(openTab);
   const global = useGlobalCommands();
-  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [root, setRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setCurrentNotePath(currentPath);
   }, [currentPath]);
   useEffect(() => () => setCurrentNotePath(null), []);
 
-  /** Opens the Files tab in bb's right panel. */
+  /** Shows the file sidebar. */
   const showExplorer = useCallback(() => openTab("files"), [openTab]);
 
   useEffect(() => {
@@ -203,6 +210,20 @@ export function VaultPage({ subPath }: { subPath: string }) {
       requestAnimationFrame(() => {
         if (document.activeElement === field || document.activeElement === document.body) root.focus({ preventScroll: true });
       });
+      return true;
+    }
+    if (command.kind === "sidebar") {
+      if (sidebarOpen) setSidebarOpen(false);
+      else {
+        setSidebarOpen(true);
+        requestSurfaceFocus("files");
+      }
+      return true;
+    }
+    // h steps left, out of the note or home into the file sidebar.
+    if (command.kind === "list" && command.motion === "left") {
+      setSidebarOpen(true);
+      requestSurfaceFocus("files");
       return true;
     }
     if (onDashboard) {
@@ -289,8 +310,27 @@ export function VaultPage({ subPath }: { subPath: string }) {
   }
 
   return (
-    <div ref={setRoot} tabIndex={-1} className="ob-vault outline-none">
-      <main className="ob-main">
+    <div className="ob-vault">
+      {sidebarOpen ? (
+        <aside className="ob-sidebar" aria-label="Vault files">
+          <VaultExplorer
+            vault={vault}
+            actions={actions}
+            accessory={<CaptureInput className="mt-1.5" />}
+            onHide={() => {
+              setSidebarOpen(false);
+              requestSurfaceFocus("page");
+            }}
+          />
+        </aside>
+      ) : (
+        <div className="ob-sidebar-rail">
+          <Button variant="ghost" size="icon" className="size-7" aria-label="Show files (b)" onClick={() => setSidebarOpen(true)}>
+            <Icon name="PanelLeftOpen" fallback="ChevronRight" className="size-4" />
+          </Button>
+        </div>
+      )}
+      <main ref={setRoot} tabIndex={-1} className="ob-main outline-none">
         {onDashboard ? (
           <Dashboard vault={vault} recent={recent} />
         ) : (

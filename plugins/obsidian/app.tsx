@@ -1,7 +1,7 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import "bb-motion/motion.css";
 import { CaptureOverlay, captureText, openCaptureDialog, openToday, startRoutine } from "./ui/daily";
-import { backlinksTab, filesTab, outlineTab } from "./ui/fixed-tabs";
+import { backlinksTab, outlineTab } from "./ui/fixed-tabs";
 import { PANEL_PATH } from "./ui/navigation";
 import { VaultPage } from "./ui/VaultPage";
 import "./ui/vault.css";
@@ -13,7 +13,7 @@ export default definePluginApp((app) => {
     icon: "./assets/icon.svg",
     path: PANEL_PATH,
     component: VaultPage,
-    fixedTabs: [filesTab, outlineTab, backlinksTab],
+    fixedTabs: [outlineTab, backlinksTab],
   });
   app.slots.experimental_appOverlay({ id: "capture", component: CaptureOverlay });
   app.slots.messageAction({

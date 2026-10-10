@@ -20,7 +20,7 @@ export function KeysDialog() {
       >
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Work anywhere on the Vault page or its Files, Outline, and Backlinks tabs, outside a text box. The arrow keys work as h, j, k, and l.</DialogDescription>
+          <DialogDescription>Work anywhere on the Vault page, its file sidebar, and its Outline and Backlinks tabs, outside a text box. The arrow keys work as h, j, k, and l.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 sm:grid-cols-2">
           {KEY_HELP.map((section) => (
