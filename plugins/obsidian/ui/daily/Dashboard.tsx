@@ -67,7 +67,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
       <div className="mx-auto w-full max-w-2xl px-6 pb-16 pt-10">
         <p className="text-sm text-muted-foreground">{status?.vaultName}</p>
         <h2 className="text-xl font-semibold">{dateLabel}</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2" data-nav-row="toolbar">
           <Button size="sm" onClick={() => void openToday()}>
             {data?.today.exists === false ? "Create today's note" : "Open today's note"}
           </Button>

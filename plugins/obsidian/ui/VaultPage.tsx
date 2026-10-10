@@ -220,8 +220,9 @@ export function VaultPage({ subPath }: { subPath: string }) {
       }
       return true;
     }
-    // h steps left, out of the note or home into the file sidebar.
+    // h steps left: across the home's buttons, then out into the file sidebar.
     if (command.kind === "list" && command.motion === "left") {
+      if (onDashboard && runListCommand(root, command)) return true;
       setSidebarOpen(true);
       requestSurfaceFocus("files");
       return true;

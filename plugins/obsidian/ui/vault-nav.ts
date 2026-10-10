@@ -125,7 +125,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
   {
     title: "File sidebar",
     keys: [
-      { keys: ["j", "k"], action: "Next / previous file, folder, or search match" },
+      { keys: ["j", "k"], action: "Next / previous file, folder, or search match; k past the top reaches the buttons above" },
+      { keys: ["h", "l"], action: "On those buttons: previous / next button" },
       { keys: ["gg", "G"], action: "First / last row" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
       { keys: ["l"], action: "Expand a folder, step into it, or show a file" },
@@ -148,7 +149,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["j", "k"], action: "Next / previous row" },
       { keys: ["gg", "G"], action: "First / last row" },
       { keys: ["o", "Enter"], action: "Open it" },
-      { keys: ["h"], action: "On vault home: over to the file sidebar" },
+      { keys: ["h", "l"], action: "On vault home's buttons: previous / next button; h past the first goes to the file sidebar" },
+      { keys: ["h"], action: "Elsewhere on vault home: over to the file sidebar" },
       { keys: ["i"], action: "On vault home: log to today" },
       { keys: ["Esc"], action: "Leave a text box; from a panel, back to the note" },
     ],

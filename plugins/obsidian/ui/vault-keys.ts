@@ -14,7 +14,10 @@ const PREFIX_TIMEOUT_MS = 500;
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock"]);
 const PREFIX_STARTS = new Set(Object.keys(PREFIX_KEYMAP).map((sequence) => sequence[0]!));
 
-/** Rows the cursor moves over carry `data-nav-row` ("group" for folders, else "item"). */
+/**
+ * Rows the cursor moves over carry `data-nav-row`: "group" for folders, "toolbar" for a row of
+ * buttons that h and l step across, else "item".
+ */
 export const NAV_ROW = "[data-nav-row]";
 /** Wraps a folder's row and everything nested under it. */
 const NAV_GROUP = "[data-nav-group]";
@@ -179,9 +182,16 @@ export function cursorIndex(elements: readonly HTMLElement[]): number | null {
   return index === -1 ? null : index;
 }
 
+/** A toolbar row's buttons, which h and l step across. */
+function toolbarButtons(row: HTMLElement): HTMLButtonElement[] {
+  return [...row.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")].filter((button) => button.getClientRects().length > 0);
+}
+
+/** Puts the cursor on a row; a toolbar row takes it on its first button. */
 export function focusRow(element: HTMLElement): void {
-  element.focus({ preventScroll: true });
-  element.scrollIntoView({ block: "nearest" });
+  const target = element.dataset.navRow === "toolbar" ? (toolbarButtons(element)[0] ?? element) : element;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: "nearest" });
 }
 
 export function scrollParent(element: HTMLElement): HTMLElement | null {
@@ -231,8 +241,25 @@ export function runListCommand(
     return true;
   }
   const { motion } = command;
+  // With no cursor, h and l mean the surface's own left and right, not a row's.
+  if (current === null && (motion === "left" || motion === "right")) return false;
+  const row = current === null ? null : elements[current]!;
+  if (row !== null && row.dataset.navRow === "toolbar" && motion !== "up" && motion !== "down" && motion !== "top" && motion !== "bottom") {
+    const buttons = toolbarButtons(row);
+    const at = buttons.findIndex((button) => button === document.activeElement);
+    if (motion === "open") {
+      (buttons[at] ?? buttons[0])?.click();
+      return true;
+    }
+    const next = buttons[at + (motion === "right" ? 1 : -1)];
+    // Past either end of the toolbar the key falls through to the surface.
+    if (at === -1 || next === undefined) return false;
+    next.focus({ preventScroll: true });
+    return true;
+  }
   const action = listAction(rows, current, motion, start);
-  if (action === null) return true;
+  // Nowhere to go: h past the tree's top level, say. The surface may act on the key instead.
+  if (action === null) return false;
   const element = elements[action.index]!;
   if (action.kind === "focus") {
     focusRow(element);

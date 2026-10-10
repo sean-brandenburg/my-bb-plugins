@@ -126,7 +126,11 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
     [openNote],
   );
 
-  const startIndex = (elements: HTMLElement[]) => Math.max(elements.findIndex((element) => element.dataset.path === currentPath), 0);
+  /** The open note's row, else the first row under the toolbar. */
+  const startIndex = (elements: HTMLElement[]) => {
+    const current = elements.findIndex((element) => element.dataset.path === currentPath);
+    return current !== -1 ? current : Math.max(elements.findIndex((element) => element.dataset.navRow !== "toolbar"), 0);
+  };
 
   const focusList = () => {
     const body = bodyRef.current;
@@ -175,8 +179,9 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
     switch (command.kind) {
       case "list":
       case "scroll":
-        if (body === null) return false;
-        return runListCommand(body, command, {
+        if (root === null) return false;
+        // The whole sidebar, so k from the top row climbs to the buttons above the search box.
+        return runListCommand(root, command, {
           start: startIndex,
           onActivate(row, motion) {
             const rowPath = row.getAttribute("role") === "treeitem" ? row.dataset.path : undefined;
@@ -272,7 +277,7 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
         <span className="truncate text-sm font-semibold" title={status?.vaultPath ?? undefined}>
           {status?.vaultName ?? "Vault"}
         </span>
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center" data-nav-row="toolbar">
           <Button variant="ghost" size="icon" className="size-7" aria-label="New note" onClick={() => treeActions.newNote(currentFolder)}>
             <Icon name="EditFile" fallback="Plus" className="size-4" />
           </Button>
