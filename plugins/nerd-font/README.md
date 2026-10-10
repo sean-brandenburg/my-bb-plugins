@@ -2,7 +2,7 @@
 
 Lets the plugins here draw [Nerd Font](https://www.nerdfonts.com) icons where they fit: file-type icons and
 added/deleted/renamed marks in diff-view, PR state, CI, and Jira status glyphs on kanban cards, and a
-glyph-only model and effort in the composer status bar. Without a Nerd Font each falls back to its plain icons and
+the usage-limit hourglass in the composer status bar. Without a Nerd Font each falls back to its plain icons and
 labels.
 
 ## Setting
