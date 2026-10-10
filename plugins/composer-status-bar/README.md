@@ -8,7 +8,7 @@ One row, ordered by what it describes:
 
 - **Where the work happens**, on the left: the project and environment as plain labels (`my-bb-plugins / Worktree`), then the branch as quiet text that shows its outline on hover (click to copy its name). bb's new-thread button is hidden; new threads start from the sidebar or the project picker.
 - **Usage**, on the right: a warning icon with the time to reset when Claude reports a limit as near or reached, then the context chip (`324k` with bb's ring; hover for the window size, click for the breakdown).
-- **The agent**, at the far right: an `Opus 5.5 · High` chip (the composer's current model and effort, visible even while bb's own picker is hidden in the collapsed prompt box) that opens bb's model and reasoning picker, the same one as ⇧⌘M, then the permission-mode chip, right under the send button. While the chip shows, bb's own copy of the picker inside the expanded prompt box is hidden; ⇧⌘M still opens the menu there.
+- **The agent**, at the far right: an `Opus 5.5 · High` chip (the composer's current model and effort, visible even while bb's own picker is hidden in the collapsed prompt box) that opens bb's model and reasoning picker, the same one as ⇧⌘M, then the permission-mode chip, right under the send button. While the chip shows, bb's own copy of the picker inside the expanded prompt box is hidden, and ⇧⌘M opens and closes the chip's menu instead (in the focused composer, or the main one).
 
 With a Nerd Font installed (see the nerd-font plugin), the limit warning's icon is an hourglass.
 
