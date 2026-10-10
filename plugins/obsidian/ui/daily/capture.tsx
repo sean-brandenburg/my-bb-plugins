@@ -149,7 +149,10 @@ export function CaptureInput({
     }
     if (event.key === "Escape") {
       setText("");
-      ref.current?.blur();
+      // Back onto the box's row for the vault's j/k cursor, where there is one.
+      const row = ref.current?.closest<HTMLElement>("[data-nav-row]");
+      if (row) row.focus({ preventScroll: true });
+      else ref.current?.blur();
     }
   };
 
