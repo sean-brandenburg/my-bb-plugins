@@ -603,6 +603,15 @@ details.ob-callout > summary {
 .ob-capture {
   position: relative;
 }
+/* The j/k cursor resting on a text box, before typing in it. */
+[data-nav-row="field"] {
+  border-radius: 0.375rem;
+  outline: none;
+}
+[data-nav-row="field"]:focus-visible {
+  outline: 1px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
 .ob-capture-input {
   display: block;
   width: 100%;

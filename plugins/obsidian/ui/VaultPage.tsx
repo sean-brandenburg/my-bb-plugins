@@ -22,7 +22,7 @@ import { NoteView, type ViewMode } from "./NoteView";
 import { flushOpenNotes, setCurrentNotePath, useLocalStorageState, usePanelTabRequests, useSearchQuery, useTitleFocusPath } from "./state";
 import { useVaultActions } from "./vault-actions";
 import { usePreviewBase, useVault, type VaultRpc } from "./vault-client";
-import { requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
+import { editFieldAtCursor, fieldRowOf, focusRow, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
 import type { PanelTab, VaultCommand } from "./vault-nav";
 
 const RECENT_LIMIT = 12;
@@ -208,7 +208,10 @@ export function VaultPage({ subPath }: { subPath: string }) {
       // After the field's own Escape handling, which may blur it on the next frame.
       const field = document.activeElement;
       requestAnimationFrame(() => {
-        if (document.activeElement === field || document.activeElement === document.body) root.focus({ preventScroll: true });
+        if (document.activeElement !== field && document.activeElement !== document.body) return;
+        const row = fieldRowOf(field);
+        if (row !== null) focusRow(row);
+        else root.focus({ preventScroll: true });
       });
       return true;
     }
@@ -233,6 +236,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
         case "scroll":
           return runListCommand(root, command);
         case "edit":
+          if (editFieldAtCursor()) return true;
           root.querySelector<HTMLElement>(".ob-capture-input")?.focus();
           return true;
         case "newNote":

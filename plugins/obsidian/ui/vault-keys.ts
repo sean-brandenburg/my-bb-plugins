@@ -16,7 +16,8 @@ const PREFIX_STARTS = new Set(Object.keys(PREFIX_KEYMAP).map((sequence) => seque
 
 /**
  * Rows the cursor moves over carry `data-nav-row`: "group" for folders, "toolbar" for a row of
- * buttons that h and l step across, else "item".
+ * buttons that h and l step across, "field" for a text box the cursor stops on before typing,
+ * else "item".
  */
 export const NAV_ROW = "[data-nav-row]";
 /** Wraps a folder's row and everything nested under it. */
@@ -182,6 +183,25 @@ export function cursorIndex(elements: readonly HTMLElement[]): number | null {
   return index === -1 ? null : index;
 }
 
+/** The text box a "field" row holds; activating the row starts typing in it. */
+function fieldInput(row: HTMLElement): HTMLElement | null {
+  return row.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled)");
+}
+
+/** The field row around a text box, so Escape from typing leaves the cursor on it. */
+export function fieldRowOf(element: Element | null): HTMLElement | null {
+  return element?.closest<HTMLElement>('[data-nav-row="field"]') ?? null;
+}
+
+/** i on a text box's row: types in that box. False when the cursor isn't on one. */
+export function editFieldAtCursor(): boolean {
+  const row = document.activeElement instanceof HTMLElement && document.activeElement.dataset.navRow === "field" ? document.activeElement : null;
+  const input = row === null ? null : fieldInput(row);
+  if (input === null) return false;
+  input.focus({ preventScroll: true });
+  return true;
+}
+
 /** A toolbar row's buttons, which h and l step across. */
 function toolbarButtons(row: HTMLElement): HTMLButtonElement[] {
   return [...row.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")].filter((button) => button.getClientRects().length > 0);
@@ -255,6 +275,14 @@ export function runListCommand(
     // Past either end of the toolbar the key falls through to the surface.
     if (at === -1 || next === undefined) return false;
     next.focus({ preventScroll: true });
+    return true;
+  }
+  // l, o and Enter on a text box's row start typing in it.
+  if (row !== null && row.dataset.navRow === "field" && (motion === "open" || motion === "right")) {
+    const input = fieldInput(row);
+    if (input === null) return false;
+    input.focus({ preventScroll: true });
+    if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) input.setSelectionRange(input.value.length, input.value.length);
     return true;
   }
   const action = listAction(rows, current, motion, start);

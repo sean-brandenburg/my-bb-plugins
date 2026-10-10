@@ -154,7 +154,8 @@ export function CaptureInput({
   };
 
   return (
-    <div className={cn("ob-capture", className)}>
+    // A stop for the vault's j/k cursor; Enter or i on it starts typing.
+    <div className={cn("ob-capture", className)} data-nav-row="field" tabIndex={-1}>
       <textarea
         ref={ref}
         rows={1}

@@ -37,8 +37,10 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
   editor (twice with vim-mode, which handles editing keys inside it). ⌘↵ in the
   editor follows the link under the cursor.
 - File sidebar: `h` from a note or the home moves into it, `t` shows or hides
-  it. `j`/`k`, `h`/`l`, `gg`/`G` walk the tree, and `k` from its top row reaches
-  the buttons above, which `h`/`l` step across (the home's buttons work the same way); `l` shows a file, `o`/Enter
+  it. `j`/`k`, `h`/`l`, `gg`/`G` walk the tree, and `k` from its top row climbs
+  to the log and search boxes (`l`, `i` or Enter types in one, Escape stops),
+  then the buttons, which `h`/`l` step across (the home's buttons and log box
+  work the same way); `l` shows a file, `o`/Enter
   opens it and moves to it; `a`/`A` new note/folder, `r` rename, `x` then `p`
   moves, `dd` deletes, `zM` collapses all, `i` logs to today.
 - Anywhere: `/` searches the vault (Enter opens the first match), `n`/`N` open

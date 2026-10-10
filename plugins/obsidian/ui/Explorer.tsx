@@ -13,7 +13,7 @@ import { LoadingLines } from "./Loading";
 import { useOpenNote } from "./navigation";
 import { copyToClipboard, useGlobalCommands } from "./global-keys";
 import { getSearchStops, setSearchStopIndex, setSearchStops, useLocalStorageState, useSearchQuery } from "./state";
-import { focusRow, readRows, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
+import { editFieldAtCursor, fieldRowOf, focusRow, readRows, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
 import { canMoveInto, type SearchStop, type VaultCommand } from "./vault-nav";
 import type { VaultActions } from "./vault-actions";
 import type { Vault } from "./vault-client";
@@ -126,10 +126,10 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
     [openNote],
   );
 
-  /** The open note's row, else the first row under the toolbar. */
+  /** The open note's row, else the first row under the buttons and text boxes. */
   const startIndex = (elements: HTMLElement[]) => {
     const current = elements.findIndex((element) => element.dataset.path === currentPath);
-    return current !== -1 ? current : Math.max(elements.findIndex((element) => element.dataset.navRow !== "toolbar"), 0);
+    return current !== -1 ? current : Math.max(elements.findIndex((element) => element.dataset.navRow !== "toolbar" && element.dataset.navRow !== "field"), 0);
   };
 
   const focusList = () => {
@@ -194,6 +194,7 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
           },
         });
       case "edit":
+        if (editFieldAtCursor()) return true;
         root?.querySelector<HTMLElement>(".ob-capture-input")?.focus();
         return true;
       case "newNote":
@@ -250,7 +251,10 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
         if (command.fromField) {
           const field = document.activeElement;
           requestAnimationFrame(() => {
-            if (document.activeElement === field || document.activeElement === document.body) focusList();
+            if (document.activeElement !== field && document.activeElement !== document.body) return;
+            const row = fieldRowOf(field);
+            if (row !== null) focusRow(row);
+            else focusList();
           });
           return true;
         }
@@ -293,7 +297,7 @@ export function VaultExplorer({ vault, actions, accessory, onHide }: { vault: Va
         </div>
       </div>
       <div className="px-2 pb-2">
-        <div className="relative">
+        <div className="relative" data-nav-row="field" tabIndex={-1}>
           <Icon name="Search" className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input
             ref={searchRef}
