@@ -162,6 +162,26 @@ function obsidianDecorations(getResolver: () => LinkResolver, path: string) {
   );
 }
 
+/** Each mounted note's editor, so page keys can hand it focus. */
+const editors = new Map<string, EditorView>();
+
+/**
+ * Focuses the note's editor, keeping its caret if it's on screen and otherwise putting it on
+ * the first visible line, so typing starts where the user was reading. False with no editor.
+ */
+export function focusEditor(path: string): boolean {
+  const view = editors.get(path);
+  if (view === undefined) return false;
+  const scroller = view.scrollDOM.getBoundingClientRect();
+  const caret = view.coordsAtPos(view.state.selection.main.head);
+  if (caret === null || caret.top < scroller.top || caret.bottom > scroller.bottom) {
+    const top = view.lineBlockAtHeight(Math.max(scroller.top - view.documentTop, 0));
+    view.dispatch({ selection: { anchor: top.from } });
+  }
+  view.focus();
+  return true;
+}
+
 function wikilinkCompletion(getResolver: () => LinkResolver, getNotePaths: () => readonly string[]) {
   return (context: CompletionContext): CompletionResult | null => {
     const before = context.matchBefore(/\[\[[^[\]|#\n]*$/);
@@ -225,7 +245,26 @@ export function Editor({ path, content, version, resolver, notePaths, target, on
             override: [wikilinkCompletion(() => resolverRef.current, () => notePathsRef.current)],
             icons: false,
           }),
-          keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
+          keymap.of([
+            {
+              key: "Mod-Enter",
+              run(view) {
+                const { head } = view.state.selection.main;
+                const link = view.plugin(decorations)?.links.find((candidate) => candidate.from <= head && head <= candidate.to);
+                if (link === undefined) return false;
+                onOpenLinkRef.current(link);
+                return true;
+              },
+            },
+            ...closeBracketsKeymap,
+            ...completionKeymap,
+            ...searchKeymap,
+            ...historyKeymap,
+            indentWithTab,
+            // Escape leaves the editor for the page's keys instead of collapsing the selection, and
+            // Ctrl-O (splitLine on macOS) stays bb's Go back, like Ctrl-I is Go forward.
+            ...defaultKeymap.filter((binding) => binding.key !== "Escape" && binding.mac !== "Ctrl-o"),
+          ]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.sliceDoc());
           }),
@@ -252,7 +291,9 @@ export function Editor({ path, content, version, resolver, notePaths, target, on
       }),
     });
     viewRef.current = view;
+    editors.set(path, view);
     return () => {
+      if (editors.get(path) === view) editors.delete(path);
       view.destroy();
       viewRef.current = null;
     };
@@ -299,7 +340,7 @@ export function Editor({ path, content, version, resolver, notePaths, target, on
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "start", yMargin: 48 }),
     });
-    view.focus();
+    if (target.focus) view.focus();
   }, [target]);
 
   return <div ref={hostRef} className="ob-editor h-full min-h-0" />;

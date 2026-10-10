@@ -19,10 +19,30 @@ view, and Outline / Backlinks tabs in the right panel.
   first). An unresolved link creates the note when you click it.
 - Renaming or moving a note rewrites the links that point to it. Turn this off
   under *Update links when renaming or moving notes*.
-- Full-text search (⌘⇧F); ⌘E toggles editing and reading view.
+- Full-text search (⌘⇧F or `/`); ⌘E or `m` toggles editing and reading view.
 - Autosave. If the file changed on disk while you were editing, a banner
   offers to keep your version or load the disk version.
   Changes made outside bb (Obsidian, sync, agents) appear live.
+
+## Keyboard
+
+Vim-style keys work on the Vault page and its Files, Outline, and Backlinks tabs
+whenever focus is outside a text box; `?` lists them all. The keymap and help
+text live in `ui/vault-nav.ts`, the routing between surfaces in
+`ui/vault-keys.ts`.
+
+- Note: `j`/`k`, Ctrl-D/U/F/B, `gg`/`G` scroll; `i` edits (from reading view
+  too), `m` switches views, `r` renames, `a` makes a new note, `y`/`Y` copy the
+  path or a wikilink, `O` opens in Obsidian, `dd` deletes. Escape leaves the
+  editor (twice with vim-mode, which handles editing keys inside it). ⌘↵ in the
+  editor follows the link under the cursor.
+- Files: `j`/`k`, `h`/`l`, `gg`/`G` walk the tree; `l` shows a file, `o`/Enter
+  opens it and moves to it; `a`/`A` new note/folder, `r` rename, `x` then `p`
+  moves, `dd` deletes, `zM` collapses all, `i` logs to today.
+- Anywhere: `/` searches the vault (Enter opens the first match), `n`/`N` open
+  the next/previous match, `-` jumps to Files on the open note, `gO`/`gb` to
+  Outline/Backlinks, `gh`/`gt` go home/to today. Escape in a tab returns to the
+  note.
 
 ## Daily notes
 

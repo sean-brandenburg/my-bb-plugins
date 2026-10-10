@@ -8,6 +8,8 @@ Work in your Obsidian vault without leaving bb.
 - A reading view with embeds, callouts, and properties.
 - **Outline** and **Backlinks** tabs in the right panel.
 - Search across every note.
+- Vim-style keys for the notes, file tree, search, outline, and backlinks:
+  `j`/`k` to move, `/` to search, `-` for the file tree, `?` for the full list.
 - A **daily note**: ⌘⇧L or "Save to today's daily note" on any chat message
   logs to today's inbox, and every bb thread that finishes a turn is recorded
   for the day.

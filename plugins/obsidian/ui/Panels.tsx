@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import { STAGGER, cx, enter, stagger } from "bb-motion";
 import type { Backlinks } from "../contract";
@@ -8,7 +8,9 @@ import { isNotePath, noteTitle, parseHeadings } from "../shared/obsidian";
 import { FileMatches } from "./FileMatches";
 import { LoadingLines } from "./Loading";
 import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
+import { useGlobalCommands } from "./global-keys";
 import { useLiveDoc } from "./state";
+import { readRows, focusRow, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys, type Surface } from "./vault-keys";
 import { useVaultChanges } from "./vault-client";
 
 function useCurrentNote(subPath: string): string | null {
@@ -20,7 +22,49 @@ function PanelMessage({ children }: { children: string }) {
   return <p className="px-3 py-3 text-xs text-muted-foreground">{children}</p>;
 }
 
+/** A panel tab's rows under j/k; Escape hands the keys back to the note. */
+function PanelKeys({ surface, children }: { surface: Surface; children: ReactNode }) {
+  const global = useGlobalCommands();
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  useSurfaceFocusRequest(surface, root, () => {
+    if (root === null) return;
+    const row = readRows(root).elements[0];
+    if (row !== undefined) focusRow(row);
+    else root.focus({ preventScroll: true });
+  });
+  useVaultKeys(surface, root, (command) => {
+    if (root === null) return false;
+    if (command.kind === "list" || command.kind === "scroll") return runListCommand(root, command);
+    if (command.kind === "escape" && !command.fromField) {
+      requestSurfaceFocus("page");
+      return true;
+    }
+    return global(command);
+  });
+  return (
+    <div ref={setRoot} tabIndex={-1} className="h-full outline-none">
+      {children}
+    </div>
+  );
+}
+
 export function OutlinePanel({ subPath }: { subPath: string }) {
+  return (
+    <PanelKeys surface="outline">
+      <Outline subPath={subPath} />
+    </PanelKeys>
+  );
+}
+
+export function BacklinksPanel({ subPath }: { subPath: string }) {
+  return (
+    <PanelKeys surface="backlinks">
+      <BacklinksList subPath={subPath} />
+    </PanelKeys>
+  );
+}
+
+function Outline({ subPath }: { subPath: string }) {
   const path = useCurrentNote(subPath);
   const content = useLiveDoc(path);
   const headings = useMemo(() => (content === null ? [] : parseHeadings(content)), [content]);
@@ -35,8 +79,10 @@ export function OutlinePanel({ subPath }: { subPath: string }) {
           key={`${heading.line}`}
           type="button"
           className="ob-outline-item"
+          data-nav-row="item"
           style={{ paddingLeft: `${0.75 + (heading.level - minLevel) * 0.85}rem` }}
-          onClick={() => requestNavigation(path, { line: heading.line })}
+          // From the keys, focus stays here so j/k can carry on through the headings.
+          onClick={(event) => requestNavigation(path, { line: heading.line }, event.detail !== 0)}
         >
           {heading.text}
         </button>
@@ -45,7 +91,7 @@ export function OutlinePanel({ subPath }: { subPath: string }) {
   );
 }
 
-export function BacklinksPanel({ subPath }: { subPath: string }) {
+function BacklinksList({ subPath }: { subPath: string }) {
   const path = useCurrentNote(subPath);
   const rpc = useRpc<typeof rpcContract>();
   const openNote = useOpenNote();
@@ -85,7 +131,10 @@ export function BacklinksPanel({ subPath }: { subPath: string }) {
           style={stagger(index)}
           path={backlink.path}
           matches={backlink.matches}
-          onOpen={(path, line) => openNote(path, { target: line === undefined ? undefined : { line } })}
+          onOpen={(path, line, fromKeys) => {
+            openNote(path, { target: line === undefined ? undefined : { line }, focus: !fromKeys });
+            if (fromKeys) requestSurfaceFocus("page");
+          }}
         />
       ))}
     </div>

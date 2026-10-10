@@ -1,6 +1,7 @@
 // Cross-surface state shared by the Vault page and its right-panel tabs, which
 // the host mounts as separate React roots, so it lives in module-level stores.
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import type { PanelTab, SearchStop } from "./vault-nav";
 
 type Listener = () => void;
 
@@ -98,18 +99,9 @@ export function useCurrentNotePath(): string | null {
 
 /** Search text shared by whichever explorer is showing, so tag clicks land in it. */
 const searchQuery = createStore("");
-const searchFocusRequests = createStore(0);
 
 export function useSearchQuery() {
   return [useSyncExternalStore(searchQuery.subscribe, searchQuery.get), searchQuery.set] as const;
-}
-
-export function requestSearchFocus(): void {
-  searchFocusRequests.set(searchFocusRequests.get() + 1);
-}
-
-export function useSearchFocusRequest(): number {
-  return useSyncExternalStore(searchFocusRequests.subscribe, searchFocusRequests.get);
 }
 
 /** A newly created note whose title should be focused when it opens. */
@@ -121,4 +113,52 @@ export function requestTitleFocus(path: string): void {
 
 export function useTitleFocusPath(): string | null {
   return useSyncExternalStore(titleFocus.subscribe, titleFocus.get);
+}
+
+/** The last vault search's matches and which one n/N last opened. */
+const searchStops = createStore<{ stops: readonly SearchStop[]; index: number | null }>({ stops: [], index: null });
+
+/** Replaces the matches; the same matches again (a search finishing twice) keep n's place. */
+export function setSearchStops(stops: readonly SearchStop[]): void {
+  const current = searchStops.get();
+  const same = current.stops.length === stops.length && current.stops.every((stop, index) => stop.path === stops[index]!.path && stop.line === stops[index]!.line);
+  if (!same) searchStops.set({ stops, index: null });
+}
+
+export function getSearchStops() {
+  return searchStops.get();
+}
+
+export function setSearchStopIndex(index: number | null): void {
+  searchStops.set({ ...searchStops.get(), index });
+}
+
+const keysHelp = createStore(false);
+
+export function setKeysHelpOpen(open: boolean): void {
+  keysHelp.set(open);
+}
+
+export function useKeysHelpOpen(): boolean {
+  return useSyncExternalStore(keysHelp.subscribe, keysHelp.get);
+}
+
+/**
+ * Right-panel tabs to open. Only the Vault page opens them: the tabs' module graph loops back
+ * through the keys, so nothing reachable from a tab may hold the tab definitions.
+ */
+const panelTabRequest = createStore<PanelTab | null>(null);
+
+export function requestPanelTab(tab: PanelTab): void {
+  panelTabRequest.set(tab);
+}
+
+/** Calls `open` with each requested tab, once. */
+export function usePanelTabRequests(open: (tab: PanelTab) => void): void {
+  const tab = useSyncExternalStore(panelTabRequest.subscribe, panelTabRequest.get);
+  useEffect(() => {
+    if (tab === null) return;
+    panelTabRequest.set(null);
+    open(tab);
+  }, [tab, open]);
 }

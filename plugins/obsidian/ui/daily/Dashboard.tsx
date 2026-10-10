@@ -81,7 +81,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
         </div>
         <CaptureInput className="ob-capture-dashboard mt-4" />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          <kbd>⌘⇧L</kbd> logs from anywhere in bb · “Save to today's daily note” on any chat message · <code>bb obsidian log</code> from agents
+          <kbd>⌘⇧L</kbd> logs from anywhere in bb · “Save to today's daily note” on any chat message · <code>bb obsidian log</code> from agents · <kbd>?</kbd> lists the keys
         </p>
         {error === null ? null : <p className="mt-4 text-sm text-destructive">{error}</p>}
 
@@ -112,7 +112,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
               ))}
             </ul>
             {data.carryForward.path === null ? null : (
-              <button type="button" className="ob-link mt-1.5 text-xs" onClick={() => openNote(data.carryForward.path!)}>
+              <button type="button" className="ob-link mt-1.5 text-xs" data-nav-row="item" onClick={() => openNote(data.carryForward.path!)}>
                 from {noteTitle(data.carryForward.path)}
               </button>
             )}
@@ -126,7 +126,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
             <ul className="divide-y divide-border rounded-lg border border-border">
               {data.activity.map((item, index) => (
                 <li key={item.threadId} className={ROW_ENTRANCE} style={stagger(index)}>
-                  <button type="button" className={cx("ob-recent-row", PRESS, SOFT, "flex-col !items-start")} onClick={() => navigate.toThread(item.threadId)}>
+                  <button type="button" className={cx("ob-recent-row", PRESS, SOFT, "flex-col !items-start")} data-nav-row="item" onClick={() => navigate.toThread(item.threadId)}>
                     <span className="flex w-full items-center justify-between gap-3">
                       <span className="truncate font-medium">{item.title}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">
@@ -148,7 +148,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
             <ul className="divide-y divide-border rounded-lg border border-border">
               {activeTickets.map((ticket, index) => (
                 <li key={ticket.path} className={cx("flex items-center gap-3 px-3 py-2 text-sm", ROW_ENTRANCE)} style={stagger(index)}>
-                  <button type="button" className="ob-link shrink-0 font-medium" onClick={() => openNote(ticket.path)}>
+                  <button type="button" className="ob-link shrink-0 font-medium" data-nav-row="item" onClick={() => openNote(ticket.path)}>
                     {ticket.key}
                   </button>
                   <span className="min-w-0 flex-1 truncate">{ticket.summary}</span>
@@ -169,7 +169,7 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           <ul className="divide-y divide-border rounded-lg border border-border">
             {recent.map((file, index) => (
               <li key={file.path} className={ROW_ENTRANCE} style={stagger(index)}>
-                <button type="button" className={cx("ob-recent-row", PRESS, SOFT)} onClick={() => openNote(file.path)}>
+                <button type="button" className={cx("ob-recent-row", PRESS, SOFT)} data-nav-row="item" data-path={file.path} onClick={() => openNote(file.path)}>
                   <span className="truncate">{noteTitle(file.path)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{new Date(file.mtimeMs).toLocaleDateString()}</span>
                 </button>

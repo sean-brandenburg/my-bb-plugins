@@ -42,6 +42,7 @@ function TitleInput({ path, focus, onRename }: { path: string; focus: boolean; o
       ref={ref}
       value={value}
       aria-label="Note title"
+      data-vim-ignore
       className="ob-title-input"
       onChange={(event) => setValue(event.target.value)}
       onBlur={commit}

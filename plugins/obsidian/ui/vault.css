@@ -81,6 +81,11 @@
 .ob-tree-row-attachment {
   color: var(--muted-foreground);
 }
+.ob-tree-row-cut {
+  opacity: 0.5;
+  outline: 1px dashed var(--muted-foreground);
+  outline-offset: -1px;
+}
 .ob-tree-icon {
   width: 0.875rem;
   height: 0.875rem;
@@ -143,9 +148,22 @@
 .ob-search-file:hover,
 .ob-search-match:hover,
 .ob-outline-item:hover,
-.ob-recent-row:hover {
+.ob-recent-row:hover,
+.ob-search-file:focus-visible,
+.ob-search-match:focus-visible,
+.ob-outline-item:focus-visible,
+.ob-recent-row:focus-visible {
   background: var(--state-hover, var(--accent));
   color: var(--foreground);
+}
+/* The j/k cursor: rows are focused from keys, so focus-visible marks it. */
+.ob-search-file:focus-visible,
+.ob-search-match:focus-visible,
+.ob-outline-item:focus-visible,
+.ob-recent-row:focus-visible,
+.ob-link[data-nav-row]:focus-visible {
+  outline: 1px solid var(--ring, var(--primary));
+  outline-offset: -1px;
 }
 .ob-outline-item {
   display: block;

@@ -9,7 +9,7 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "build": "bb plugin build",
-    "test": "node --test --experimental-strip-types shared/*.test.ts host/*.test.ts"
+    "test": "node --test --experimental-strip-types shared/*.test.ts host/*.test.ts ui/*.test.ts"
   },
   "bb": {
     "name": "Obsidian Vault",

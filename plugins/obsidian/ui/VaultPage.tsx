@@ -7,16 +7,61 @@ import { Input } from "@/components/ui/input";
 import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
-import { DailyNoteActions, Dashboard } from "./daily";
+import { dateKeyOfDailyPath } from "../shared/daily";
+import { DailyNoteActions, Dashboard, startRoutine } from "./daily";
 import { ATTACHMENT_EXTENSIONS } from "./file-kinds";
-import { filesTab } from "./fixed-tabs";
 import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
+import { focusEditor } from "./Editor";
+import { backlinksTab, filesTab, outlineTab } from "./fixed-tabs";
+import { copyToClipboard, useGlobalCommands } from "./global-keys";
+import { KeysDialog } from "./KeysDialog";
+import { obsidianUrl } from "./NoteHeader";
 import { NoteView, type ViewMode } from "./NoteView";
-import { requestSearchFocus, setCurrentNotePath, useLocalStorageState, useSearchQuery, useTitleFocusPath } from "./state";
+import { flushOpenNotes, setCurrentNotePath, useLocalStorageState, usePanelTabRequests, useSearchQuery, useTitleFocusPath } from "./state";
 import { useVaultActions } from "./vault-actions";
 import { usePreviewBase, useVault, type VaultRpc } from "./vault-client";
+import { requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
+import type { PanelTab, VaultCommand } from "./vault-nav";
 
 const RECENT_LIMIT = 12;
+
+const PANEL_TABS = { files: filesTab, outline: outlineTab, backlinks: backlinksTab } as const;
+
+/** How far j and k scroll a note, matching vim-mode's scroll mode in threads. */
+const LINE_STEP_PX = 60;
+
+/** The open note's scrolling pane: the editor's scroller, or the reading view. */
+function noteScroller(root: HTMLElement): HTMLElement | null {
+  const body = [...root.querySelectorAll<HTMLElement>(".ob-note-body")].find((element) => element.getClientRects().length > 0);
+  if (body === undefined) return null;
+  return body.querySelector<HTMLElement>(".cm-scroller") ?? body;
+}
+
+function scrollNote(root: HTMLElement, command: VaultCommand): boolean {
+  const scroller = noteScroller(root);
+  if (scroller === null) return false;
+  if (command.kind === "scroll") {
+    scroller.scrollBy({ top: command.step * scroller.clientHeight * (command.amount === "half" ? 0.5 : 0.9) });
+    return true;
+  }
+  if (command.kind !== "list") return false;
+  switch (command.motion) {
+    case "down":
+      scroller.scrollBy({ top: LINE_STEP_PX });
+      return true;
+    case "up":
+      scroller.scrollBy({ top: -LINE_STEP_PX });
+      return true;
+    case "top":
+      scroller.scrollTo({ top: 0 });
+      return true;
+    case "bottom":
+      scroller.scrollTo({ top: scroller.scrollHeight });
+      return true;
+    default:
+      return false;
+  }
+}
 
 function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () => void }) {
   const [value, setValue] = useState("");
@@ -87,6 +132,10 @@ export function VaultPage({ subPath }: { subPath: string }) {
 
   const [mode, setMode] = useLocalStorageState<ViewMode>(`${pluginId}:mode`, "edit");
   const appPanel = experimental_useAppPanel();
+  const openTab = useCallback((tab: PanelTab) => appPanel.openFixedTab({ surface: { kind: "current" }, tab: PANEL_TABS[tab] }), [appPanel]);
+  usePanelTabRequests(openTab);
+  const global = useGlobalCommands();
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setCurrentNotePath(currentPath);
@@ -94,9 +143,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
   useEffect(() => () => setCurrentNotePath(null), []);
 
   /** Opens the Files tab in bb's right panel. */
-  const showExplorer = useCallback(() => {
-    appPanel.openFixedTab({ surface: { kind: "current" }, tab: filesTab });
-  }, [appPanel]);
+  const showExplorer = useCallback(() => openTab("files"), [openTab]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -108,7 +155,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
       if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         showExplorer();
-        requestAnimationFrame(() => requestSearchFocus());
+        requestSurfaceFocus("files", "search");
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -143,6 +190,92 @@ export function VaultPage({ subPath }: { subPath: string }) {
     [currentPath, resolver, openNote, createNote],
   );
 
+  const onDashboard = currentPath === null || folderExists(currentPath);
+
+  useSurfaceFocusRequest("page", root, () => root?.focus({ preventScroll: true }));
+
+  const onCommand = (command: VaultCommand): boolean => {
+    if (root === null || status === null || status.vaultPath === null) return false;
+    if (command.kind === "escape") {
+      if (!command.fromField) return false;
+      // After the field's own Escape handling, which may blur it on the next frame.
+      const field = document.activeElement;
+      requestAnimationFrame(() => {
+        if (document.activeElement === field || document.activeElement === document.body) root.focus({ preventScroll: true });
+      });
+      return true;
+    }
+    if (onDashboard) {
+      switch (command.kind) {
+        case "list":
+        case "scroll":
+          return runListCommand(root, command);
+        case "edit":
+          root.querySelector<HTMLElement>(".ob-capture-input")?.focus();
+          return true;
+        case "newNote":
+          actions.newNote(currentPath ?? "");
+          return true;
+        case "routine":
+          void startRoutine(command.mode);
+          return true;
+        default:
+          return global(command);
+      }
+    }
+    const path = currentPath!;
+    const isNote = isNotePath(path);
+    switch (command.kind) {
+      case "list":
+      case "scroll":
+        return scrollNote(root, command);
+      case "edit":
+        if (!isNote) return false;
+        if (mode === "edit") return focusEditor(path);
+        setMode("edit");
+        // The editor re-measures once it's shown again.
+        requestAnimationFrame(() => requestAnimationFrame(() => focusEditor(path)));
+        return true;
+      case "mode":
+        if (!isNote) return false;
+        setMode(mode === "edit" ? "read" : "edit");
+        return true;
+      case "rename": {
+        const title = root.querySelector<HTMLInputElement>("input.ob-title-input");
+        if (title === null) return false;
+        title.focus();
+        title.select();
+        return true;
+      }
+      case "newNote":
+        actions.newNote(dirname(path));
+        return true;
+      case "delete":
+        actions.requestDelete(path);
+        return true;
+      case "copyPath":
+        copyToClipboard(path, "vault path");
+        return true;
+      case "copyLink":
+        if (!isNote) return false;
+        copyToClipboard(`[[${resolver.linkTextFor(path)}]]`, "wikilink");
+        return true;
+      case "openInObsidian": {
+        const link = document.createElement("a");
+        link.href = obsidianUrl(status.vaultPath, path);
+        link.click();
+        return true;
+      }
+      case "routine":
+        if (dateKeyOfDailyPath(status.dailyFolder, path) !== status.todayKey) return false;
+        void flushOpenNotes().then(() => startRoutine(command.mode));
+        return true;
+      default:
+        return global(command);
+    }
+  };
+  useVaultKeys("page", root, onCommand);
+
   const recent = useMemo(
     () => (tree === null ? [] : tree.files.filter((file) => isNotePath(file.path)).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, RECENT_LIMIT)),
     [tree],
@@ -156,9 +289,9 @@ export function VaultPage({ subPath }: { subPath: string }) {
   }
 
   return (
-    <div className="ob-vault">
+    <div ref={setRoot} tabIndex={-1} className="ob-vault outline-none">
       <main className="ob-main">
-        {currentPath === null || folderExists(currentPath) ? (
+        {onDashboard ? (
           <Dashboard vault={vault} recent={recent} />
         ) : (
           <NoteView
@@ -185,6 +318,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
         )}
       </main>
       {actions.deleteDialog}
+      <KeysDialog />
     </div>
   );
 }

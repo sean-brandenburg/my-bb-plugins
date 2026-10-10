@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { VaultTree } from "../contract";
 import { basename, dirname, isNotePath, noteTitle } from "../shared/obsidian";
 import { fileIcon } from "./file-kinds";
+import { canMoveInto } from "./vault-nav";
 
 interface TreeNode {
   name: string;
@@ -36,6 +37,8 @@ interface FileTreeProps {
   setExpanded: (next: string[]) => void;
   renaming: string | null;
   setRenaming: (path: string | null) => void;
+  /** The file or folder `x` marked to move. */
+  cutPath: string | null;
   actions: FileTreeActions;
 }
 
@@ -81,6 +84,8 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
   const finish = (next: string | null) => {
     if (done.current) return;
     done.current = true;
+    // The input is about to unmount; its row keeps the keys.
+    if (document.activeElement === ref.current) ref.current?.closest<HTMLElement>("[data-nav-row]")?.focus({ preventScroll: true });
     onDone(next);
   };
   return (
@@ -88,6 +93,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
       ref={ref}
       value={value}
       aria-label="New name"
+      data-vim-ignore
       className={cx("ob-tree-rename", enter.fade, speed.fast)}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(value)}
@@ -99,7 +105,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
   );
 }
 
-export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, setRenaming, actions }: FileTreeProps) {
+export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, setRenaming, cutPath, actions }: FileTreeProps) {
   const nodes = useMemo(() => buildTree(tree), [tree]);
   const expandedSet = useMemo(() => new Set(expanded), [expanded]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -134,7 +140,7 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
       if (path === "") return;
       event.preventDefault();
       event.stopPropagation();
-      if (dirname(path) === folder || folder === path || folder.startsWith(path + "/")) return;
+      if (!canMoveInto(path, folder)) return;
       actions.move(path, folder);
     },
   });
@@ -149,21 +155,20 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
         aria-expanded={isFolder ? isOpen : undefined}
         aria-selected={node.path === currentPath}
         tabIndex={-1}
+        data-nav-row={isFolder ? "group" : "item"}
+        data-path={node.path}
         draggable={renaming !== node.path}
         onDragStart={(event) => {
           event.dataTransfer.setData(DRAG_TYPE, node.path);
           event.dataTransfer.effectAllowed = "move";
         }}
         onClick={() => (isFolder ? toggle(node.path) : actions.open(node.path))}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") isFolder ? toggle(node.path) : actions.open(node.path);
-          if (event.key === "F2") setRenaming(node.path);
-        }}
         className={cn(
           "ob-tree-row",
           node.path === currentPath && "ob-tree-row-active",
           dropTarget === node.path && "ob-tree-row-drop",
           !isFolder && !isNotePath(node.path) && "ob-tree-row-attachment",
+          cutPath === node.path && "ob-tree-row-cut",
         )}
         style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
         {...(isFolder ? dropProps(node.path) : {})}
@@ -190,7 +195,7 @@ export function FileTree({ tree, currentPath, expanded, setExpanded, renaming, s
       </div>
     );
     return (
-      <div key={node.path} role="none" className={cx(enter.rise, speed.fast, STAGGER)} style={stagger(index)}>
+      <div key={node.path} role="none" data-nav-group={isFolder ? "" : undefined} className={cx(enter.rise, speed.fast, STAGGER)} style={stagger(index)}>
         <ContextMenu>
           <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
           <ContextMenuContent>

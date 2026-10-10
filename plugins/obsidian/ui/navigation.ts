@@ -15,15 +15,17 @@ export function decodeNotePath(subPath: string): string {
 export interface NavigationRequest {
   path: string;
   target: NavigationTarget;
+  /** False leaves focus where it is, so keys like n keep working after the jump. */
+  focus: boolean;
   seq: number;
 }
 
 const navigationRequests = createStore<NavigationRequest | null>(null);
 let navigationSeq = 0;
 
-export function requestNavigation(path: string, target: NavigationTarget): void {
+export function requestNavigation(path: string, target: NavigationTarget, focus = true): void {
   navigationSeq += 1;
-  navigationRequests.set({ path, target, seq: navigationSeq });
+  navigationRequests.set({ path, target, focus, seq: navigationSeq });
 }
 
 export function useNavigationRequest(path: string): NavigationRequest | null {
@@ -39,8 +41,8 @@ export function consumeNavigation(seq: number): void {
 export function useOpenNote() {
   const navigate = useBbNavigate();
   return useCallback(
-    (path: string, options: { target?: NavigationTarget; replace?: boolean } = {}) => {
-      if (options.target !== undefined) requestNavigation(path, options.target);
+    (path: string, options: { target?: NavigationTarget; replace?: boolean; focus?: boolean } = {}) => {
+      if (options.target !== undefined) requestNavigation(path, options.target, options.focus);
       navigate.toPluginPanel(PANEL_PATH, { subPath: path, replace: options.replace });
     },
     [navigate],
