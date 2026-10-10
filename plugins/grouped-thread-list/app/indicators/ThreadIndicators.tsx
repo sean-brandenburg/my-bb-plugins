@@ -402,7 +402,7 @@ export function ThreadIndicators() {
             <Icon name="Pin" className="size-[18px]" />
             <CornerBadge
               value={pinned}
-              className="-top-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
+              className="-bottom-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
             />
           </>
         }
