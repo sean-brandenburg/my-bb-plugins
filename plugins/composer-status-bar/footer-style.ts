@@ -193,6 +193,12 @@ export const FOOTER_CSS = `
 ${COMPOSER} *:has(> [${ANCHOR_ATTRIBUTE}]) {
   display: none !important;
 }
+/* bb's model picker (from this bar or ⇧⌘M) lays its reasoning levels out in one centred row sized for bb's own font;
+   six levels in a wider font overflow both edges of the menu, so they go in a grid instead. */
+[data-radix-popper-content-wrapper] [role="radiogroup"][aria-label="Reasoning"] {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+}
 `;
 
 /** Installs the footer stylesheet; returns cleanup. */
