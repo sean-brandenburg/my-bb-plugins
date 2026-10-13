@@ -590,17 +590,28 @@ describe("GitHub sync", () => {
     expect((await board()).tickets[0]!.columnId).toBe("backlog");
   });
 
-  it("reports a missing token without throwing", async () => {
+  it("reports a missing token without throwing when the gh binary is not found", async () => {
     vi.stubGlobal("fetch", stubGithub({}));
-    await load({ githubToken: "" });
-    // `gh auth token` is not available in the test environment, so the plugin
-    // records the error on the sync status instead of crashing.
+    await load({ githubToken: "", ghPath: "/nonexistent/gh" });
     const status = (await current().harness.behavior.callRpc("sync_now", null)) as Board["sync"];
-    if (status.lastError !== null) {
-      expect(status.lastError).toContain("No GitHub token");
-      expect(status.tokenSource).toBe("none");
-    } else {
-      expect(status.tokenSource).toBe("gh-cli");
+    expect(status.lastError).toContain("No GitHub token");
+    expect(status.tokenSource).toBe("none");
+  });
+
+  it("takes the token from the configured gh binary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kanban-gh-"));
+    try {
+      const gh = join(dir, "gh");
+      await writeFile(gh, '#!/bin/sh\n[ "$1 $2" = "auth token" ] && echo gh-tok\n', { mode: 0o755 });
+      const fetch = stubGithub({});
+      vi.stubGlobal("fetch", fetch);
+      await load({ githubToken: "", ghPath: gh });
+      const status = (await current().harness.behavior.callRpc("sync_now", null)) as Board["sync"];
+      expect(status).toMatchObject({ tokenSource: "gh-cli", login: "sean", lastError: null });
+      const auth = fetch.mock.calls.map(([, init]) => new Headers(init?.headers).get("authorization"));
+      expect(auth).toContain("Bearer gh-tok");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

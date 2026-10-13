@@ -10,6 +10,13 @@ export function defineSettings(bb: BbPluginApi) {
         "Personal access token with repo read scope. Leave empty to use the token from `gh auth token`.",
       secret: true,
     },
+    ghPath: {
+      type: "string",
+      label: "GitHub CLI binary",
+      description:
+        "Path to `gh`, used for `gh auth token` when no GitHub token is set. bb launched from the Dock doesn't see your shell's PATH, so point this at the full path, e.g. /opt/homebrew/bin/gh.",
+      default: "gh",
+    },
     jiraSiteUrl: {
       type: "string",
       label: "Jira site URL",

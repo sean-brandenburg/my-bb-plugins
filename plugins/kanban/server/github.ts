@@ -113,12 +113,12 @@ export function prStateOf(item: {
 }
 
 export async function resolveToken(settings: KanbanSettings): Promise<{ token: string; source: SyncStatus["tokenSource"] } | null> {
-  const { githubToken } = await settings.get();
+  const { githubToken, ghPath } = await settings.get();
   if (typeof githubToken === "string" && githubToken.trim() !== "") {
     return { token: githubToken.trim(), source: "setting" };
   }
   try {
-    const { stdout } = await execFileAsync("gh", ["auth", "token"], { timeout: 10_000 });
+    const { stdout } = await execFileAsync(ghPath.trim() || "gh", ["auth", "token"], { timeout: 10_000 });
     const token = stdout.trim();
     return token === "" ? null : { token, source: "gh-cli" };
   } catch {

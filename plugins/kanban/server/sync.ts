@@ -112,7 +112,7 @@ export function createSourceSync(
     };
 
     if (githubSources.length > 0 && auth === null) {
-      pass.problems.push("No GitHub token: set the GitHub token setting or sign in with `gh auth login` on the BB server machine.");
+      pass.problems.push("No GitHub token: set the GitHub token setting, or sign in with `gh auth login` on the BB server machine and check the GitHub CLI binary setting points at `gh`.");
     }
     // Runs with no GitHub sources too: tracked PRs still get refreshed and finished.
     if (auth !== null) await syncGithub(pass, auth.token, githubSources);
@@ -347,7 +347,7 @@ export function createSourceSync(
   }
 
   function onSettingsChange(next: KanbanSettingsValues, prev: KanbanSettingsValues): void {
-    if (next.githubToken !== prev.githubToken) {
+    if (next.githubToken !== prev.githubToken || next.ghPath !== prev.ghPath) {
       sync.login = null;
       void bb.storage.kv.delete("login");
       void runSync();

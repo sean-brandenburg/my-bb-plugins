@@ -286,6 +286,9 @@ bb plugin install .
 GitHub access uses the **GitHub token** plugin setting, or falls back to
 `gh auth token` on the machine running the BB server. Sign in with
 `gh auth login` or paste a token under Settings → Installed plugins → Kanban.
+bb started from the Dock or Finder gets a minimal PATH without Homebrew, so
+set the **GitHub CLI binary** setting to the full path (e.g.
+`/opt/homebrew/bin/gh`) if the board reports no token.
 
 Optional settings: sync interval, whether to spawn a thread for every new PR
 card, a fallback project for PRs whose repository matches no project's git
