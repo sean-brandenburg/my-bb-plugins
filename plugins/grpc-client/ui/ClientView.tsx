@@ -15,7 +15,7 @@ import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, isToolbar, page
 import { type Caret, type ClientCommand, cycle, listAction, type ListMotion } from "./client-nav";
 import { Centered, FOCUS_RING, MenuItem, Segmented, Tabs } from "./controls";
 import { EndpointSwitcher } from "./EndpointSwitcher";
-import { HistoryList } from "./HistoryList";
+import { HistoryList, type HistoryListHandle } from "./HistoryList";
 import { useServices, useTypeClosure, useWidth } from "./hooks";
 import { EditorOptionsContext, inputClass } from "./MessageEditor";
 import { MetadataEditor, type MetadataRow } from "./MetadataEditor";
@@ -246,6 +246,7 @@ export function ClientView() {
 
   const listRef = useRef<HTMLElement>(null);
   const methodListRef = useRef<MethodListHandle>(null);
+  const historyListRef = useRef<HistoryListHandle>(null);
   const responseSearchRef = useRef<ResponseSearchHandle>(null);
   const requestPaneRef = useRef<HTMLDivElement>(null);
   /** The row the list cursor was last on, so keys resume there after focus leaves the list. */
@@ -313,13 +314,15 @@ export function ClientView() {
           ? landFieldCursor()
           : pendingFocus.target === "response"
             ? focusResponse()
-            : handle !== null;
+            : pendingFocus.target === "search" && leftTab === "history"
+              ? (historyListRef.current?.focusSearch() ?? false)
+              : handle !== null;
     if (!landed) {
       // Rows can arrive in a child's own render (call history loads itself), which doesn't re-run this.
       const timer = setTimeout(retryPendingFocus, PENDING_FOCUS_RETRY_MS);
       return () => clearTimeout(timer);
     }
-    if (pendingFocus.target === "search") handle?.focusSearch();
+    if (pendingFocus.target === "search" && leftTab !== "history") handle?.focusSearch();
     if (pendingFocus.target === "filters") handle?.openFilters();
     setPendingFocus(null);
   });
@@ -504,7 +507,7 @@ export function ClientView() {
         return currentPane() === "response" && (responseSearchRef.current?.next(command.step) ?? false);
       case "search":
         if (currentPane() === "response" && responseSearchRef.current?.startSearch()) return;
-        setLeftTab("methods");
+        // Searches whichever the list shows: methods or call history.
         revealList(command.kind);
         return;
       case "filters":
@@ -609,6 +612,10 @@ export function ClientView() {
             focusRow(row);
             return;
           }
+        }
+        if (historyListRef.current?.clearSearch()) {
+          revealList("cursor");
+          return;
         }
         if (methodListRef.current?.clearSearch()) {
           // The result rows the cursor was on are gone; it goes back to the open method.
@@ -722,7 +729,7 @@ export function ClientView() {
         )}
       </div>
       {leftTab === "history" ? (
-        <HistoryList selectedId={shown?.historyId ?? null} onOpen={openHistory} />
+        <HistoryList selectedId={shown?.historyId ?? null} handle={historyListRef} onOpen={openHistory} />
       ) : current?.status === "error" && serviceData === null ? (
         <div className="space-y-3 p-4">
           <p className="text-sm font-medium text-foreground">Could not load the protos</p>

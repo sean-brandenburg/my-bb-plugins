@@ -34,8 +34,9 @@ goes back to unset), and otherwise empties the field's box. In call history,
 `dd` deletes the call, and `k` from the first call reaches Clear (`h`/`l` step
 between Delete all and Cancel once it asks).
 
-`/` searches (Enter opens the first match and leaves the cursor on it, Escape
-clears the search, then leaves it), `f` opens the filters, `e` the endpoint
+`/` searches the methods, or call history when the list shows it (by method,
+endpoint, status, or anything in the request; Enter opens the first match and
+leaves the cursor on it, Escape clears the search, then leaves it), `f` opens the filters, `e` the endpoint
 picker, `c` toggles call history, and `b` shows or hides the list. `[`/`]` and
 `{`/`}` cycle the request and response tabs, `m` switches between form and
 JSON, `y` copies the grpcurl command, and ⌘↵ sends. Ctrl-d/Ctrl-u (half a

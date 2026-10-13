@@ -80,7 +80,7 @@ export const KEY_HELP: readonly { keys: readonly string[]; action: string }[] = 
   { keys: ["j", "k", "/", "Enter", "Esc"], action: "In an open enum or bool list: move, filter, pick, or close it unchanged" },
   { keys: ["j", "k", "Enter", "Esc"], action: "In the endpoint or filter menu: move, press, or close it" },
   { keys: ["dd"], action: "Remove the list item or optional field, empty the field, or delete the call from history" },
-  { keys: ["/"], action: "Search methods (Enter opens the first match), or the response when you're in it" },
+  { keys: ["/"], action: "Search methods or call history, whichever the list shows (Enter opens the first match), or the response when you're in it" },
   { keys: ["n", "N"], action: "Next / previous match in the response" },
   { keys: ["f"], action: "Filter methods" },
   { keys: ["e"], action: "Switch endpoint or protos" },
