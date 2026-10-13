@@ -103,7 +103,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       return reviews.spawnReviewForTicket(id, await projects.projectForTicket(ticket, projectId), mode);
     },
     review_list: ({ ticketId }) => reviews.listReviews(ticketId),
-    review_apply: ({ ticketId, reviewId, autoApprove, push }) => reviews.spawnApplyForReview(ticketId, reviewId, autoApprove, push),
+    review_apply: ({ ticketId, reviewId, push }) => reviews.spawnApplyForReview(ticketId, reviewId, push),
     review_set_selection: ({ reviewId, findingId, selected }) => reviews.setSelection(reviewId, findingId, selected),
     review_edit_finding: ({ reviewId, findingId, edit }) => reviews.editFinding(reviewId, findingId, edit),
     diff_get: async ({ ticketId, refresh }) => changes.ticketDiff(await resolveDiffSubject(ticketId), refresh),
@@ -127,7 +127,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     comments_list: ({ ticketId }) => prComments.listComments(ticketId),
     comment_set_selected: ({ id, selected }) => prComments.setSelected(id, selected),
     comment_set_addressed: ({ id, addressed }) => prComments.setAddressed(id, addressed),
-    comments_apply: ({ ticketId, autoApprove, push }) => prComments.spawnApplyForComments(ticketId, autoApprove, push),
+    comments_apply: ({ ticketId, push }) => prComments.spawnApplyForComments(ticketId, push),
     review_reset_selection: ({ reviewId }) => reviews.resetSelection(reviewId),
     ticket_link_thread: ({ id, threadId }) => threads.linkThread(id, threadId),
     columns_set: ({ columns }) => board.setColumns(columns),

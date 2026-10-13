@@ -234,7 +234,6 @@ export const rpcContract = defineRpcContract({
         reviewEvent: reviewEventSchema.default("COMMENT"),
         /** Start a thread that addresses the pending local comments. */
         address: z.boolean().default(true),
-        autoApprove: z.boolean().default(false),
         push: z.boolean().default(true),
       })
       .strict(),
@@ -253,7 +252,7 @@ export const rpcContract = defineRpcContract({
     output: prCommentSchema,
   },
   comments_apply: {
-    input: z.object({ ticketId: z.string(), autoApprove: z.boolean().default(false), push: z.boolean().default(true) }).strict(),
+    input: z.object({ ticketId: z.string(), push: z.boolean().default(true) }).strict(),
     output: z.object({ ticket: ticketSchema, apply: commentApplySchema }),
   },
   ticket_review_pr: {
@@ -289,8 +288,6 @@ export const rpcContract = defineRpcContract({
       .object({
         ticketId: z.string(),
         reviewId: z.string().nullable().default(null),
-        /** Skip the apply-review skill's triage confirmation and apply every finding. */
-        autoApprove: z.boolean().default(false),
         /** Push the resulting commit to the PR branch; otherwise commit locally in the worktree. */
         push: z.boolean().default(true),
       })

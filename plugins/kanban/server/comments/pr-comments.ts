@@ -43,7 +43,7 @@ export function commentsBody(ticket: Ticket, comments: PrComment[]): string {
   return lines.join("\n");
 }
 
-export function applyCommentsPrompt(ticket: Ticket, apply: { id: string }, autoApprove: boolean, push: boolean, body: string): string {
+export function applyCommentsPrompt(ticket: Ticket, apply: { id: string }, push: boolean, body: string): string {
   const { repo, number, url } = ticket.pr ?? { repo: null, number: null, url: null };
   const intro =
     ticket.pr !== null
@@ -64,7 +64,7 @@ export function applyCommentsPrompt(ticket: Ticket, apply: { id: string }, autoA
     "",
     ...setup,
     "",
-    `Then invoke the \`apply-pr-comments\` skill with the comments below.${autoApprove ? " The user has said: just apply all of it, don't ask — skip the triage confirmation." : " Run its triage step and wait for the user's go-ahead in this thread before changing anything."}`,
+    "Then invoke the `apply-pr-comments` skill with the comments below. The user chose them on the Kanban board, so they are already triaged: apply every one as written, without a triage step, a confirmation, or dropping any. Report any you could not apply and why.",
     "",
     ...finishSteps(push, '"$HEAD_REF"', "bb kanban comments-applied", "Address review comments"),
     "",
@@ -173,7 +173,6 @@ export function createPrComments(
 
   async function spawnApplyForComments(
     ticketId: string,
-    autoApprove: boolean,
     push: boolean,
     override?: PrComment[],
   ): Promise<{ ticket: Ticket; apply: CommentApply }> {
@@ -195,7 +194,7 @@ export function createPrComments(
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: environment ?? (await freshWorktree(projectId)),
-      prompt: applyCommentsPrompt(ticket, { id: applyId }, autoApprove, push, commentsBody(ticket, selected)),
+      prompt: applyCommentsPrompt(ticket, { id: applyId }, push, commentsBody(ticket, selected)),
       title: threadTitle(`Address comments ${shortName}: ${ticket.title}`),
       ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
       visibility: await codeReviewThreadVisibility(),

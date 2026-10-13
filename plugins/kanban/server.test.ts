@@ -1223,7 +1223,7 @@ describe("persisted reviews", () => {
       lastAssistantText: "## Review Findings\n- a.go:1 fix me",
     });
 
-    const applied = (await current().harness.behavior.callRpc("review_apply", { ticketId: card.id, autoApprove: true })) as Ticket;
+    const applied = (await current().harness.behavior.callRpc("review_apply", { ticketId: card.id })) as Ticket;
     expect(applied.latestReview?.apply).toMatchObject({ threadId: "thr_3", completedAt: null });
     expect(spawned[2]).toMatchObject({
       projectId: "proj_acme",
@@ -1234,7 +1234,7 @@ describe("persisted reviews", () => {
     });
     const prompt = String(spawned[2]!.prompt);
     expect(prompt).toContain("`apply-review` skill");
-    expect(prompt).toContain("just apply all of it, don't ask");
+    expect(prompt).toContain("apply every one as written, without a triage step, a confirmation");
     expect(prompt).toContain(`against commit ${sha}`);
     expect(prompt).toContain("git push origin HEAD:refs/heads/feature/refactor");
     expect(prompt).toContain("bb kanban review-applied --commit");
@@ -1285,7 +1285,7 @@ describe("persisted reviews", () => {
       current().harness.behavior.callRpc("review_set_selection", { reviewId: reviews[0]!.id, findingId: "F9", selected: true }),
     ).rejects.toThrow(/no finding F9/u);
 
-    await current().harness.behavior.callRpc("review_apply", { ticketId: card.id, autoApprove: true });
+    await current().harness.behavior.callRpc("review_apply", { ticketId: card.id });
     const prompt = String(spawned[2]!.prompt);
     expect(prompt).toContain("2 of 3 findings were selected");
     expect(prompt).toContain("**F1** (importance 4, scope 5) `a.go:10` — Real bug. Breaks when empty — Guard it (flagged by: correctness)");
@@ -1305,14 +1305,14 @@ describe("persisted reviews", () => {
     expect(reviews[0]!.selectionOverrides).toEqual({ F1: false });
   });
 
-  it("asks for confirmation by default and deletes reviews with the card", async () => {
+  it("applies without asking and deletes reviews with the card", async () => {
     const card = await reviewedCard();
     await current().harness.behavior.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
       lastAssistantText: `findings\nReviewed commit: ${sha}`,
     });
     await current().harness.behavior.callRpc("review_apply", { ticketId: card.id });
-    expect(String(spawned[2]!.prompt)).toContain("wait for the user's go-ahead");
+    expect(String(spawned[2]!.prompt)).not.toContain("go-ahead");
 
     await current().harness.behavior.callRpc("ticket_delete", { id: card.id });
     const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
@@ -1625,7 +1625,7 @@ describe("PR comments", () => {
     expect(prompt).not.toContain("empty case");
     expect(prompt).toContain("Do NOT push");
     expect(prompt).toContain("```json pr-comments");
-    expect(prompt).toContain("wait for the user's go-ahead");
+    expect(prompt).toContain("apply every one as written, without a triage step, a confirmation");
 
     await expect(current().harness.behavior.callRpc("comments_apply", { ticketId: card.id })).rejects.toThrow(/already in progress/u);
     const done = await current().harness.behavior.runCli(["comments-applied", "--commit", "abc1234"], ctx("thr_1"));
@@ -1644,11 +1644,11 @@ describe("PR comments", () => {
 
   it("includes the push step when asked and records pushed on review and comment applies", async () => {
     const card = await syncedCard();
-    const result = (await current().harness.behavior.callRpc("comments_apply", { ticketId: card.id, autoApprove: true, push: true })) as { apply: CommentApply };
+    const result = (await current().harness.behavior.callRpc("comments_apply", { ticketId: card.id, push: true })) as { apply: CommentApply };
     const prompt = String(spawned[0]!.prompt);
     expect(prompt).toContain('git push origin HEAD:refs/heads/"$HEAD_REF"');
     expect(prompt).toContain("--pushed");
-    expect(prompt).toContain("just apply all of it");
+    expect(prompt).toContain("apply every one as written");
     await current().harness.behavior.runCli(["comments-applied", "--commit", "abc1234", "--pushed", "--apply", result.apply.id]);
     const { applies } = (await current().harness.behavior.callRpc("comments_list", { ticketId: card.id })) as { applies: CommentApply[] };
     expect(applies[0]).toMatchObject({ push: true, pushedCommit: "abc1234" });
@@ -1722,7 +1722,7 @@ describe("diff view and diff comments", () => {
     expect((await board()).tickets[0]!.pendingDiffComments).toBe(1);
     await expect(current().harness.behavior.callRpc("diff_comment_update", { id: onGithub.id, body: "x" })).rejects.toThrow(/already posted/u);
 
-    const toAgent = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true, autoApprove: true })) as { posted: number; apply: CommentApply | null };
+    const toAgent = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true })) as { posted: number; apply: CommentApply | null };
     expect(toAgent.posted).toBe(0);
     expect(toAgent.apply?.commentIds).toEqual([`local:${local.id}`]);
     const prompt = String(spawned[0]!.prompt);
@@ -1766,7 +1766,7 @@ describe("diff view and diff comments", () => {
     expect(posted[0]).toMatchObject({ comments: [{ path: "a.go", start_line: 1, start_side: "LEFT", line: 3, side: "RIGHT", body: "Rename across both" }] });
 
     await current().harness.behavior.callRpc("diff_comment_delete", { id: reply.id });
-    const toAgent = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true, autoApprove: true })) as { apply: CommentApply | null };
+    const toAgent = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true })) as { apply: CommentApply | null };
     expect(toAgent.apply?.commentIds).toEqual([`local:${local.id}`]);
     const prompt = String(spawned[0]!.prompt);
     expect(prompt).toContain("a.go:1-3 (old side) (left on the Kanban diff view)");

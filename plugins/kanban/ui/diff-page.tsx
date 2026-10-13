@@ -8,7 +8,6 @@ import type { Board, Ticket } from "../shared/board";
 import type { ReviewEvent } from "../shared/comments";
 import { BOARD_CHANGED, THREAD_SUBJECT_PREFIX } from "../shared/events";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { useBoard, usePushPreference } from "./data";
@@ -98,7 +97,6 @@ const REVIEW_EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string }> = [
 function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmitted }: { subjectId: string; pending: PendingComments; canApprove: boolean; onOpenThread: (threadId: string) => void; onSubmitted: () => void }) {
   const rpc = useRpc<typeof rpcContract>();
   const [push, setPush] = usePushPreference();
-  const [autoApprove, setAutoApprove] = useState(false);
   const [chosenEvent, setReviewEvent] = useState<ReviewEvent>("COMMENT");
   const reviewEvent = canApprove ? chosenEvent : "COMMENT";
   const [submitting, setSubmitting] = useState<"github" | "agent" | null>(null);
@@ -108,7 +106,7 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
   const submit = async (destination: "github" | "agent") => {
     setSubmitting(destination);
     try {
-      const result = await rpc.call("diff_comments_submit", { ticketId: subjectId, postToGithub: destination === "github", reviewEvent, address: destination === "agent", autoApprove, push });
+      const result = await rpc.call("diff_comments_submit", { ticketId: subjectId, postToGithub: destination === "github", reviewEvent, address: destination === "agent", push });
       const posted = reviewEvent === "APPROVE" ? `Approved with ${result.posted} on GitHub` : reviewEvent === "REQUEST_CHANGES" ? `Requested changes with ${result.posted} on GitHub` : `Posted ${result.posted} to GitHub`;
       toast.success(destination === "github" ? posted : "Address thread started");
       if (result.apply !== null) onOpenThread(result.apply.threadId);
@@ -131,10 +129,6 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
             local comment{local.length === 1 ? "" : "s"}
           </span>
           <PushToggle push={push} onChange={setPush} />
-          <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Checkbox checked={autoApprove} onCheckedChange={(checked) => setAutoApprove(checked === true)} aria-label="Skip triage confirmation" />
-            skip triage
-          </label>
           <span title="Start a thread that addresses these with the apply-pr-comments skill and replies in each thread">
             <Button type="button" className={COMPACT} disabled={submitting !== null} onClick={() => void submit("agent")}>
               <Icon name="kanban-wrench" className="size-3.5" />

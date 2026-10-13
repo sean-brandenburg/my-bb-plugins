@@ -82,7 +82,7 @@ function earlierFindingsSection(standing: Review[]): string[] {
   return lines;
 }
 
-function applyPrompt(ticket: Ticket, review: Review, autoApprove: boolean, push: boolean, findingsBody: string): string {
+function applyPrompt(ticket: Ticket, review: Review, push: boolean, findingsBody: string): string {
   if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
   const { repo, number, url } = ticket.pr;
   const headRef = review.headRef ?? `$(gh pr view ${number} --repo ${repo} --json headRefName --jq .headRefName)`;
@@ -95,7 +95,7 @@ function applyPrompt(ticket: Ticket, review: Review, autoApprove: boolean, push:
       ? "2. Note `git rev-parse HEAD`."
       : `2. The review was made against commit ${review.commitSha}. If \`git rev-parse HEAD\` differs, say so and check each finding still applies before fixing it.`,
     "",
-    `Then invoke the \`apply-review\` skill with the findings below.${autoApprove ? " The user has said: just apply all of it, don't ask — skip the triage confirmation." : " Run its triage step and wait for the user's go-ahead in this thread before changing anything."}`,
+    "Then invoke the `apply-review` skill with the findings below. The user selected them on the Kanban board, so they are already triaged: apply every one as written, without a triage step, a confirmation, or dropping or reshaping any. Report any you could not apply and why.",
     "",
     ...finishSteps(push, headRef, "bb kanban review-applied", "Apply code review findings"),
     "",
@@ -152,7 +152,7 @@ export function createReviews(
     return getTicket(ticket.id);
   }
 
-  async function spawnApplyForReview(ticketId: string, reviewId: string | null, autoApprove: boolean, push: boolean): Promise<Ticket> {
+  async function spawnApplyForReview(ticketId: string, reviewId: string | null, push: boolean): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
     const row = reviewId === null ? stmts.latestCompletedReview.get(ticket.id) : stmts.reviewById.get(reviewId);
@@ -181,7 +181,7 @@ export function createReviews(
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: environment ?? (await freshWorktree(projectId)),
-      prompt: applyPrompt(ticket, review, autoApprove, push, findingsBody),
+      prompt: applyPrompt(ticket, review, push, findingsBody),
       title: threadTitle(`Apply review ${prShortName(ticket.pr)}: ${ticket.title}`),
       parentThreadId: ticket.threadId ?? review.threadId,
       visibility: await codeReviewThreadVisibility(),

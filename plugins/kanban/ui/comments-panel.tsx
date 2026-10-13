@@ -139,7 +139,6 @@ export function CommentsPanel({
 }) {
   const now = useNow();
   const [push, setPush] = usePushPreference();
-  const [autoApprove, setAutoApprove] = useState(false);
   const [showAddressed, setShowAddressed] = useState(false);
   const [data, setData] = useState<{ comments: PrComment[]; applies: CommentApply[] } | null>(null);
   const counts = ticket.comments;
@@ -195,7 +194,7 @@ export function CommentsPanel({
                 variant="secondary"
                 className={COMPACT}
                 disabled={pending || !canApply || counts.selected === 0 || running !== null}
-                onClick={() => void run(() => rpc.call("comments_apply", { ticketId: ticket.id, autoApprove, push }), "Apply thread started")}
+                onClick={() => void run(() => rpc.call("comments_apply", { ticketId: ticket.id, push }), "Apply thread started")}
               >
                 <Icon name="kanban-wrench" className="size-3.5" />
                 {running !== null ? "Applying…" : `Apply ${counts.selected} comment${counts.selected === 1 ? "" : "s"}`}
@@ -229,10 +228,6 @@ export function CommentsPanel({
                 Show {addressedCount} addressed
               </label>
             ) : null}
-            <label className="inline-flex items-center gap-1.5">
-              <Checkbox checked={autoApprove} onCheckedChange={(checked) => setAutoApprove(checked === true)} aria-label="Skip triage confirmation when applying" />
-              Skip triage
-            </label>
           </div>
           {data === null ? (
             <p className={cn("text-sm text-muted-foreground", enter.fade)}>Loading…</p>

@@ -345,13 +345,12 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           options: {
             ...ticketOption,
             review: { type: "string", description: "Review id; defaults to the latest completed review" },
-            yes: { type: "boolean", description: "Apply every finding without the triage confirmation", aliases: ["auto-approve"] },
             "no-push": { type: "boolean", description: "Commit in the worktree but do not push to the PR branch" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
             const ticket = ticketForContext(options.ticket, ctx.threadId);
-            const applied = await spawnApplyForReview(ticket.id, options.review ?? null, options.yes, !options["no-push"]);
+            const applied = await spawnApplyForReview(ticket.id, options.review ?? null, !options["no-push"]);
             return {
               exitCode: 0,
               stdout: options.json
@@ -383,13 +382,12 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           summary: "Start a thread that applies the selected PR comments with the apply-pr-comments skill and pushes",
           options: {
             ...ticketOption,
-            yes: { type: "boolean", description: "Apply every selected comment without the triage confirmation", aliases: ["auto-approve"] },
             "no-push": { type: "boolean", description: "Commit in the worktree but do not push to the PR branch" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
             const ticket = ticketForContext(options.ticket, ctx.threadId);
-            const result = await spawnApplyForComments(ticket.id, options.yes, !options["no-push"]);
+            const result = await spawnApplyForComments(ticket.id, !options["no-push"]);
             return {
               exitCode: 0,
               stdout: options.json ? JSON.stringify(result) : `Apply started in @thread:${result.apply.threadId}`,

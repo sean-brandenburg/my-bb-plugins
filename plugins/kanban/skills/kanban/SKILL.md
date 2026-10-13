@@ -26,10 +26,10 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban review [--ticket <id>] [--project <id>]` | Start a code-review thread for the card's PR: a fresh worktree checks the PR out detached and runs the `code-review` skill. Inside a thread, defaults to that thread's card. |
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the PR out: records which commit the review covers. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
-| `bb kanban apply-review [--ticket <id>] [--yes]` | Start a thread that runs the `apply-review` skill on the persisted findings, commits, and pushes to the PR branch. `--yes` skips the triage confirmation. |
+| `bb kanban apply-review [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-review` skill on the selected findings, applying all of them without confirmation, commits, and (unless `--no-push`) pushes to the PR branch. |
 | `bb kanban review-applied --commit <sha> [--pushed]` | Run from an apply thread after committing: records the commit, `--pushed` when it was pushed. |
 | `bb kanban comments [--ticket <id>]` | List the PR's synced comments with their selection state. |
-| `bb kanban apply-comments [--ticket <id>] [--yes] [--no-push]` | Start a thread that runs the `apply-pr-comments` skill on the selected comments, commits, and (unless `--no-push`) pushes. |
+| `bb kanban apply-comments [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-pr-comments` skill on the selected comments, applying all of them without confirmation, commits, and (unless `--no-push`) pushes. |
 | `bb kanban comments-applied --commit <sha> [--pushed]` | Run from an apply-comments thread after committing: marks the comments addressed. |
 | `bb kanban comment-reply <comment-id> "<text>"` | Reply in an inline comment's thread on the board (`local:<id>` or `review-comment:<n>`). Stays on the board; never posted to GitHub. |
 | `bb kanban add "<title>" --parent <ticket-id> [--description <md>]` | Add a subtask under a card (not linked to the current thread). Use this when asked to break work down. |
@@ -100,7 +100,8 @@ latest message in that context. Never post anything to GitHub yourself.
 ## Apply threads
 
 A thread whose instructions say it addresses PR comments runs the
-`apply-pr-comments` skill on the comments pasted into its prompt, commits,
+`apply-pr-comments` skill on the comments pasted into its prompt, applying
+every one as written with no triage step or confirmation, commits,
 pushes only if the prompt says to, then runs
 `bb kanban comments-applied --commit "$(git rev-parse HEAD)"` (add `--pushed`
 after a push). Then answer each inline comment with
@@ -111,8 +112,11 @@ next to the line on the board. Never post replies on GitHub.
 
 A thread whose instructions say it applies a review runs the `apply-review`
 skill on the findings selected on the board (pasted into the prompt; the
-unselected ones were deliberately left out, so do not re-add them), commits, pushes to
-the PR head branch with `git push origin HEAD:refs/heads/<head>`, then runs
+unselected ones were deliberately left out, so do not re-add them). The
+selection is the triage: apply every selected finding as written, without a
+triage step, a confirmation, or dropping or reshaping any, and report the ones
+you could not apply. Then commit, push to the PR head branch with
+`git push origin HEAD:refs/heads/<head>`, and run
 `bb kanban review-applied --commit "$(git rev-parse HEAD)"`. Never force-push.
 
 ## Rules

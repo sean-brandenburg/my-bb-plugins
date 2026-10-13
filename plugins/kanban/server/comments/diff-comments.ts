@@ -334,14 +334,12 @@ export function createDiffComments(
     postToGithub,
     reviewEvent,
     address,
-    autoApprove,
     push,
   }: {
     ticketId: string;
     postToGithub: boolean;
     reviewEvent: ReviewEvent;
     address: boolean;
-    autoApprove: boolean;
     push: boolean;
   }): Promise<{ posted: number; postedUrl: string | null; apply: CommentApply | null; ticket: Ticket }> {
     if (!postToGithub && !address) throw new Error("Choose at least one of: post to GitHub, address with a thread");
@@ -365,7 +363,7 @@ export function createDiffComments(
     }
     let apply: CommentApply | null = null;
     if (local.length > 0) {
-      const result = await spawnApplyForComments(ticket.id, autoApprove, push, diffCommentsAsPrComments(ticket, local));
+      const result = await spawnApplyForComments(ticket.id, push, diffCommentsAsPrComments(ticket, local));
       apply = result.apply;
       stmts.assignDiffCommentsApply.run(apply.id, JSON.stringify(local.map((comment) => comment.id)));
     }

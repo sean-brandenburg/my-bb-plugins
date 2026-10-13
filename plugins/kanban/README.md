@@ -250,7 +250,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Replies in threads that are not on GitHub stay local either way. "Make local"
   / "Move to GitHub" switches a comment that has not been sent yet. The bar at the top has two actions:
   **Send N to agent** hands the local comments to a thread running
-  `apply-pr-comments` (with the same and-push and skip-triage options), and
+  `apply-pr-comments` (with the same and-push option), and
   **Post N to GitHub** posts the drafts: new threads as one review (inline
   where a line is given, in the review body otherwise) and replies into their
   GitHub threads. On someone else's PR a **Comment / Approve / Request
@@ -275,12 +275,14 @@ its PR is reviewed and its review findings and comments are handed to agents.
   left out) and an "addressed" mark. The card shows how many are still open.
 - **Apply N comments**: runs the `apply-pr-comments` skill
   (`~/.claude/skills/apply-pr-comments`) in a fresh worktree on the selected
-  comments, commits, and marks them addressed when the thread reports back.
+  comments as given (no triage or confirmation), commits, and marks them
+  addressed when the thread reports back.
 - **Apply N findings**: spawns a thread (reusing the review's worktree)
   that runs your `apply-review` skill on the selected findings only (deselected
   ones are omitted from the prompt entirely), commits, and pushes
-  to the PR head branch. By default it stops for the skill's triage
-  confirmation in the thread; tick the checkbox to apply everything unasked.
+  to the PR head branch. Your selection is the triage: the thread applies
+  every selected finding as written, without asking or dropping any, and
+  reports the ones it could not apply.
   The **and push** checkbox beside both apply buttons decides whether the
   thread pushes to the PR branch or only commits in its worktree and reports
   the push command; the choice is remembered per browser.
@@ -340,9 +342,9 @@ bb kanban start-subtasks [--ticket <id>] [--sequential]
 bb kanban move <column-id> [--ticket <id>]
 bb kanban review [--ticket <id>] [--project <id>] [--full]
 bb kanban review-show [--ticket <id>]
-bb kanban apply-review [--ticket <id>] [--yes] [--no-push]
+bb kanban apply-review [--ticket <id>] [--no-push]
 bb kanban comments [--ticket <id>]
-bb kanban apply-comments [--ticket <id>] [--yes] [--no-push]
+bb kanban apply-comments [--ticket <id>] [--no-push]
 bb kanban comment-reply <comment-id> "<text>"
 bb kanban link <ticket-id> [--thread <id>]
 bb kanban remove <ticket-id>

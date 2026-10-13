@@ -210,7 +210,6 @@ export function ReviewPanel({
   run: RunAction;
   onOpenThread: (threadId: string) => void;
 }) {
-  const [autoApprove, setAutoApprove] = useState(false);
   const [push, setPush] = usePushPreference();
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const review = ticket.latestReview;
@@ -270,22 +269,6 @@ export function ReviewPanel({
             <Icon name="kanban-refresh" className="size-4 text-muted-foreground" />
             Run a full review again
           </DropdownMenu.Item>
-          {review.status === "completed" ? (
-            <>
-              <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <DropdownMenu.CheckboxItem
-                className={cn(MENU_ITEM_CLASS, "pl-7")}
-                checked={autoApprove}
-                onCheckedChange={(checked) => setAutoApprove(checked === true)}
-                onSelect={(event) => event.preventDefault()}
-              >
-                <DropdownMenu.ItemIndicator className="absolute left-2">
-                  <Icon name="Check" className={cn("size-4", enter.pop)} />
-                </DropdownMenu.ItemIndicator>
-                Skip triage confirmation when applying
-              </DropdownMenu.CheckboxItem>
-            </>
-          ) : null}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -320,14 +303,14 @@ export function ReviewPanel({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <span title={selectedCount === 0 ? "Tick at least one finding to apply" : autoApprove ? "Applies the selected findings, skipping the triage confirmation" : "Applies the selected findings"}>
+            <span title={selectedCount === 0 ? "Tick at least one finding to apply" : "Applies the selected findings"}>
               <Button
                 type="button"
                 variant="secondary"
                 className={COMPACT}
                 disabled={pending || applying || !review.hasBody || selectedCount === 0}
                 onClick={() =>
-                  void run(() => rpc.call("review_apply", { ticketId: ticket.id, reviewId: review.id, autoApprove, push }), "Apply thread started")
+                  void run(() => rpc.call("review_apply", { ticketId: ticket.id, reviewId: review.id, push }), "Apply thread started")
                 }
               >
                 <Icon name="kanban-wrench" className="size-3.5" />
