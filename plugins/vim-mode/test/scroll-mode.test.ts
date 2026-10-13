@@ -209,6 +209,21 @@ test("focus moving into another text box ends scroll mode", async () => {
   expect(press(field, "j").defaultPrevented).toBe(false);
 });
 
+test("focus moving into a part of the page that opted out of vim ends scroll mode", async () => {
+  mount();
+  const page = threadPage(["one"]);
+  await enterScrollMode(page);
+  const banner = document.createElement("section");
+  banner.setAttribute("data-vim-ignore", "");
+  const choice = document.createElement("button");
+  banner.append(choice);
+  page.viewport.append(banner);
+  choice.focus();
+  expect(badge()).not.toBe("SCROLL");
+  expect(press(choice, "j").defaultPrevented).toBe(false);
+  expect(page.viewport.scrollTop).toBe(0);
+});
+
 test("/ finds matches in order, n wraps at the bottom, and N goes back", async () => {
   mount();
   const page = threadPage(["alpha", "the needle", "beta", "another <b>nee</b>dle", "gamma"]);

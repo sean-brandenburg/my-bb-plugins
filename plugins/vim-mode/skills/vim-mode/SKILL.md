@@ -64,6 +64,8 @@ Settings live under Settings → Plugins → Vim Mode, or
 Command palettes, comboboxes, terminals, Monaco editors, and CodeMirror's own
 search panel are always excluded. CodeMirror editors count as "All text boxes",
 not "Prompt box only". Add `data-vim-ignore` to an element to exclude it and its contents.
+Focus moving into such an element also ends scroll mode, so a plugin's own
+keys there (Prompt keys' question banner, say) aren't taken for scrolling.
 
 ## Not supported
 

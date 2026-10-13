@@ -7,6 +7,7 @@ import {
   TIMELINE_ROW_ID_ATTRIBUTE,
   TIMELINE_ROW_LIST,
   UI_ATTRIBUTE,
+  VIM_IGNORE_ATTRIBUTE,
 } from "./selectors";
 import {
   comparePositions,
@@ -127,11 +128,15 @@ export class ScrollMode {
     this.bar.hidden = true;
   }
 
-  /** True while focus on `target` keeps scroll mode: the page itself, or something inside the conversation. */
+  /**
+   * True while focus on `target` keeps scroll mode: the page itself, or
+   * something inside the conversation that hasn't opted out of vim (another
+   * plugin's UI with keys of its own).
+   */
   keepsFocus(target: EventTarget | null): boolean {
     if (!(target instanceof Element) || target === document.body || target === document.documentElement) return true;
     if (target.closest(`[${UI_ATTRIBUTE}]`)) return true;
-    if (isEditable(target)) return false;
+    if (isEditable(target) || target.closest(`[${VIM_IGNORE_ATTRIBUTE}]`)) return false;
     const viewport = this.viewport();
     return !!viewport && viewport.contains(target) && !target.closest(PROMPTBOX);
   }
@@ -140,6 +145,7 @@ export class ScrollMode {
   handleKey(event: KeyboardEvent): boolean {
     if (!this.active || event.defaultPrevented || event.isComposing || event.metaKey || event.altKey) return false;
     if (MODIFIER_KEYS.has(event.key)) return false;
+    if (event.target instanceof Element && event.target.closest(`[${VIM_IGNORE_ATTRIBUTE}]`)) return false;
     const viewport = this.viewport();
     if (!viewport) {
       this.exit();
