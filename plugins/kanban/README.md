@@ -48,7 +48,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   `j` comes back down, and `o`, Enter or Space press; `j`/`k` also step through
   the Settings menu.
   Opening a card from the keyboard puts the keys in the card, with the cursor
-  on its View changes button when it has changes to show; the keys move the way the card
+  on its View changes button, greyed out when there are no changes; the keys move the way the card
   is laid out: `j`/`k` go to the field or button below or above,
   `h`/`l` along a row (such as the buttons beside the title), `gg`/`G` to the
   first or last, and Ctrl-d/Ctrl-u scroll half a page. Enter or Space presses a button; on a text box, Enter or `i` starts

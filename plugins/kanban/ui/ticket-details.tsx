@@ -192,11 +192,14 @@ function TicketDetails({
           >
             <button
               type="button"
-              className={cn(HEADER_ICON_BUTTON, "disabled:pointer-events-none disabled:opacity-50")}
+              className={cn(HEADER_ICON_BUTTON, "aria-disabled:pointer-events-none aria-disabled:opacity-50")}
               aria-label={hasDiff ? "View changes" : "View changes: no changes"}
-              data-kanban-initial-stop={hasDiff ? "" : undefined}
-              disabled={!hasDiff}
-              onClick={() => onOpenDiff(ticket.id)}
+              data-kanban-initial-stop=""
+              // aria-disabled rather than disabled, which would drop it from the card's key stops and move the opening cursor elsewhere.
+              aria-disabled={!hasDiff || undefined}
+              onClick={() => {
+                if (hasDiff) onOpenDiff(ticket.id);
+              }}
             >
               <Icon name="kanban-diff" className="size-3.5" />
               {ticket.pendingDiffComments > 0 ? (
