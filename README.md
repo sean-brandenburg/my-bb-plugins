@@ -20,6 +20,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `settings-search` | A search bar in the settings sidebar that finds any setting on any settings page, plugin pages included, plus vim keys to move around settings |
 | `nerd-font` | Decides whether the plugins here draw Nerd Font icons or their plain fallbacks (Automatic, Always, Never), plus `bb-nerd-font`, the glyph library they share |
 | `motion` | Eased, subtle micro-interactions across bb's own UI, plus `bb-motion`, the motion system (tokens, keyframes, React helpers) the other plugins share |
+| `prompt-keys` | Vim keys for the questions, tool approvals, and plan reviews bb asks you to answer |
 
 ## Install
 

@@ -1,0 +1,40 @@
+{
+  "name": "bb-plugin-prompt-keys",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.45",
+    "bbPluginSdk": ">=0.6.15"
+  },
+  "bb": {
+    "name": "Prompt keys",
+    "description": "Vim keys for the questions, tool approvals, and plan reviews bb asks you to answer: j/k move through the answers, Enter picks one and goes on, h/l step between questions or buttons.",
+    "branding": {
+      "icon": "CircleQuestion"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "dependencies": {
+    "bb-motion": "file:../motion/lib"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.15",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "bb-motion": "link:../motion/lib"
+    }
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
