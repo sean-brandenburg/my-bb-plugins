@@ -50,6 +50,12 @@ export const PROMPT_KEYS_CSS = `
   outline: none;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ring) 55%, transparent);
 }
+/* bb's 1px inset ring disappears on its solid primary buttons (Approve,
+   Allow once), so the keyboard cursor gets an outline outside the button. */
+[${OWNED_ATTRIBUTE}] button:not(fieldset button[aria-pressed]):focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--foreground) 70%, transparent);
+  outline-offset: 2px;
+}
 [${PANEL_ATTRIBUTE}] {
   position: fixed;
   z-index: 50;
