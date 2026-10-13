@@ -89,7 +89,7 @@ function FindingCard({
           <button
             type="button"
             aria-label={applied ? `Reopen ${finding.id}` : `Mark ${finding.id} as applied`}
-            title={applied ? "Reopen: show it in the diff and let the next apply round take it" : "Mark as applied: cross it off and hide it from the diff"}
+            title={applied ? "Reopen: show it in the diff again and let its checkbox decide whether the next apply round gets it" : "Mark as applied: cross it off and hide it from the diff"}
             className={cn(
               "-my-0.5 flex size-6 shrink-0 items-center justify-center rounded hover:bg-state-hover",
               PRESS,
