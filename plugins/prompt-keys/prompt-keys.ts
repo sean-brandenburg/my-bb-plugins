@@ -269,10 +269,9 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
         const tabs = tabsOf(form);
         const current = tabs.findIndex(pressed);
         const next = tabs[current + (key === "l" ? 1 : -1)];
-        if (current >= 0 && next) {
-          next.click();
-          afterRender(() => placeCursor(banner));
-        }
+        if (current < 0 || !next) return false;
+        next.click();
+        afterRender(() => placeCursor(banner));
         return true;
       }
       case "x":
