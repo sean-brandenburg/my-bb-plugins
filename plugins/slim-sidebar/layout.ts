@@ -12,6 +12,15 @@ const STYLE_ATTRIBUTE = "data-slim-sidebar";
 const CLEAR_ATTRIBUTE = "data-slim-sidebar-clear";
 const CLEAR_PROPERTY = "--slim-sidebar-clear";
 const FRAME_ATTRIBUTE = "data-slim-sidebar-frame";
+const ZOOM_PROPERTY = "--slim-sidebar-zoom";
+const TOP_BAR_PROPERTY = "--slim-sidebar-top-bar";
+// bb's zoom commands step in 10% increments.
+const ZOOM_STEPS_PER_UNIT = 10;
+// The rail and top bar stay the same size at any zoom so they keep lining up
+// with the macOS window buttons, which the page zoom never scales.
+const ZOOM = `var(${ZOOM_PROPERTY}, 1)`;
+const UNZOOM = `zoom: calc(1 / ${ZOOM});`;
+const unzoomed = (px: number) => `calc(${px}px / ${ZOOM})`;
 // bb's page header paints bg-surface-scrim over the page's bg-background.
 const HEADER_SURFACE =
   "linear-gradient(var(--surface-scrim), var(--surface-scrim)), var(--background)";
@@ -24,6 +33,7 @@ const ANY_SIDEBAR = '[data-side="left"][data-variant="sidebar"]';
 // sidebar element; only the main one carries the app resize handle.
 export const SIDEBAR = `${ANY_SIDEBAR}:has([data-testid="app-sidebar-resize-handle"])`;
 const SIDEBAR_TRIGGER = '[data-testid="app-desktop-sidebar-trigger"]';
+const SIDEBAR_TRIGGER_OVERLAY = '[data-testid="app-sidebar-trigger-overlay"]';
 const FALLBACK_SIDEBAR_TRIGGER = '[data-sidebar="trigger"]';
 const HEADER_ROW = '[data-testid="app-page-header-content-row"]';
 
@@ -31,7 +41,15 @@ export const SLIM_SIDEBAR_CSS = `
 @media ${WIDE_VIEWPORT} {
   ${SIDEBAR} > [data-sidebar="gap"],
   ${SIDEBAR} > [data-sidebar="panel"] {
-    --sidebar-width: ${RAIL_WIDTH_PX}px !important;
+    --sidebar-width: ${unzoomed(RAIL_WIDTH_PX)} !important;
+  }
+  /* The panel itself stays at page zoom: it is sized to the window's height,
+     which zoom would inflate. */
+  ${SIDEBAR} > [data-sidebar="panel"] > *,
+  ${SIDEBAR_TRIGGER_OVERLAY},
+  ${SIDEBAR_TRIGGER} {
+    ${UNZOOM}
+    --bb-app-chrome-row-height: ${TOP_BAR_HEIGHT_PX}px !important;
   }
   ${SIDEBAR} [data-testid="app-sidebar-resize-handle"] {
     display: none !important;
@@ -43,7 +61,7 @@ export const SLIM_SIDEBAR_CSS = `
   }
   /* No sidebar toggle (Cmd+\ still works). Hidden rather than removed so its
      box still marks where macOS's window buttons end. */
-  [data-testid="app-sidebar-trigger-overlay"],
+  ${SIDEBAR_TRIGGER_OVERLAY},
   ${SIDEBAR_TRIGGER} {
     visibility: hidden !important;
     pointer-events: none !important;
@@ -76,7 +94,7 @@ export const SLIM_SIDEBAR_CSS = `
      normal width while it is open. */
   ${SIDEBAR}:has([data-testid="sidebar-navigation-customize-inline"]) > [data-sidebar="gap"],
   ${SIDEBAR}:has([data-testid="sidebar-navigation-customize-inline"]) > [data-sidebar="panel"] {
-    --sidebar-width: ${CUSTOMIZE_WIDTH_PX}px !important;
+    --sidebar-width: ${unzoomed(CUSTOMIZE_WIDTH_PX)} !important;
   }
   /* bb shows as many footer icons as fit across the footer's width and folds
      the rest into a More menu. A wide, click-through list keeps them all
@@ -137,12 +155,18 @@ export const SLIM_SIDEBAR_CSS = `
     --bb-macos-chrome-control-y: 0px !important;
   }
   /* One top-bar height for every page, thread or plugin, centered on the
-     macOS window buttons (about 25px down). */
+     macOS window buttons (about 25px down). The root value is a plain length,
+     set from script, because bb parses it as a number to place its find bar. */
   :root {
-    --bb-app-chrome-row-height: ${TOP_BAR_HEIGHT_PX}px !important;
+    --bb-app-chrome-row-height: var(${TOP_BAR_PROPERTY}, ${TOP_BAR_HEIGHT_PX}px) !important;
   }
-  [${FRAME_ATTRIBUTE}],
+  [${FRAME_ATTRIBUTE}] {
+    height: ${unzoomed(TOP_BAR_HEIGHT_PX)} !important;
+    transform: none !important;
+  }
   [${FRAME_ATTRIBUTE}] ${HEADER_ROW} {
+    ${UNZOOM}
+    --bb-app-chrome-row-height: ${TOP_BAR_HEIGHT_PX}px !important;
     height: ${TOP_BAR_HEIGHT_PX}px !important;
     transform: none !important;
   }
@@ -153,19 +177,48 @@ export const SLIM_SIDEBAR_CSS = `
 `;
 
 /**
+ * bb's zoom factor, read from how much wider the window is than its CSS
+ * viewport since bb only reports zoom when it changes. Browsers put their own
+ * chrome in that difference, so only bb's desktop app is measured.
+ */
+export function pageZoom(win: Window): number {
+  if (!("bbDesktop" in win) || win.innerWidth <= 0) return 1;
+  const steps = Math.round(
+    (win.outerWidth / win.innerWidth) * ZOOM_STEPS_PER_UNIT,
+  );
+  return steps > 0 ? steps / ZOOM_STEPS_PER_UNIT : 1;
+}
+
+function applyZoom(doc: Document, zoom: number) {
+  const root = doc.documentElement.style;
+  if (zoom === 1) {
+    root.removeProperty(ZOOM_PROPERTY);
+    root.removeProperty(TOP_BAR_PROPERTY);
+    return;
+  }
+  root.setProperty(ZOOM_PROPERTY, String(zoom));
+  root.setProperty(TOP_BAR_PROPERTY, `${TOP_BAR_HEIGHT_PX / zoom}px`);
+}
+
+/**
  * How far a page header row must indent so its content starts past the macOS
  * window buttons that sit over the top-left corner. Rows that start right of
- * the controls, or below the top row, need nothing.
+ * the controls, or below the top row, need nothing. Positions are in page
+ * pixels; the indent is in the row's own, which zoom keeps at screen size.
  */
 export function headerClearance(
   header: { left: number; top: number },
   headerPaddingLeft: number,
   controlsRight: number,
   topRowBottom: number,
+  zoom = 1,
 ): number {
   if (header.top >= topRowBottom) return 0;
   const contentLeft = header.left + headerPaddingLeft;
-  return Math.max(0, Math.ceil(controlsRight + HEADER_GAP_PX - contentLeft));
+  return Math.max(
+    0,
+    Math.ceil((controlsRight - contentLeft) * zoom + HEADER_GAP_PX),
+  );
 }
 
 function clearRow(row: HTMLElement) {
@@ -183,7 +236,11 @@ const headerOf = (row: HTMLElement) => row.parentElement ?? row;
  * Marks the page headers in the top row as part of the frame and indents
  * those that would start under the macOS window buttons.
  */
-export function arrangeHeaders(doc: Document, isWide: boolean): void {
+export function arrangeHeaders(
+  doc: Document,
+  isWide: boolean,
+  zoom = 1,
+): void {
   const sidebar = doc.querySelector(ANY_SIDEBAR);
   const trigger =
     doc.querySelector(`${SIDEBAR_TRIGGER} button`) ??
@@ -205,7 +262,7 @@ export function arrangeHeaders(doc: Document, isWide: boolean): void {
   const topRowBottom =
     triggerRect && triggerRect.bottom > 0
       ? triggerRect.bottom + triggerRect.top
-      : TOP_BAR_HEIGHT_PX;
+      : TOP_BAR_HEIGHT_PX / zoom;
   for (const row of headerRows) {
     const header = headerOf(row);
     const headerRect = header.getBoundingClientRect();
@@ -218,6 +275,7 @@ export function arrangeHeaders(doc: Document, isWide: boolean): void {
       padding,
       controlsRight,
       topRowBottom,
+      zoom,
     );
     if (clearance > 0) {
       row.setAttribute(CLEAR_ATTRIBUTE, "");
@@ -238,7 +296,9 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
     if (frame !== 0) return;
     frame = win.requestAnimationFrame(() => {
       frame = 0;
-      arrangeHeaders(doc, wide.matches);
+      const zoom = pageZoom(win);
+      applyZoom(doc, zoom);
+      arrangeHeaders(doc, wide.matches, zoom);
     });
   };
   const observer = new MutationObserver(schedule);
@@ -257,6 +317,7 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
     wide.removeEventListener("change", schedule);
     if (frame !== 0) win.cancelAnimationFrame(frame);
     style.remove();
+    applyZoom(doc, 1);
     doc.querySelectorAll<HTMLElement>(`[${CLEAR_ATTRIBUTE}]`).forEach(clearRow);
     doc.querySelectorAll(`[${FRAME_ATTRIBUTE}]`).forEach(clearHeader);
   };

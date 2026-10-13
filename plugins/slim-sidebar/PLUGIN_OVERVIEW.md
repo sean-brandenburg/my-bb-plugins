@@ -6,6 +6,7 @@ Collapses bb's sidebar into a thin icon rail under a full-width top bar, as one 
 - Hidden navigation items and Customize sidebar sit behind a More (…) button. Customize widens the sidebar while bb's editor is open.
 - The footer's icons stack vertically at the bottom of the rail.
 - The top bar runs the full width of the window with the rail below it, at one height on every page, and page headers indent to clear the macOS window buttons.
+- The rail and top bar keep their size when you zoom bb (Cmd+- / Cmd+=), so the top bar stays centered on the macOS window buttons and the title stays clear of them; only the page content zooms.
 - The rail's top row has no room for buttons:
   - Sidebar toggle: Cmd+\ still shows and hides the rail.
   - Back and forward are hidden. Install History keys for Ctrl+O and Ctrl+I in their place.
@@ -16,4 +17,4 @@ Collapses bb's sidebar into a thin icon rail under a full-width top bar, as one 
 
 ## How it works
 
-The rail is a sidebar navigation provider (Settings → Appearance → Navigation). A content script adds a stylesheet that narrows bb's sidebar, restacks its footer, and hides the buttons above it, and it measures where the macOS window buttons end so page headers start after them. bb's back and forward buttons stay mounted but hidden, so History keys can still click them. bb's sidebar markup isn't a plugin contract, so a bb update may need this restyle adjusted; disabling the plugin restores bb's normal sidebar and top bar. Phone-width windows keep bb's normal drawer and controls.
+The rail is a sidebar navigation provider (Settings → Appearance → Navigation). A content script adds a stylesheet that narrows bb's sidebar, restacks its footer, and hides the buttons above it, and it measures where the macOS window buttons end so page headers start after them. It also reads bb's zoom level from how much wider the window is than the page, and zooms the rail and top bar back to full size. bb's back and forward buttons stay mounted but hidden, so History keys can still click them. bb's sidebar markup isn't a plugin contract, so a bb update may need this restyle adjusted; disabling the plugin restores bb's normal sidebar and top bar. Phone-width windows keep bb's normal drawer and controls.
