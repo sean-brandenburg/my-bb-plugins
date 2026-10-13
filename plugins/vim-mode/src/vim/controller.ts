@@ -228,6 +228,21 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     }, 0);
   }
 
+  /**
+   * Focus leaving a thread page's text box for anything vim doesn't attach to
+   * enters scroll mode, paused until focus is back on the page. Popups like
+   * the project picker drop focus on the page when they close, and without
+   * scroll mode nothing there would answer `i`.
+   */
+  function enterScrollModeAfterLeaving(element: HTMLElement): void {
+    setTimeout(() => {
+      if (active || !element.isConnected || !threadViewport(element)) return;
+      // The window lost focus; it comes back to this text box.
+      if (document.activeElement === element) return;
+      scrollMode.enter(element);
+    }, 0);
+  }
+
   /** Focuses the text box scroll mode was entered from, or else the page's prompt box, in insert mode. */
   function returnToTextBox(viewport: HTMLElement): void {
     const last = lastActive?.element;
@@ -258,8 +273,10 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
     }
     if (isOwnUi(event.target)) return;
     if (event.target === active.element) {
+      const { element } = active;
       active.ui.hide();
       active = null;
+      enterScrollModeAfterLeaving(element);
     }
   }
 

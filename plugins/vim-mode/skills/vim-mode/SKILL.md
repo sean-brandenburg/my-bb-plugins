@@ -17,8 +17,9 @@ vault editor), and ordinary text fields and textareas.
 - In normal mode with nothing pending, Enter keeps its bb meaning and sends
   the prompt, and Escape goes to bb, which leaves the text box (or closes its
   dialog, or cancels a message edit).
-- Leaving a text box on a thread page enters scroll mode, labelled `SCROLL`
-  where the mode label sits. Its keys act on the thread's conversation:
+- Leaving a text box on a thread page (Escape from normal mode, or focus
+  moving anywhere vim doesn't attach to, such as the Project switcher) enters
+  scroll mode, labelled `SCROLL` where the mode label sits. Its keys act on the thread's conversation:
   `j`/`k` scroll a few lines, Ctrl-D/Ctrl-U half a screen, `gg`/`G` to the
   top or bottom. `/` and `?` search forward or backward and `n`/`N` repeat;
   matches are highlighted, and Escape clears the highlights. `i` returns to

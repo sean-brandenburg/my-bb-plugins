@@ -250,6 +250,51 @@ test("i goes back to the text box after a popup that took focus closes", async (
   expect(document.activeElement).toBe(page.prompt.view.dom);
 });
 
+test("i goes back to the text box after a popup opened from it closes", async () => {
+  mount();
+  const page = threadPage(["one"]);
+  page.prompt.view.dom.focus();
+  await settle();
+  const picker = document.createElement("div");
+  picker.setAttribute("data-vim-ignore", "");
+  picker.tabIndex = -1;
+  document.body.append(picker);
+  picker.focus();
+  await settle();
+  expect(badge()).not.toBe("SCROLL");
+  picker.remove();
+  await waitFor(() => badge() === "SCROLL");
+  expect(badge()).toBe("SCROLL");
+  expect(press(document.body, "i").defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(page.prompt.view.dom);
+  expect(press(page.prompt.view.dom, "l").defaultPrevented).toBe(false);
+});
+
+test("moving from the prompt box to another text box doesn't enter scroll mode", async () => {
+  mount();
+  const page = threadPage(["one"]);
+  const field = document.createElement("textarea");
+  field.getBoundingClientRect = () => new DOMRect(0, 0, 200, 40);
+  page.viewport.querySelector("[data-timeline-items]")!.append(field);
+  page.prompt.view.dom.focus();
+  field.focus();
+  await settle();
+  await settle();
+  expect(badge()).not.toBe("SCROLL");
+  expect(press(document.body, "j").defaultPrevented).toBe(false);
+});
+
+test("the window losing focus doesn't put the prompt box in scroll mode", async () => {
+  mount();
+  const page = threadPage(["one"]);
+  page.prompt.view.dom.focus();
+  page.prompt.view.dom.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  await settle();
+  await settle();
+  expect(document.activeElement).toBe(page.prompt.view.dom);
+  expect(press(document.body, "j").defaultPrevented).toBe(false);
+});
+
 test("focus moving to a button outside the conversation pauses scroll mode until it is blurred", async () => {
   mount();
   const page = threadPage(["one", "two", "three", "four", "five", "six", "seven"]);
