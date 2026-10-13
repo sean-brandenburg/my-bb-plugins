@@ -133,7 +133,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
   const restoreTicket = async (id = deletedIds[deletedIds.length - 1]) => {
     if (id === undefined) return;
     const at = deletedIds.lastIndexOf(id);
-    if (at !== -1) deletedIds.splice(at, 1);
+    if (at === -1) return;
+    deletedIds.splice(at, 1);
     try {
       const { restored } = await rpc.call("ticket_restore", { id });
       if (restored) pendingFocusId.current = id;
