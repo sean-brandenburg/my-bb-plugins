@@ -22,6 +22,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `motion` | Eased, subtle micro-interactions across bb's own UI, plus `bb-motion`, the motion system (tokens, keyframes, React helpers) the other plugins share |
 | `prompt-keys` | Vim keys for the questions, tool approvals, and plan reviews bb asks you to answer |
 | `local-voice` | Voice input transcribed by a local speech model: whisper.cpp kept warm by the plugin, or any OpenAI-compatible transcription server |
+| `no-selection-menu` | Hides the Add to chat / Reply in side chat toolbar bb pops up over highlighted text |
 
 ## Install
 

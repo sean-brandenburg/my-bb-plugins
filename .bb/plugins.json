@@ -21,6 +21,7 @@
     { "name": "aura", "source": "./plugins/aura" },
     { "name": "settings-search", "source": "./plugins/settings-search" },
     { "name": "prompt-keys", "source": "./plugins/prompt-keys" },
-    { "name": "local-voice", "source": "./plugins/local-voice" }
+    { "name": "local-voice", "source": "./plugins/local-voice" },
+    { "name": "no-selection-menu", "source": "./plugins/no-selection-menu" }
   ]
 }
