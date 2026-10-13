@@ -8,7 +8,12 @@ import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import { CurrentMarker, GroupLabel } from "./CurrentMarker.js";
+import {
+  CurrentMarker,
+  GroupLabel,
+  ROW_DIVIDER,
+  showsRowDivider,
+} from "./CurrentMarker.js";
 import {
   formatAge,
   THREAD_SECTION_LABELS,
@@ -189,6 +194,8 @@ export function ThreadsColumn({
             // The remembered row stays unpainted while the cursor is in the
             // projects column, so only one column shows a cursor.
             const selected = index === highlightedIndex && column !== "left";
+            const previousSelected =
+              index - 1 === highlightedIndex && column !== "left";
             const projectId = resolveProjectId(row.thread);
             const project = withMonograms
               ? orderedProjects.find((candidate) => candidate.id === projectId)
@@ -220,6 +227,11 @@ export function ThreadsColumn({
                     PRESS,
                     SOFT,
                     intro && [enter.rise, speed.fast, STAGGER],
+                    showsRowDivider(
+                      index === 0 || startsSection,
+                      selected,
+                      previousSelected,
+                    ) && ROW_DIVIDER,
                     selected &&
                       (column === "right"
                         ? "bg-state-active text-foreground"

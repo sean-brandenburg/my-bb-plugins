@@ -10,7 +10,12 @@ import { isSidebarProjectThread } from "../model/project-thread-groups.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import { CurrentMarker, GroupLabel } from "./CurrentMarker.js";
+import {
+  CurrentMarker,
+  GroupLabel,
+  ROW_DIVIDER,
+  showsRowDivider,
+} from "./CurrentMarker.js";
 import { formatAge, LEFT_GROUP_LABELS, type LeftEntry } from "./picker-model.js";
 
 const ENTRY_ICONS: Record<Exclude<LeftEntry["kind"], "project">, IconName> = {
@@ -169,10 +174,11 @@ export function ProjectsColumn({
         const current =
           markerProjectId !== null && markerProjectId === currentProjectId;
         const introStyle = intro ? stagger(index) : undefined;
+        const startsGroup =
+          index === 0 || entries[index - 1]?.group !== entry.group;
         return (
           <Fragment key={entry.key}>
-            {entry.group !== "nav" &&
-            entries[index - 1]?.group !== entry.group ? (
+            {entry.group !== "nav" && startsGroup ? (
               <GroupLabel
                 label={LEFT_GROUP_LABELS[entry.group]}
                 className={cn(
@@ -191,6 +197,11 @@ export function ProjectsColumn({
                 "relative flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-sm",
                 PRESS,
                 intro && [enter.rise, speed.fast, STAGGER],
+                showsRowDivider(
+                  startsGroup,
+                  selected,
+                  index - 1 === selectedIndex,
+                ) && ROW_DIVIDER,
                 current && "font-medium text-foreground",
                 selected &&
                   (focused

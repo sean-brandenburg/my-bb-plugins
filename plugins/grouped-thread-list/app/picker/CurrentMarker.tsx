@@ -21,6 +21,25 @@ export function CurrentMarker({ projectId }: { projectId: string | null }) {
   );
 }
 
+/**
+ * A hairline across the top of a row. Rows are `relative` and `rounded-md`, so
+ * a pseudo-element keeps the line straight where a border would curve.
+ */
+export const ROW_DIVIDER =
+  "before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-border";
+
+/**
+ * A row gets the divider unless a group label sits above it or the highlight
+ * touches it, so the highlight's rounded edges stay clean.
+ */
+export function showsRowDivider(
+  startsGroup: boolean,
+  painted: boolean,
+  previousPainted: boolean,
+): boolean {
+  return !startsGroup && !painted && !previousPainted;
+}
+
 /** A small uppercase label over a run of rows; not an option, so keys skip it. */
 export function GroupLabel({
   label,
