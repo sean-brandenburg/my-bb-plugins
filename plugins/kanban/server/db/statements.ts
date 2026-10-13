@@ -65,6 +65,13 @@ export function prepareStatements(db: KanbanDatabase) {
     >(
       `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, updated_at = ? WHERE id = ?`,
     ),
+    // The card's title predates the PR, so it is marked edited to keep later syncs from renaming it.
+    attachPr: db.prepare<[{ id: string; repo: string; number: number; url: string; state: PullRequest["state"]; role: PullRequest["role"]; author: string; pr_updated_at: string; head_ref: string | null; checks: PullRequest["checks"]; source_id: string; now: number }]>(
+      `UPDATE tickets SET kind = 'pr', pr_repo = @repo, pr_number = @number, pr_url = @url, pr_state = @state, pr_role = @role,
+         pr_author = @author, pr_updated_at = @pr_updated_at, pr_head_ref = @head_ref, pr_checks = @checks,
+         source_id = COALESCE(source_id, @source_id), title_edited = 1, updated_at = @now
+       WHERE id = @id AND pr_repo IS NULL`,
+    ),
     // CI flips without anyone editing the card, so this leaves updated_at alone.
     setPrHead: db.prepare<[string, PullRequest["checks"], string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ? WHERE id = ?`),
     setTags: db.prepare<[string, number, string]>(`UPDATE tickets SET tags = ?, updated_at = ? WHERE id = ?`),
