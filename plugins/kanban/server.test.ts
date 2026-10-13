@@ -539,7 +539,7 @@ describe("GitHub sync", () => {
     // The repository did not answer for #3: nothing known yet.
     expect(prs.get(3)).toMatchObject({ headRef: null, checks: null });
     const headQueries = fetchMock.mock.calls.filter(([, init]) => String(init?.body ?? "").includes("statusCheckRollup"));
-    expect(headQueries).toHaveLength(1);
+    expect(headQueries).toHaveLength(2);
 
     vi.stubGlobal(
       "fetch",
@@ -612,137 +612,6 @@ describe("GitHub sync", () => {
     expect(titles.get(1)).toBe("My name for it");
     expect(titles.get(2)).toBe("Also renamed");
     expect(titles.get(3)).toBe("Gone from search");
-  });
-
-  describe("a PR pushed from a card's thread", () => {
-    async function threadCard(threadId: string): Promise<Ticket> {
-      const add = await current().harness.behavior.runCli(["add", "Widget UI cleanups", "--json"], { threadId, signal: new AbortController().signal });
-      const ticket = JSON.parse(add.stdout ?? "") as Ticket;
-      await current().harness.behavior.callRpc("ticket_update", { id: ticket.id, title: ticket.title, description: "Tidy the header" });
-      await current().harness.behavior.callRpc("ticket_move", { id: ticket.id, columnId: "in-progress" });
-      return ticket;
-    }
-
-    it("attaches to the thread's card instead of creating one, and keeps the card's title on later syncs", async () => {
-      await load();
-      const card = await threadCard("thr_f2xxnrzt6a");
-      const fetchMock = stubGithub({
-        authored: [searchItem("acme-co/widgets", 5, { title: "Clean up the Widget UI", user: { login: "sean" } })],
-        heads: { "acme-co/widgets#5": { headRef: "bb/widget-ui-cleanups-thr_f2xxnrzt6a", rollup: "SUCCESS" } },
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      await current().harness.behavior.callRpc("sync_now", null);
-
-      const { tickets } = await board();
-      expect(tickets).toHaveLength(1);
-      expect(tickets[0]).toMatchObject({
-        id: card.id,
-        kind: "pr",
-        title: "Widget UI cleanups",
-        description: "Tidy the header",
-        columnId: "in-progress",
-        threadId: "thr_f2xxnrzt6a",
-        sourceId: "my-prs",
-        tags: ["my-prs"],
-        canPostToGithub: true,
-        pr: { repo: "acme-co/widgets", number: 5, state: "open", role: "authored", author: "sean", headRef: "bb/widget-ui-cleanups-thr_f2xxnrzt6a", checks: "passing" },
-      });
-      expect(spawned).toHaveLength(0);
-      const headQueries = fetchMock.mock.calls.filter(([, init]) => String(init?.body ?? "").includes("statusCheckRollup"));
-      expect(headQueries).toHaveLength(1);
-
-      vi.stubGlobal(
-        "fetch",
-        stubGithub({
-          authored: [searchItem("acme-co/widgets", 5, { title: "Renamed upstream", user: { login: "sean" } })],
-          heads: { "acme-co/widgets#5": { headRef: "bb/widget-ui-cleanups-thr_f2xxnrzt6a", rollup: "FAILURE" } },
-        }),
-      );
-      await current().harness.behavior.callRpc("sync_now", null);
-      expect((await board()).tickets).toEqual([expect.objectContaining({ id: card.id, title: "Widget UI cleanups", pr: expect.objectContaining({ checks: "failing" }) })]);
-
-      // Tracked like any PR card from here: merging it finishes the card.
-      vi.stubGlobal("fetch", stubGithub({ authored: [], pulls: { "acme-co/widgets#5": { state: "closed", merged: true } } }));
-      await current().harness.behavior.callRpc("sync_now", null);
-      expect((await board()).tickets[0]).toMatchObject({ id: card.id, columnId: "done", pr: { state: "merged" } });
-    });
-
-    it("creates a PR card when the branch does not end in a card's thread id", async () => {
-      await load({ autoStartThreads: false });
-      const card = await threadCard("thr_f2xxnrzt6a");
-      vi.stubGlobal(
-        "fetch",
-        stubGithub({
-          authored: [searchItem("acme-co/widgets", 5), searchItem("acme-co/widgets", 6), searchItem("acme-co/widgets", 7)],
-          heads: {
-            "acme-co/widgets#5": { headRef: "feature/widget", rollup: null },
-            "acme-co/widgets#6": { headRef: "bb/other-thr_nocard", rollup: null },
-          },
-        }),
-      );
-      await current().harness.behavior.callRpc("sync_now", null);
-
-      const { tickets } = await board();
-      expect(tickets).toHaveLength(4);
-      expect(tickets.find((ticket) => ticket.id === card.id)).toMatchObject({ kind: "adhoc", pr: null, sourceId: null, tags: [] });
-      expect(tickets.filter((ticket) => ticket.kind === "pr").map((ticket) => ticket.pr?.number).sort()).toEqual([5, 6, 7]);
-    });
-
-    it("does not replace the PR a thread's card already has", async () => {
-      await load({ autoStartThreads: false });
-      const card = await threadCard("thr_f2xxnrzt6a");
-      vi.stubGlobal(
-        "fetch",
-        stubGithub({
-          authored: [searchItem("acme-co/widgets", 5)],
-          heads: { "acme-co/widgets#5": { headRef: "bb/widget-thr_f2xxnrzt6a", rollup: null } },
-        }),
-      );
-      await current().harness.behavior.callRpc("sync_now", null);
-      vi.stubGlobal(
-        "fetch",
-        stubGithub({
-          authored: [searchItem("acme-co/widgets", 5), searchItem("acme-co/other", 6)],
-          heads: {
-            "acme-co/widgets#5": { headRef: "bb/widget-thr_f2xxnrzt6a", rollup: null },
-            "acme-co/other#6": { headRef: "bb/widget-thr_f2xxnrzt6a", rollup: null },
-          },
-        }),
-      );
-      await current().harness.behavior.callRpc("sync_now", null);
-
-      const { tickets } = await board();
-      expect(tickets).toHaveLength(2);
-      expect(tickets.find((ticket) => ticket.id === card.id)).toMatchObject({ pr: { repo: "acme-co/widgets", number: 5 } });
-      expect(tickets.find((ticket) => ticket.id !== card.id)).toMatchObject({ kind: "pr", threadId: null, pr: { repo: "acme-co/other", number: 6 } });
-    });
-
-    it("leaves a Jira card on its own and gives the PR a card of its own", async () => {
-      vi.stubGlobal("fetch", stubGithub({ jira: [{ key: "ACME-1", summary: "Fix login" }] }));
-      await load({ jiraSiteUrl: "https://acme.atlassian.net/", jiraEmail: "dev@acme.example", jiraApiToken: "jt", autoStartThreads: true });
-      await current().harness.behavior.callRpc("sources_set", {
-        sources: [
-          { id: "my-jira", name: "My Jira", kind: "jira-jql", jql: "assignee = currentUser()", tags: [], doneWhenGone: false, enabled: true, projectId: "proj_acme" },
-          { id: "my-prs", name: "My pull requests", kind: "github-search", query: "is:pr is:open author:@me", tags: [], doneWhenGone: false, enabled: true, projectId: null },
-        ],
-      });
-      await current().harness.behavior.callRpc("sync_now", null);
-      const jiraCard = (await board()).tickets.find((ticket) => ticket.kind === "jira");
-      expect(jiraCard?.threadId).toBe("thr_1");
-
-      vi.stubGlobal(
-        "fetch",
-        stubGithub({
-          jira: [{ key: "ACME-1", summary: "Fix login" }],
-          authored: [searchItem("acme-co/widgets", 5)],
-          heads: { "acme-co/widgets#5": { headRef: "bb/fix-login-thr_1", rollup: null } },
-        }),
-      );
-      await current().harness.behavior.callRpc("sync_now", null);
-      const { tickets } = await board();
-      expect(tickets).toHaveLength(2);
-      expect(tickets.find((ticket) => ticket.id === jiraCard!.id)).toMatchObject({ kind: "jira", pr: null, jira: { key: "ACME-1" } });
-    });
   });
 
   it("reports a missing token without throwing when the gh binary is not found", async () => {

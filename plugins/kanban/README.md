@@ -22,12 +22,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   - **GitHub search**: a GitHub search query; PRs or issues become cards.
     Two ship by default: your open PRs (`#my-prs`) and open, non-draft PRs
     where your review is requested (`#pr-reviews`, "done when it leaves this
-    search"). Merged or closed PRs move to Done. A PR whose branch ends in
-    the id of a thread with an ad hoc card (bb's own branches do, e.g.
-    `bb/fix-login-thr_abc123`) joins that card instead of getting its own:
-    the card keeps its title, description, column, and thread, and becomes a
-    PR card. A Jira card's thread, or a card that already has a PR, gets a
-    separate PR card.
+    search"). Merged or closed PRs move to Done. A PR whose branch ends in an
+    ad hoc card's thread id joins that card instead.
   - **Jira (JQL)**: a JQL query on your Jira Cloud site. Needs the Jira site
     URL, account email, and API token plugin settings. Cards land in To Do or
     In Progress from the issue's status category, carry key, status, priority

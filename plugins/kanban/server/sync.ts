@@ -14,8 +14,6 @@ import { errorMessage, normalizeTags, parseStringArray } from "./util";
 type GithubSource = Extract<Source, { kind: "github-search" }>;
 type JiraSource = Extract<Source, { kind: "jira-jql" }>;
 
-const THREAD_BRANCH_SUFFIX = /-(thr_[a-z0-9]+)$/u;
-
 /** What one sync run shares across its sources. */
 interface SyncPass {
   columns: Column[];
@@ -182,14 +180,12 @@ export function createSourceSync(
     const { results, anyFailed } = await searchEach(pass, sources, (source) => searchPulls(source.query, token, signal));
     const seenPrs = groupBySource(results, (item) => `${repoFromRepositoryUrl(item.repository_url)}#${item.number}`);
     const roleOf = (author: string): PullRequest["role"] => (author === sync.login ? "authored" : "other");
-    // The search API has no head branch, and a new PR's branch decides whether it already has a card.
     const untracked = [...seenPrs.values()]
       .map(({ item }) => ({ repo: repoFromRepositoryUrl(item.repository_url), number: item.number }))
       .filter((pr) => stmts.byPr.get(pr.repo, pr.number) === undefined);
-    const untrackedHeads = await fetchPrHeads(untracked, token, signal, warnHeads);
+    const untrackedHeads = await fetchPrHeads(untracked, token, signal, (message) => bb.log.warn(`could not read PR branches and checks: ${message}`));
     for (const { item, sources: itemSources } of seenPrs.values()) {
       const repo = repoFromRepositoryUrl(item.repository_url);
-      const head = untrackedHeads.get(`${repo}#${item.number}`);
       const pr: PullRequest = {
         repo,
         number: item.number,
@@ -198,15 +194,16 @@ export function createSourceSync(
         state: prStateOf({ state: item.state, draft: item.draft, merged: item.pull_request?.merged_at != null }),
         author: item.user?.login ?? "",
         updatedAt: item.updated_at,
-        headRef: head?.headRef ?? null,
-        checks: head?.checks ?? null,
+        headRef: null,
+        checks: null,
       };
       const sourceTags = itemSources.flatMap((source) => source.tags);
       const existing = stmts.byPr.get(repo, item.number);
       if (existing === undefined) {
-        const threadCard = head === undefined ? undefined : threadCardForBranch(head.headRef);
-        if (threadCard !== undefined) {
-          attachPr(pass, threadCard, pr, itemSources[0]!.id);
+        const threadId = /-(thr_[a-z0-9]+)$/u.exec(untrackedHeads.get(`${repo}#${item.number}`)?.headRef ?? "")?.[1];
+        const threadCard = threadId === undefined ? undefined : stmts.byThread.get(threadId);
+        if (threadCard?.kind === "adhoc" && threadCard.pr_repo === null) {
+          stmts.attachPr.run(repo, item.number, pr.url, pr.state, pr.role, pr.author, pr.updatedAt, itemSources[0]!.id, now, threadCard.id);
           mergeTags(pass, threadCard, sourceTags);
           continue;
         }
@@ -260,51 +257,17 @@ export function createSourceSync(
       stmts.setPr.run(pull.title, pull.html_url, state, roleOf(author), author, pull.updated_at, now, row.id);
       finish(pass, row, state === "merged" || state === "closed" || goneFromDoneSource(pass, row));
     }
-    const askedThisPass = new Set(untracked.map((pr) => `${pr.repo}#${pr.number}`));
-    await syncPrHeads(pass, token, askedThisPass);
+    await syncPrHeads(pass, token);
   }
 
-  function warnHeads(message: string): void {
-    bb.log.warn(`could not read PR branches and checks: ${message}`);
-  }
-
-  /** bb names a thread's branch after the thread, so a PR pushed from a card's thread belongs on that card. */
-  function threadCardForBranch(headRef: string): TicketRow | undefined {
-    const threadId = THREAD_BRANCH_SUFFIX.exec(headRef)?.[1];
-    if (threadId === undefined) return undefined;
-    const row = stmts.byThread.get(threadId);
-    // A Jira card stays Jira: turning it into a PR card would stop its status refresh.
-    return row !== undefined && row.kind === "adhoc" && row.pr_repo === null ? row : undefined;
-  }
-
-  function attachPr(pass: SyncPass, row: TicketRow, pr: PullRequest, sourceId: string): void {
-    stmts.attachPr.run({
-      id: row.id,
-      repo: pr.repo,
-      number: pr.number,
-      url: pr.url,
-      state: pr.state,
-      role: pr.role,
-      author: pr.author,
-      pr_updated_at: pr.updatedAt,
-      head_ref: pr.headRef,
-      checks: pr.checks,
-      source_id: sourceId,
-      now: pass.now,
-    });
-  }
-
-  /**
-   * Every pass for every open PR: a CI run finishing does not move the PR's updated_at. Merged and closed PRs keep their
-   * last values, and PRs this pass already asked about are not asked again.
-   */
-  async function syncPrHeads(pass: SyncPass, token: string, asked: ReadonlySet<string>): Promise<void> {
-    const rows = stmts.openPrs.all().filter((row) => row.pr_repo !== null && row.pr_number !== null && !asked.has(`${row.pr_repo}#${row.pr_number}`));
+  /** Every pass for every open PR: a CI run finishing does not move the PR's updated_at. Merged and closed PRs keep their last values. */
+  async function syncPrHeads(pass: SyncPass, token: string): Promise<void> {
+    const rows = stmts.openPrs.all().filter((row) => row.pr_repo !== null && row.pr_number !== null);
     const heads = await fetchPrHeads(
       rows.map((row) => ({ repo: row.pr_repo!, number: row.pr_number! })),
       token,
       pass.signal,
-      warnHeads,
+      (message) => bb.log.warn(`could not read PR branches and checks: ${message}`),
     );
     for (const row of rows) {
       const head = heads.get(`${row.pr_repo}#${row.pr_number}`);

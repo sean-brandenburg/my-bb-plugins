@@ -9,9 +9,7 @@ Every card on the board is a ticket, usually backed by a BB thread. Cards are
 created automatically by **sources** (GitHub searches or Jira JQL queries; by
 default the user's open PRs tagged `#my-prs` and review requests tagged
 `#pr-reviews`) and ad hoc
-from the board page or this CLI. A PR pushed from an ad hoc card's thread
-(its branch ends in the thread id) attaches to that card on the next sync
-rather than becoming a new card. Cards carry free-form **tags**. The board
+from the board page or this CLI. Cards carry free-form **tags**. The board
 page, its Todo list view, and `bb kanban` read and write the same data.
 
 ## Commands
