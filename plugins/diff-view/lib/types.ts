@@ -179,6 +179,8 @@ export interface Review {
   selectionOverrides: Record<string, boolean>;
   /** Findings the user reworded; `report` already carries the new wording. */
   findingEdits: Record<string, unknown>;
+  /** Findings an apply round already fixed; the diff leaves them out. */
+  appliedFindingIds?: string[];
   createdAt: number;
 }
 

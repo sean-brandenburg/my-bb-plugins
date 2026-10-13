@@ -10,7 +10,7 @@ import { rowToReview, type ReviewRow } from "../db/rows";
 import { prShortName } from "../github";
 import type { Projects } from "../projects";
 import { earlierFindings, parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
-import { shortId, threadTitle } from "../util";
+import { parseStringArray, shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
 
@@ -98,6 +98,7 @@ function applyPrompt(ticket: Ticket, review: Review, push: boolean, findingsBody
     "Then invoke the `apply-review` skill with the findings below. The user selected them on the Kanban board, so they are already triaged: apply every one as written, without a triage step, a confirmation, or dropping or reshaping any. Report any you could not apply and why.",
     "",
     ...finishSteps(push, headRef, "bb kanban review-applied", "Apply code review findings"),
+    "The board crosses off every finding handed to this round once it is recorded. If you could not apply some, add `--skipped <ids>` (comma-separated finding ids, e.g. `--skipped F2,F5`) to that command so they stay open.",
     "",
     "Rules: never force-push, never post comments or reviews on GitHub, and report the result and any findings you could not apply.",
     `This apply run belongs to kanban ticket ${ticket.id}, review ${review.id}.`,
@@ -165,7 +166,7 @@ export function createReviews(
     }
     const { body: findingsBody, findingIds } = selectedFindingsBody(review);
     if (findingIds !== null && findingIds.length === 0) {
-      throw new Error("No findings are selected; tick at least one finding to apply");
+      throw new Error("No selected findings are left to apply; tick at least one open finding");
     }
     const projectId = await projectForTicket(ticket, null);
     // Reuse the review thread's worktree when it still exists: the PR is already fetched there.
@@ -283,6 +284,33 @@ export function createReviews(
     return rowToReview(stmts.reviewById.get(reviewId)!);
   }
 
+  /** Ends the review's apply round: the findings it was handed are fixed, except the ones it reports it could not apply. */
+  function completeApply(row: ReviewRow, commit: string | null, pushed: boolean, skipped: readonly string[]): number {
+    stmts.completeApply.run(Date.now(), commit, row.id);
+    if (pushed) stmts.setApplyPushed.run(row.id);
+    const handed = row.apply_finding_ids === null ? [] : parseStringArray(row.apply_finding_ids);
+    const fixed = handed.filter((id) => !skipped.includes(id));
+    const applied = new Set([...(row.applied_finding_ids === null ? [] : parseStringArray(row.applied_finding_ids)), ...fixed]);
+    stmts.setAppliedFindingIds.run(applied.size === 0 ? null : JSON.stringify([...applied]), row.id);
+    publish();
+    return fixed.length;
+  }
+
+  function setApplied(reviewId: string, findingId: string, applied: boolean): Review {
+    const row = stmts.reviewById.get(reviewId);
+    if (row === undefined) throw new Error(`No review with id ${reviewId}`);
+    const review = rowToReview(row);
+    if (review.report === null || !review.report.findings.some((finding) => finding.id === findingId)) {
+      throw new Error(`Review ${reviewId} has no finding ${findingId}`);
+    }
+    const ids = new Set(review.appliedFindingIds);
+    if (applied) ids.add(findingId);
+    else ids.delete(findingId);
+    stmts.setAppliedFindingIds.run(ids.size === 0 ? null : JSON.stringify([...ids]), reviewId);
+    publish();
+    return rowToReview(stmts.reviewById.get(reviewId)!);
+  }
+
   function resetSelection(reviewId: string): Review {
     const row = stmts.reviewById.get(reviewId);
     if (row === undefined) throw new Error(`No review with id ${reviewId}`);
@@ -306,7 +334,7 @@ export function createReviews(
     return rowToReview(stmts.reviewById.get(reviewId)!);
   }
 
-  return { spawnReviewForTicket, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding };
+  return { spawnReviewForTicket, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
 }
 
 export type Reviews = ReturnType<typeof createReviews>;

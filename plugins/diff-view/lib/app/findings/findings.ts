@@ -42,7 +42,10 @@ export function activeReviews(reviews: Review[]): Review[] {
   return active.filter((review) => review.report !== null).reverse();
 }
 
-/** The active reviews' findings by file, once per location; `delta` marks the ones whose lines changed since the last look. */
+/**
+ * The active reviews' open findings by file, once per location; `delta` marks the ones whose lines changed since the
+ * last look. Findings an apply round fixed are left out.
+ */
 export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null): Map<string, PlacedFinding[]> {
   const byPath = new Map<string, PlacedFinding[]>();
   const active = activeReviews(reviews);
@@ -50,7 +53,9 @@ export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null)
   const changedRanges = new Map((delta?.files ?? []).map((file) => [file.path, file.ranges]));
   for (const review of active) {
     if (review.report === null) continue;
+    const applied = new Set(review.appliedFindingIds ?? []);
     for (const finding of review.report.findings) {
+      if (applied.has(finding.id)) continue;
       const touched = finding.locations.some((location) => {
         const ranges = changedRanges.get(location.file);
         return ranges !== undefined && location.startLine !== null && rangesOverlap(location.startLine, location.endLine ?? location.startLine, ranges);

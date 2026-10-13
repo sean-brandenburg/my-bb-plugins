@@ -201,6 +201,17 @@ describe("inlineFindingsByPath", () => {
   });
 });
 
+describe("inlineFindingsByPath applied findings", () => {
+  it("leaves out the findings an apply round fixed", () => {
+    const fixed = finding("F1", [{ file: "a.ts", startLine: 1, endLine: 1 }]);
+    const open = finding("F2", [{ file: "a.ts", startLine: 9, endLine: 9 }]);
+    const elsewhere = finding("F3", [{ file: "b.ts", startLine: 2, endLine: 2 }]);
+    const byPath = inlineFindingsByPath([review("full", 1, [fixed, open, elsewhere], { appliedFindingIds: ["F1", "F3"] })], null);
+    expect(byPath.get("a.ts")!.map(({ item }) => item.finding.id)).toEqual(["F2"]);
+    expect(byPath.has("b.ts")).toBe(false);
+  });
+});
+
 describe("inlineFindingsByPath carry-over", () => {
   it("does not call a carried finding new, and names the earlier finding it came from", () => {
     const carried = { ...finding("F1", [{ file: "a.ts", startLine: 1, endLine: 1 }]), carriedFrom: "r0/F3" };

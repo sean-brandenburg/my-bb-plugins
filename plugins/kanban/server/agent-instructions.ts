@@ -21,7 +21,7 @@ const ROLE_INSTRUCTIONS = new Map<string, (row: TicketRow) => string>([
   [
     "apply",
     (row) =>
-      `This thread applies a persisted code review to the PR of ${ticketLabel(row)}. Commit and push to the PR branch only, never force-push, never post to GitHub, and finish with \`bb kanban review-applied --commit <sha>\`.`,
+      `This thread applies a persisted code review to the PR of ${ticketLabel(row)}. Commit and push to the PR branch only, never force-push, never post to GitHub, and finish with \`bb kanban review-applied --commit <sha>\` (plus \`--skipped <ids>\` for findings you could not apply).`,
   ],
   [
     "subtasks",

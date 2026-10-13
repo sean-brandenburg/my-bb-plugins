@@ -213,7 +213,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
 - **Risk heat**: the tour scores each file 1–5 for review attention; the file
   tree tints rows from green to red accordingly (viewed files lose the tint),
   falling back to the worst finding severity in the file when there is no tour.
-- **Findings in the diff**: the latest completed review's findings render
+- **Findings in the diff**: the latest completed review's open findings (not the applied ones) render
   inline under the lines their `locations` point at (new side), in both
   structural and text modes, as one line each (severity, title, the same
   apply-round checkbox as the card panel) that opens to the description, fix
@@ -283,6 +283,13 @@ its PR is reviewed and its review findings and comments are handed to agents.
   to the PR head branch. Your selection is the triage: the thread applies
   every selected finding as written, without asking or dropping any, and
   reports the ones it could not apply.
+  When the round is recorded, every finding it fixed is marked applied: the
+  card panel folds it to its struck-through title with an "applied" chip, the
+  changes view stops showing it, and later rounds never get it again (a
+  finding the thread reports as not applied stays open). The board card's
+  badge counts what is still open ("2 findings · 3 applied", then "all
+  applied"). The check button on each finding crosses one off by hand or
+  reopens it.
   The **and push** checkbox beside both apply buttons decides whether the
   thread pushes to the PR branch or only commits in its worktree and reports
   the push command; the choice is remembered per browser.

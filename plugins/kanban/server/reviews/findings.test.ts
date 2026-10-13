@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Finding, Review, ReviewReport } from "../../shared/review";
-import { applyFindingEdits, earlierFindings, effectiveSelection, selectedFindingsBody, standingReviews } from "./findings";
+import { applyFindingEdits, earlierFindings, effectiveSelection, pendingFindings, selectedFindingsBody, standingReviews, summarize } from "./findings";
 
 function finding(id: string, severity: Finding["severity"], overrides: Partial<Finding> = {}): Finding {
   return {
@@ -38,6 +38,7 @@ function review(body: string | null, reviewReport: ReviewReport | null, selectio
     selection,
     selectionOverrides: {},
     findingEdits: {},
+    appliedFindingIds: [],
     createdAt: 0,
     completedAt: 0,
     apply: null,
@@ -78,6 +79,16 @@ describe("selectedFindingsBody", () => {
   });
 });
 
+describe("applied findings", () => {
+  it("leaves fixed findings out of the next round, the open counts and the scores", () => {
+    const entry = review(null, report([finding("F1", "critical", { importance: 5, scopeFit: 5 }), finding("F2", "important", { importance: 3, scopeFit: 3 })]), { F1: true, F2: true }, { appliedFindingIds: ["F1"] });
+    expect(pendingFindings(entry).map((item) => item.id)).toEqual(["F2"]);
+    expect(selectedFindingsBody(entry).findingIds).toEqual(["F2"]);
+    expect(summarize(entry)).toMatchObject({ counts: { critical: 0, important: 1, minor: 0 }, appliedCount: 1, selectedCount: 1, scores: { maxImportance: 3 } });
+    expect(summarize(entry)).not.toHaveProperty("appliedFindingIds");
+  });
+});
+
 describe("effectiveSelection", () => {
   it("lets the user's overrides win over the suggested selection", () => {
     const reviewReport = report([finding("C1", "critical"), finding("M1", "minor"), finding("I1", "important")]);
@@ -114,12 +125,14 @@ describe("earlierFindings", () => {
   it("keys findings by review and says what the apply round did with each", () => {
     const applied = review(null, report([finding("F1", "critical"), finding("F2", "minor")]), {}, {
       id: "r1",
-      apply: { threadId: "thr_a", startedAt: 1, completedAt: 2, pushedCommit: "abcdef0123456789", findingIds: ["F1"], push: true },
+      // The latest round only had F3; F1 was fixed by an earlier one.
+      apply: { threadId: "thr_a", startedAt: 1, completedAt: 2, pushedCommit: "abcdef0123456789", findingIds: ["F3"], push: true },
+      appliedFindingIds: ["F1", "F3"],
     });
     const unapplied = review(null, report([finding("F1", "important", { carriedFrom: "r0/F4" })]), {}, { id: "r2" });
     expect(earlierFindings([applied, unapplied]).map(({ handle, applyRound, title }) => ({ handle, applyRound, title }))).toEqual([
-      { handle: "r1/F1", applyRound: "an apply round committed a fix for it in abcdef0; verify it worked", title: "Title F1" },
-      { handle: "r1/F2", applyRound: "deliberately left out of the apply round", title: "Title F2" },
+      { handle: "r1/F1", applyRound: "an apply round committed a fix for it (the latest round's commit is abcdef0); verify it worked", title: "Title F1" },
+      { handle: "r1/F2", applyRound: "deliberately left out of the apply rounds", title: "Title F2" },
       { handle: "r2/F1", applyRound: null, title: "Title F1" },
     ]);
     expect(earlierFindings([unapplied])[0]).not.toHaveProperty("carriedFrom");

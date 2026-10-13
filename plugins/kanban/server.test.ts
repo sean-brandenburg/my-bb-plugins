@@ -1300,9 +1300,55 @@ describe("persisted reviews", () => {
     expect(reset.selection).toEqual({ F1: true, F2: false, F3: false });
     const nothing = (await current().harness.behavior.callRpc("review_set_selection", { reviewId: reviews[0]!.id, findingId: "F1", selected: false })) as Review;
     expect(Object.values(nothing.selection).some(Boolean)).toBe(false);
-    await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/No findings are selected/u);
+    await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/No selected findings are left/u);
     ({ reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] });
     expect(reviews[0]!.selectionOverrides).toEqual({ F1: false });
+  });
+
+  it("crosses off the findings each apply round fixed, keeps skipped ones open, and never hands a fixed one to a later round", async () => {
+    const card = await reviewedCard();
+    const report = {
+      version: 1,
+      summary: "Adds X.",
+      commit: sha,
+      findings: [
+        { id: "F1", severity: "critical", title: "Real bug", locations: [{ file: "a.go", startLine: 10 }] },
+        { id: "F2", severity: "critical", title: "Other bug", locations: [{ file: "b.go", startLine: 2 }] },
+        { id: "F3", severity: "minor", title: "Nit", locations: [{ file: "c.go", startLine: 3 }] },
+      ],
+    };
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
+      lastAssistantText: `## Review Findings\n\n\`\`\`json review-findings\n${JSON.stringify(report)}\n\`\`\``,
+    });
+    const reviewId = (await board()).tickets[0]!.latestReview!.id;
+
+    await current().harness.behavior.callRpc("review_apply", { ticketId: card.id });
+    expect(String(spawned[2]!.prompt)).toContain("--skipped");
+    const done = await current().harness.behavior.runCli(["review-applied", "--commit", newSha, "--skipped", "F2"], ctx("thr_3"));
+    expect(done.stdout).toContain("1 finding(s) marked applied, 1 left open");
+    let summary = (await board()).tickets[0]!.latestReview!;
+    expect(summary).toMatchObject({ appliedCount: 1, selectedCount: 1, counts: { critical: 1, important: 0, minor: 1 } });
+    let [stored] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(stored!.appliedFindingIds).toEqual(["F1"]);
+
+    await current().harness.behavior.callRpc("review_set_selection", { reviewId, findingId: "F3", selected: true });
+    await current().harness.behavior.callRpc("review_apply", { ticketId: card.id });
+    const second = String(spawned[3]!.prompt);
+    expect(second).toContain("**F2**");
+    expect(second).toContain("**F3**");
+    expect(second).not.toContain("Real bug");
+    await current().harness.behavior.runCli(["review-applied", "--commit", newSha, "--pushed"], ctx("thr_4"));
+    summary = (await board()).tickets[0]!.latestReview!;
+    expect(summary).toMatchObject({ appliedCount: 3, selectedCount: 0, counts: { critical: 0, important: 0, minor: 0 } });
+    await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/No selected findings are left/u);
+
+    const reopened = (await current().harness.behavior.callRpc("review_set_applied", { reviewId, findingId: "F2", applied: false })) as Review;
+    expect([...reopened.appliedFindingIds].sort()).toEqual(["F1", "F3"]);
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ appliedCount: 2, selectedCount: 1 });
+    [stored] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(stored!.appliedFindingIds).not.toContain("F2");
+    await expect(current().harness.behavior.callRpc("review_set_applied", { reviewId, findingId: "F9", applied: true })).rejects.toThrow(/no finding F9/u);
   });
 
   it("applies without asking and deletes reviews with the card", async () => {

@@ -80,21 +80,26 @@ export function ReviewBadge({ ticket }: { ticket: Ticket }) {
   if (review === null) return null;
   if (review.status === "running") return <Badge tone="accent">reviewing…</Badge>;
   if (review.status === "failed") return <Badge tone="danger">review failed</Badge>;
-  if (review.apply !== null && review.apply.completedAt === null) return <Badge tone="accent">applying…</Badge>;
-  if (review.apply !== null) {
-    return <Badge tone="success" title={`Fixes pushed as ${review.apply.pushedCommit ?? "unknown"}`}>applied</Badge>;
-  }
+  const { apply, appliedCount } = review;
+  if (apply !== null && apply.completedAt === null) return <Badge tone="accent">applying…</Badge>;
   const counts = review.counts;
-  if (counts === null) return <Badge title={`Reviewed at commit ${review.commitSha ?? "unknown"}`}>reviewed</Badge>;
+  if (counts === null) {
+    if (apply !== null) return <Badge tone="success" title={`Fixes ${apply.push ? "pushed" : "committed"} as ${apply.pushedCommit ?? "unknown"}`}>applied</Badge>;
+    return <Badge title={`Reviewed at commit ${review.commitSha ?? "unknown"}`}>reviewed</Badge>;
+  }
   const total = counts.critical + counts.important + counts.minor;
-  if (total === 0) return <Badge tone="success">no findings</Badge>;
+  if (total === 0) {
+    if (appliedCount > 0) return <Badge tone="success" title={`All ${appliedCount} finding${appliedCount === 1 ? "" : "s"} applied`}>all applied</Badge>;
+    return <Badge tone="success">no findings</Badge>;
+  }
   return (
     <Badge
       tone={counts.critical > 0 ? "danger" : counts.important > 0 ? "warning" : "neutral"}
-      title={`${counts.critical} critical, ${counts.important} important, ${counts.minor} minor`}
+      title={`Open: ${counts.critical} critical, ${counts.important} important, ${counts.minor} minor${appliedCount > 0 ? `; ${appliedCount} applied` : ""}`}
     >
       {total} finding{total === 1 ? "" : "s"}
-      {review.selectedCount !== null ? ` · ${review.selectedCount} to apply` : ""}
+      {appliedCount > 0 ? ` · ${appliedCount} applied` : ""}
+      {review.selectedCount !== null && (review.selectedCount > 0 || appliedCount === 0) ? ` · ${review.selectedCount} to apply` : ""}
     </Badge>
   );
 }

@@ -193,5 +193,7 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
       snapshot TEXT NOT NULL,
       deleted_at INTEGER NOT NULL
     )`,
+    `ALTER TABLE reviews ADD COLUMN applied_finding_ids TEXT`,
+    `UPDATE reviews SET applied_finding_ids = apply_finding_ids WHERE apply_completed_at IS NOT NULL AND apply_finding_ids IS NOT NULL`,
   ]);
 }

@@ -27,7 +27,7 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the PR out: records which commit the review covers. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
 | `bb kanban apply-review [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-review` skill on the selected findings, applying all of them without confirmation, commits, and (unless `--no-push`) pushes to the PR branch. |
-| `bb kanban review-applied --commit <sha> [--pushed]` | Run from an apply thread after committing: records the commit, `--pushed` when it was pushed. |
+| `bb kanban review-applied --commit <sha> [--pushed] [--skipped F2,F5]` | Run from an apply thread after committing: records the commit (`--pushed` when it was pushed) and marks every finding it was handed applied, except the `--skipped` ones it could not apply. |
 | `bb kanban comments [--ticket <id>]` | List the PR's synced comments with their selection state. |
 | `bb kanban apply-comments [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-pr-comments` skill on the selected comments, applying all of them without confirmation, commits, and (unless `--no-push`) pushes. |
 | `bb kanban comments-applied --commit <sha> [--pushed]` | Run from an apply-comments thread after committing: marks the comments addressed. |
@@ -117,7 +117,9 @@ selection is the triage: apply every selected finding as written, without a
 triage step, a confirmation, or dropping or reshaping any, and report the ones
 you could not apply. Then commit, push to the PR head branch with
 `git push origin HEAD:refs/heads/<head>`, and run
-`bb kanban review-applied --commit "$(git rev-parse HEAD)"`. Never force-push.
+`bb kanban review-applied --commit "$(git rev-parse HEAD)"`, adding
+`--skipped <ids>` for any finding you could not apply so the board keeps it
+open. Never force-push.
 
 ## Rules
 

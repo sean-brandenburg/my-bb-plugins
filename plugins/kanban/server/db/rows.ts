@@ -91,6 +91,7 @@ export interface ReviewRow {
   apply_pushed_commit: string | null;
   apply_finding_ids: string | null;
   apply_push: number | null;
+  applied_finding_ids: string | null;
   selection_overrides: string | null;
   finding_edits: string | null;
 }
@@ -291,6 +292,7 @@ export function rowToReview(row: ReviewRow): Review {
     selection: effectiveSelection(report, selectionOverrides),
     selectionOverrides,
     findingEdits,
+    appliedFindingIds: row.applied_finding_ids === null ? [] : parseStringArray(row.applied_finding_ids),
     createdAt: row.created_at,
     completedAt: row.completed_at,
     apply:

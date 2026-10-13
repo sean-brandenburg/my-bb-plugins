@@ -274,6 +274,11 @@ export const rpcContract = defineRpcContract({
     input: z.object({ reviewId: z.string(), findingId: z.string(), selected: z.boolean() }).strict(),
     output: reviewSchema,
   },
+  /** Cross a finding off by hand, or reopen one an apply round marked applied. */
+  review_set_applied: {
+    input: z.object({ reviewId: z.string(), findingId: z.string(), applied: z.boolean() }).strict(),
+    output: reviewSchema,
+  },
   review_reset_selection: {
     input: z.object({ reviewId: z.string() }).strict(),
     output: reviewSchema,

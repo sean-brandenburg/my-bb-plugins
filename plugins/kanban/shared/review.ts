@@ -107,16 +107,21 @@ export const reviewSchema = z.object({
   selectionOverrides: selectionSchema,
   /** Wording changes the user made per finding; `report.findings` already has them applied. */
   findingEdits: findingEditsSchema,
+  /** Findings a completed apply round fixed, across every round, plus any the user marked by hand. */
+  appliedFindingIds: z.array(z.string()),
   createdAt: z.number(),
   completedAt: z.number().nullable(),
   apply: reviewApplySchema.nullable(),
 });
 export type Review = z.infer<typeof reviewSchema>;
 export const reviewSummarySchema = reviewSchema
-  .omit({ body: true, report: true, selection: true, selectionOverrides: true, findingEdits: true })
+  .omit({ body: true, report: true, selection: true, selectionOverrides: true, findingEdits: true, appliedFindingIds: true })
   .extend({
     hasBody: z.boolean(),
+    /** Findings no apply round has fixed yet. */
     counts: severityCountsSchema.nullable(),
+    appliedCount: z.number().int(),
+    /** Selected findings still to apply. */
     selectedCount: z.number().int().nullable(),
     scores: reviewScoresSchema.nullable(),
   });

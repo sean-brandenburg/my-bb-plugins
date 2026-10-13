@@ -15,7 +15,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { getTicket, hydrate, getColumns, getSources, createTicket, moveTicket, setParent, setTags, setDueDate } = services.board;
   const { spawnThreadForTicket, linkThread } = services.threads;
   const { projectForTicket, fallbackProject } = services.projects;
-  const { spawnReviewForTicket, spawnApplyForReview } = services.reviews;
+  const { spawnReviewForTicket, spawnApplyForReview, completeApply: completeReviewApply } = services.reviews;
   const { spawnApplyForComments, completeApply } = services.prComments;
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
@@ -455,6 +455,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           options: {
             commit: { type: "string", description: "Sha of the resulting commit" },
             pushed: { type: "boolean", description: "The commit was pushed to the PR branch" },
+            skipped: { type: "string", description: "Comma-separated ids of handed findings that could not be applied; they stay open" },
             review: { type: "string", description: "Review id; defaults to the review being applied by the current thread" },
           },
           async run({ options }, ctx) {
@@ -470,10 +471,12 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
                 hint: "Run this from the apply thread, or pass --review <id>.",
               });
             }
-            stmts.completeApply.run(Date.now(), options.commit ?? null, row.id);
-            if (options.pushed) stmts.setApplyPushed.run(row.id);
-            publish();
-            return { exitCode: 0, stdout: `Review ${row.id} applied${options.commit === undefined ? "" : ` at ${options.commit}`}${options.pushed ? " (pushed)" : ""}` };
+            const skipped = (options.skipped ?? "").split(",").map((id) => id.trim()).filter((id) => id !== "");
+            const fixed = completeReviewApply(row, options.commit ?? null, options.pushed, skipped);
+            return {
+              exitCode: 0,
+              stdout: `Review ${row.id} applied${options.commit === undefined ? "" : ` at ${options.commit}`}${options.pushed ? " (pushed)" : ""}; ${fixed} finding(s) marked applied${skipped.length === 0 ? "" : `, ${skipped.length} left open`}`,
+            };
           },
         }),
         tag: cliCommand({

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { OPACITY_TRANSITION, STAGGER, enter, speed, stagger, POPOVER_MOTION } from "bb-motion";
+import { OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
 import type { Finding, FindingSeverity, Review } from "../shared/review";
@@ -23,10 +23,10 @@ const SEVERITY_TONE: Record<FindingSeverity, "danger" | "warning" | "neutral"> =
   minor: "neutral",
 };
 
-function SeverityCountBadges({ counts }: { counts: NonNullable<Ticket["latestReview"]>["counts"] }) {
+function SeverityCountBadges({ counts, appliedCount }: { counts: NonNullable<Ticket["latestReview"]>["counts"]; appliedCount: number }) {
   if (counts === null) return null;
   const total = counts.critical + counts.important + counts.minor;
-  if (total === 0) return <Badge tone="success">no findings</Badge>;
+  if (total === 0) return <Badge tone="success">{appliedCount > 0 ? "all applied" : "no findings"}</Badge>;
   return (
     <>
       {(["critical", "important", "minor"] as const)
@@ -45,19 +45,25 @@ function FindingCard({
   index,
   selected,
   overridden,
+  applied,
   onToggle,
+  onApplied,
 }: {
   finding: Finding;
   /** Position across all severity groups, so the whole report cascades as one list. */
   index: number;
   selected: boolean | null;
   overridden: boolean;
+  /** An apply round fixed it (or the user crossed it off); it is folded to its title and kept out of the next round. */
+  applied: boolean;
   onToggle: ((selected: boolean) => void) | null;
+  onApplied: ((applied: boolean) => void) | null;
 }) {
+  const appliedPop = usePopOnChange(applied);
   return (
-    <li style={stagger(index)} className={cn("rounded-md border border-border bg-card p-2.5", enter.rise, speed.fast, STAGGER, OPACITY_TRANSITION, selected === false && "opacity-60")}>
+    <li style={stagger(index)} className={cn("rounded-md border border-border bg-card p-2.5", enter.rise, speed.fast, STAGGER, OPACITY_TRANSITION, (selected === false || applied) && "opacity-60")}>
       <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-        {selected !== null && onToggle !== null ? (
+        {selected !== null && onToggle !== null && !applied ? (
           <Checkbox
             checked={selected}
             onCheckedChange={(checked) => onToggle(checked === true)}
@@ -65,8 +71,9 @@ function FindingCard({
             className="mt-0.5"
           />
         ) : null}
-        <Badge tone={SEVERITY_TONE[finding.severity]}>{finding.id}</Badge>
-        <span className="min-w-0 flex-1 text-sm font-medium leading-5">{finding.title}</span>
+        <Badge tone={applied ? "success" : SEVERITY_TONE[finding.severity]}>{finding.id}</Badge>
+        <span className={cn("min-w-0 flex-1 text-sm font-medium leading-5", applied && "text-muted-foreground line-through")}>{finding.title}</span>
+        {applied ? <Badge tone="success">applied</Badge> : null}
         {finding.importance !== null && finding.scopeFit !== null ? (
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title="importance / scope fit (1–5)">
             {finding.importance}/{finding.scopeFit}
@@ -77,8 +84,34 @@ function FindingCard({
             carried
           </span>
         ) : null}
-        {overridden ? <span className="shrink-0 text-xs text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
+        {overridden && !applied ? <span className="shrink-0 text-xs text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
+        {onApplied !== null ? (
+          <button
+            type="button"
+            aria-label={applied ? `Reopen ${finding.id}` : `Mark ${finding.id} as applied`}
+            title={applied ? "Reopen: show it in the diff and let the next apply round take it" : "Mark as applied: cross it off and hide it from the diff"}
+            className={cn(
+              "-my-0.5 flex size-6 shrink-0 items-center justify-center rounded hover:bg-state-hover",
+              PRESS,
+              applied ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => onApplied(!applied)}
+          >
+            {/* The pop lives on a wrapper so remounting it never takes focus from the button. */}
+            <span key={appliedPop.key} onAnimationEnd={appliedPop.onAnimationEnd} className={cn("flex", appliedPop.className)}>
+              <Icon name="CircleCheck" className="size-3.5" />
+            </span>
+          </button>
+        ) : null}
       </div>
+      {applied ? null : <FindingDetails finding={finding} />}
+    </li>
+  );
+}
+
+function FindingDetails({ finding }: { finding: Finding }) {
+  return (
+    <>
       {finding.locations.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-1">
           {finding.locations.map((location) => (
@@ -102,7 +135,7 @@ function FindingCard({
           ))}
         </div>
       ) : null}
-    </li>
+    </>
   );
 }
 
@@ -110,17 +143,21 @@ function StructuredReview({
   review,
   onToggle,
   onReset,
+  onApplied,
 }: {
   review: Review;
   /** Null makes the view read-only (old reviews). */
   onToggle: ((findingId: string, selected: boolean) => void) | null;
   onReset: (() => void) | null;
+  onApplied: ((findingId: string, applied: boolean) => void) | null;
 }) {
   const report = review.report!;
   const grouped = (["critical", "important", "minor"] as const)
     .map((severity) => ({ severity, findings: report.findings.filter((finding) => finding.severity === severity) }))
     .filter((group) => group.findings.length > 0);
-  const selectedCount = Object.values(review.selection).filter(Boolean).length;
+  const applied = new Set(review.appliedFindingIds);
+  const openCount = report.findings.filter((finding) => !applied.has(finding.id)).length;
+  const selectedCount = report.findings.filter((finding) => review.selection[finding.id] === true && !applied.has(finding.id)).length;
   const overriddenCount = Object.keys(review.selectionOverrides).length;
   return (
     <div className="flex flex-col gap-3">
@@ -128,7 +165,8 @@ function StructuredReview({
       {report.findings.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : "Suggested: critical, or importance ≥ 3 and scope ≥ 3"}>
-            <span className="font-medium text-foreground tabular-nums">{selectedCount}</span> of {report.findings.length} selected
+            <span className="font-medium text-foreground tabular-nums">{selectedCount}</span> of {openCount} open selected
+            {applied.size > 0 ? <> · <span className="tabular-nums">{report.findings.length - openCount}</span> applied</> : null}
           </span>
           {onReset !== null && overriddenCount > 0 ? (
             <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
@@ -151,7 +189,9 @@ function StructuredReview({
                 index={grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index}
                 selected={review.selection[finding.id] ?? null}
                 overridden={finding.id in review.selectionOverrides}
+                applied={applied.has(finding.id)}
                 onToggle={onToggle === null ? null : (selected) => onToggle(finding.id, selected)}
+                onApplied={onApplied === null ? null : (isApplied) => onApplied(finding.id, isApplied)}
               />
             ))}
           </ul>
@@ -188,7 +228,7 @@ function ReviewStatusChips({ review }: { review: Ticket["latestReview"] }) {
   if (review.status === "failed") return <Badge tone="danger">failed</Badge>;
   return (
     <span className="inline-flex items-center gap-1" title={`Reviewed at ${review.commitSha ?? "unknown"}${review.sinceCommitSha !== null ? ` (since ${review.sinceCommitSha})` : ""}`}>
-      <SeverityCountBadges counts={review.counts} />
+      <SeverityCountBadges counts={review.counts} appliedCount={review.appliedCount} />
     </span>
   );
 }
@@ -226,7 +266,7 @@ export function ReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [showFindings, ticket.id, ticket.latestReview?.completedAt, ticket.latestReview?.selectedCount, rpc]);
+  }, [showFindings, ticket.id, ticket.latestReview?.completedAt, ticket.latestReview?.selectedCount, ticket.latestReview?.appliedCount, rpc]);
 
   const applying = review?.apply !== null && review?.apply !== undefined && review.apply.completedAt === null;
   const selectedCount = review?.selectedCount ?? null;
@@ -236,6 +276,8 @@ export function ReviewPanel({
     rpc.call("review_set_selection", { reviewId, findingId, selected }).then(updateReview, toastError);
   const resetSelection = (reviewId: string) =>
     rpc.call("review_reset_selection", { reviewId }).then(updateReview, toastError);
+  const setApplied = (reviewId: string, findingId: string, applied: boolean) =>
+    rpc.call("review_set_applied", { reviewId, findingId, applied }).then(updateReview, toastError);
   const startReview = (mode: "full" | "incremental") =>
     void run(() => rpc.call("ticket_review_pr", { id: ticket.id, projectId: null, mode }), "Review started");
   const canStart = canReview && !pending && review?.status !== "running";
@@ -303,7 +345,7 @@ export function ReviewPanel({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <span title={selectedCount === 0 ? "Tick at least one finding to apply" : "Applies the selected findings"}>
+            <span title={selectedCount === 0 ? "Tick at least one open finding to apply" : "Applies the selected findings that are still open"}>
               <Button
                 type="button"
                 variant="secondary"
@@ -351,6 +393,7 @@ export function ReviewPanel({
                         review={latest}
                         onToggle={(findingId, selected) => void toggleFinding(latest.id, findingId, selected)}
                         onReset={() => void resetSelection(latest.id)}
+                        onApplied={(findingId, applied) => void setApplied(latest.id, findingId, applied)}
                       />
                     ) : (
                       <Markdown content={latest.body} />
@@ -370,7 +413,7 @@ export function ReviewPanel({
                                 {new Date(entry.completedAt ?? entry.createdAt).toLocaleString()}
                               </summary>
                               <div className="mt-2">
-                                {entry.report !== null ? <StructuredReview review={entry} onToggle={null} onReset={null} /> : <Markdown content={entry.body ?? ""} />}
+                                {entry.report !== null ? <StructuredReview review={entry} onToggle={null} onReset={null} onApplied={null} /> : <Markdown content={entry.body ?? ""} />}
                               </div>
                             </details>
                           ))}

@@ -77,14 +77,23 @@ export function applyFindingEdits(report: ReviewReport | null, edits: Record<str
   };
 }
 
+/** The findings the next apply round would get: selected, and not already fixed by an earlier one. */
+export function pendingFindings(review: Review): Finding[] {
+  const applied = new Set(review.appliedFindingIds);
+  return (review.report?.findings ?? []).filter((finding) => review.selection[finding.id] === true && !applied.has(finding.id));
+}
+
 export function summarize(review: Review): ReviewSummary {
-  const { body, report, selection, selectionOverrides, ...rest } = review;
+  const { body, report, selection: _selection, selectionOverrides: _overrides, findingEdits: _edits, appliedFindingIds, ...rest } = review;
+  const applied = new Set(appliedFindingIds);
+  const open = report === null ? null : { ...report, findings: report.findings.filter((finding) => !applied.has(finding.id)) };
   return {
     ...rest,
     hasBody: body !== null && body.trim() !== "",
-    counts: countSeverities(report),
-    selectedCount: report === null ? null : Object.values(selection).filter(Boolean).length,
-    scores: rollupScores(report),
+    counts: countSeverities(open),
+    appliedCount: report === null ? 0 : report.findings.length - open!.findings.length,
+    selectedCount: report === null ? null : pendingFindings(review).length,
+    scores: rollupScores(open),
   };
 }
 
@@ -106,13 +115,11 @@ export function earlierFindings(standing: Review[]): Array<Omit<Finding, "id" | 
   return standing.flatMap((review) =>
     (review.report?.findings ?? []).map(({ id, carriedFrom: _carriedFrom, ...finding }) => {
       const apply = review.apply;
-      const handed = apply !== null && (apply.findingIds === null || apply.findingIds.includes(id));
-      const applyRound =
-        apply === null || apply.completedAt === null
+      const applyRound = review.appliedFindingIds.includes(id)
+        ? `an apply round committed a fix for it${apply?.pushedCommit == null ? "" : ` (the latest round's commit is ${apply.pushedCommit.slice(0, 7)})`}; verify it worked`
+        : apply === null || apply.completedAt === null
           ? null
-          : handed
-            ? `an apply round committed a fix for it${apply.pushedCommit === null ? "" : ` in ${apply.pushedCommit.slice(0, 7)}`}; verify it worked`
-            : "deliberately left out of the apply round";
+          : "deliberately left out of the apply rounds";
       return { handle: `${review.id}/${id}`, ...finding, applyRound };
     }),
   );
@@ -122,7 +129,7 @@ export function earlierFindings(standing: Review[]): Array<Omit<Finding, "id" | 
 export function selectedFindingsBody(review: Review): { body: string; findingIds: string[] | null } {
   const { report } = review;
   if (report === null) return { body: review.body ?? "(the review body is empty; open the review thread for details)", findingIds: null };
-  const selected = report.findings.filter((finding) => review.selection[finding.id] === true);
+  const selected = pendingFindings(review);
   const bySeverity = (["critical", "important", "minor"] as const)
     .map((severity) => ({ severity, findings: selected.filter((finding) => finding.severity === severity) }))
     .filter((group) => group.findings.length > 0);
@@ -133,7 +140,7 @@ export function selectedFindingsBody(review: Review): { body: string; findingIds
   };
   const lines: string[] = ["## Change Summary", report.summary, "", "## Selected findings", ""];
   lines.push(
-    `${selected.length} of ${report.findings.length} findings were selected on the Kanban board; the rest were deliberately left out. Apply only these.`,
+    `${selected.length} of ${report.findings.length} findings were selected on the Kanban board; the rest were deliberately left out or fixed by an earlier apply round. Apply only these.`,
     "",
   );
   for (const { severity, findings } of bySeverity) {
