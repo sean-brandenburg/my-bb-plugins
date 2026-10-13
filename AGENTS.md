@@ -11,3 +11,14 @@ Build every plugin to be driven from the keyboard, with vim-style keys wherever 
 - Every mouse action needs a keyboard path.
 
 kanban's board, grpc-client, and vim-mode's scroll mode are working examples.
+
+## Finishing work
+
+When a plugin change is done, land it and install it locally without waiting to be asked:
+
+1. Commit on the thread's branch, then apply it to `main` in the main checkout (`/Users/sean/dev/my-bb-plugins`) with `git -C /Users/sean/dev/my-bb-plugins cherry-pick <sha>...`. Other sessions commit to `main` concurrently, so cherry-pick rather than fast-forward or rebase.
+2. In the main checkout's plugin directory, run `pnpm install --frozen-lockfile` if its dependencies changed, then the typecheck and tests, then `bb plugin build .`.
+3. Load it with `bb plugin reload <name>`. A new plugin is first listed in `.bb/plugins.json`, then installed with `bb plugin install path:/Users/sean/dev/my-bb-plugins --plugin <name> --yes`.
+4. Check that `bb plugin reload` reports it `running`. Don't push `main` unless asked.
+
+Install from the main checkout, never a worktree path: a worktree install breaks once the worktree is cleaned up.
