@@ -26,7 +26,7 @@ export function CurrentMarker({ projectId }: { projectId: string | null }) {
  * a pseudo-element keeps the line straight where a border would curve.
  */
 export const ROW_DIVIDER =
-  "before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-border";
+  "before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-border/50";
 
 /**
  * A row gets the divider unless a group label sits above it or the highlight
