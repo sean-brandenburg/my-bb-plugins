@@ -47,7 +47,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   and then on the title bar's controls, where `h`/`l` and `0`/`$` step along,
   `j` comes back down, and `o`, Enter or Space press; `j`/`k` also step through
   the Settings menu.
-  Opening a card from the keyboard puts the keys in the card, with the cursor
+  Opening a card from the keyboard, or by clicking one while a card is
+  already open, puts the keys in the card, with the cursor
   on its View changes button, greyed out when there are no changes; the keys move the way the card
   is laid out: `j`/`k` go to the field or button below or above (`k` from
   the buttons beside the title reaches the title),

@@ -21,8 +21,9 @@ export function isTextEntry(element: Element | null): boolean {
   return element.closest('textarea, select, [contenteditable]:not([contenteditable="false"])') !== null;
 }
 
-// A card opened from the keyboard takes focus once it renders; one opened with the mouse leaves
-// focus where it is. The panel may already show the card, so a request also reaches mounted cards.
+// A card opened from the keyboard, or while another card is showing, takes focus once it renders;
+// one opened with the mouse onto an empty panel leaves focus where it is. The panel may already
+// show the card, so a request also reaches mounted cards.
 let focusRequest: { ticketId: string; at: number } | null = null;
 const focusListeners = new Set<() => void>();
 
@@ -35,6 +36,13 @@ function takeFocusRequest(ticketId: string): boolean {
   if (focusRequest === null || focusRequest.ticketId !== ticketId || Date.now() - focusRequest.at > FOCUS_REQUEST_TTL_MS) return false;
   focusRequest = null;
   return true;
+}
+
+const CARD = "[data-kanban-card]";
+
+/** Whether an open card is on screen, in the right panel or a dialog. */
+export function cardShown(): boolean {
+  return Array.from(document.querySelectorAll(CARD)).some((card) => card.getClientRects().length > 0);
 }
 
 /** Puts the keyboard back on the board, on this card if the board shows it. */

@@ -20,7 +20,7 @@ import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
 import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 import { useBoardKeys } from "./board-keys";
-import { requestCardFocus } from "./card-keys";
+import { cardShown, requestCardFocus } from "./card-keys";
 import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop, scrollHalfPage } from "./stops";
 import { BoardKeysDialog } from "./board-keys-dialog";
 
@@ -78,7 +78,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
   const sourceTags = useMemo(() => new Set((board?.sources ?? []).flatMap((source) => source.tags)), [board]);
   const appPanel = useAppPanel();
   const showTicket = (ticketId: string, focus = false) => {
-    if (focus) requestCardFocus(ticketId);
+    if (focus || cardShown()) requestCardFocus(ticketId);
     const opened = appPanel.openFixedTab({ surface: { kind: "current" }, tab: TICKET_TAB, target: { ticketId } });
     if (!opened) setSelectedId(ticketId);
   };

@@ -123,6 +123,7 @@ function TicketDetails({
   return (
     <div
       ref={rootRef}
+      data-kanban-card=""
       tabIndex={-1}
       onKeyDown={keys.onKeyDown}
       onFocus={keys.onFocus}
