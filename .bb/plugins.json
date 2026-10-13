@@ -20,6 +20,7 @@
     { "name": "nerd-font", "source": "./plugins/nerd-font" },
     { "name": "aura", "source": "./plugins/aura" },
     { "name": "settings-search", "source": "./plugins/settings-search" },
-    { "name": "prompt-keys", "source": "./plugins/prompt-keys" }
+    { "name": "prompt-keys", "source": "./plugins/prompt-keys" },
+    { "name": "local-voice", "source": "./plugins/local-voice" }
   ]
 }

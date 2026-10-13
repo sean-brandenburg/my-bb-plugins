@@ -21,6 +21,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `nerd-font` | Decides whether the plugins here draw Nerd Font icons or their plain fallbacks (Automatic, Always, Never), plus `bb-nerd-font`, the glyph library they share |
 | `motion` | Eased, subtle micro-interactions across bb's own UI, plus `bb-motion`, the motion system (tokens, keyframes, React helpers) the other plugins share |
 | `prompt-keys` | Vim keys for the questions, tool approvals, and plan reviews bb asks you to answer |
+| `local-voice` | Voice input transcribed by a local speech model: whisper.cpp kept warm by the plugin, or any OpenAI-compatible transcription server |
 
 ## Install
 
