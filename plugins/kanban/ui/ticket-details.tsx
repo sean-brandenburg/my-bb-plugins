@@ -134,10 +134,11 @@ function TicketDetails({
           onChange={(event) => setTitle(event.target.value)}
           onBlur={saveText}
           onKeyDown={(event) => {
-            if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            keys.leave(event.currentTarget);
           }}
           aria-label="Title"
-          readOnly={ticket.kind !== "adhoc"}
           className="-mx-1 w-full rounded bg-transparent px-1 text-base font-semibold leading-6 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         {parent !== null ? (

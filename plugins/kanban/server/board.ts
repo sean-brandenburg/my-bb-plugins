@@ -217,7 +217,9 @@ export function createBoardStore(ctx: KanbanContext) {
 
   function updateText(id: string, title: string | undefined, description: string | undefined): Ticket {
     const current = getTicket(id);
-    stmts.setText.run(title ?? current.title, description ?? current.description, Date.now(), id);
+    // Sync keeps a title the user has changed instead of taking the PR's or issue's again.
+    const edited = title !== undefined && title !== current.title ? 1 : 0;
+    stmts.setText.run(title ?? current.title, edited, description ?? current.description, Date.now(), id);
     publish();
     return getTicket(id);
   }

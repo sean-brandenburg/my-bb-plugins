@@ -49,10 +49,12 @@ its PR is reviewed and its review findings and comments are handed to agents.
   the Settings menu.
   Opening a card from the keyboard puts the keys in the card, with the cursor
   on its View changes button, greyed out when there are no changes; the keys move the way the card
-  is laid out: `j`/`k` go to the field or button below or above,
+  is laid out: `j`/`k` go to the field or button below or above (`k` from
+  the buttons beside the title reaches the title),
   `h`/`l` along a row (such as the buttons beside the title), `gg`/`G` to the
   first or last, and Ctrl-d/Ctrl-u scroll half a page. Enter or Space presses a button; on a text box, Enter or `i` starts
-  typing (`i` elsewhere goes to the description). Escape returns to the keys;
+  typing (`i` elsewhere goes to the description), and Enter in the title saves
+  it and returns to the keys. Escape returns to the keys;
   with vim-mode it takes two (the first enters vim's normal mode). Escape again
   closes the card and puts the cursor back on the board, and `h` past a row's
   left edge goes back to the board leaving the card open. `t` and `d` open the card's thread and
@@ -61,7 +63,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
   the count of unsent comments), a property list (Column, Tags, Due, Thread, Author or Jira fields),
   then collapsible groups for Code review, PR comments, and Description or
-  Notes. Title and description save when the field loses focus.
+  Notes. Title and description save when the field loses focus. A PR or Jira
+  card's title is editable too; once edited, sync keeps your title instead of
+  taking the PR's or issue's again.
 - **Brain dump**: New card → Brain dump. Type or dictate (mic button, transcribed
   by bb's voice service) a ramble of everything that needs doing and pick a
   project. A background planning thread reads the project and replies with a

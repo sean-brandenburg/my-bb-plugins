@@ -57,13 +57,13 @@ export function prepareStatements(db: KanbanDatabase) {
     clearReviewThread: db.prepare<[number, string]>(
       `UPDATE tickets SET review_thread_id = NULL, updated_at = ? WHERE review_thread_id = ?`,
     ),
-    setText: db.prepare<[string, string, number, string]>(
-      `UPDATE tickets SET title = ?, description = ?, updated_at = ? WHERE id = ?`,
+    setText: db.prepare<[string, number, string, number, string]>(
+      `UPDATE tickets SET title = ?, title_edited = MAX(title_edited, ?), description = ?, updated_at = ? WHERE id = ?`,
     ),
     setPr: db.prepare<
       [string, string, PullRequest["state"], PullRequest["role"], string, string, number, string]
     >(
-      `UPDATE tickets SET title = ?, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, updated_at = ? WHERE id = ?`,
     ),
     // CI flips without anyone editing the card, so this leaves updated_at alone.
     setPrHead: db.prepare<[string, PullRequest["checks"], string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ? WHERE id = ?`),
@@ -74,7 +74,7 @@ export function prepareStatements(db: KanbanDatabase) {
       `SELECT * FROM tickets WHERE kind = 'jira' AND (jira_status_category IS NULL OR jira_status_category != 'done')`,
     ),
     setJira: db.prepare<[string, string, string, string, string, string | null, string | null, string, number, string]>(
-      `UPDATE tickets SET title = ?, jira_url = ?, jira_status = ?, jira_status_category = ?, jira_issue_type = ?, jira_priority = ?, jira_assignee = ?, jira_updated_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, jira_url = ?, jira_status = ?, jira_status_category = ?, jira_issue_type = ?, jira_priority = ?, jira_assignee = ?, jira_updated_at = ?, updated_at = ? WHERE id = ?`,
     ),
     remove: db.prepare<[string]>(`DELETE FROM tickets WHERE id = ?`),
     moveColumn: db.prepare<[string, number, number, string]>(

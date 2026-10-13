@@ -187,5 +187,6 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `UPDATE tickets SET column_entered_at = updated_at`,
     `ALTER TABLE tickets ADD COLUMN pr_head_ref TEXT`,
     `ALTER TABLE tickets ADD COLUMN pr_checks TEXT`,
+    `ALTER TABLE tickets ADD COLUMN title_edited INTEGER NOT NULL DEFAULT 0`,
   ]);
 }

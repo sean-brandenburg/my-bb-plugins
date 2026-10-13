@@ -71,7 +71,12 @@ export function useCardKeys(
   ticketId: string,
   focusOnMount: boolean,
   handlers: CardKeyHandlers,
-): { onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void; onFocus: (event: ReactFocusEvent<HTMLElement>) => void } {
+): {
+  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
+  onFocus: (event: ReactFocusEvent<HTMLElement>) => void;
+  /** Leaves a text box for the keys with the cursor still on it, as Escape does. */
+  leave: (field: HTMLElement) => void;
+} {
   const pendingG = useRef(0);
 
   const stops = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>(STOPS)).filter((stop) => stop.getClientRects().length > 0);
@@ -233,5 +238,10 @@ export function useCardKeys(
     if (root !== null && event.target !== root && root.contains(event.target)) unpark(root);
   };
 
-  return { onKeyDown, onFocus };
+  const leave = (field: HTMLElement) => {
+    const root = rootRef.current;
+    if (root !== null) land(root, field);
+  };
+
+  return { onKeyDown, onFocus, leave };
 }

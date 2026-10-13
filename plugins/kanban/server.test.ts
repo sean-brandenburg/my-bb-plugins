@@ -590,6 +590,30 @@ describe("GitHub sync", () => {
     expect((await board()).tickets[0]!.columnId).toBe("backlog");
   });
 
+  it("keeps a PR card's edited title over the PR's, while unedited cards follow it", async () => {
+    vi.stubGlobal("fetch", stubGithub({ authored: [searchItem("acme-co/widgets", 1), searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const idOf = async (number: number) => (await board()).tickets.find((ticket) => ticket.pr?.number === number)!.id;
+    await current().harness.behavior.callRpc("ticket_update", { id: await idOf(1), title: "My name for it" });
+    await current().harness.behavior.callRpc("ticket_update", { id: await idOf(2), title: "PR 2", description: "Only notes changed" });
+    await current().harness.behavior.callRpc("ticket_update", { id: await idOf(3), title: "Gone from search" });
+
+    // #3 left the search, so its title arrives from the single-PR refresh instead.
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        authored: [searchItem("acme-co/widgets", 1, { title: "Renamed upstream" }), searchItem("acme-co/widgets", 2, { title: "Also renamed" })],
+        pulls: { "acme-co/widgets#3": { state: "open", merged: false, title: "Renamed too" } },
+      }),
+    );
+    await current().harness.behavior.callRpc("sync_now", null);
+    const titles = new Map((await board()).tickets.map((ticket) => [ticket.pr?.number, ticket.title]));
+    expect(titles.get(1)).toBe("My name for it");
+    expect(titles.get(2)).toBe("Also renamed");
+    expect(titles.get(3)).toBe("Gone from search");
+  });
+
   it("reports a missing token without throwing when the gh binary is not found", async () => {
     vi.stubGlobal("fetch", stubGithub({}));
     await load({ githubToken: "", ghPath: "/nonexistent/gh" });
@@ -1338,6 +1362,21 @@ describe("Jira sources", () => {
     expect(list.stdout).toContain("ACME-1 (Done)");
     const cli = await current().harness.behavior.runCli(["sources"]);
     expect(cli.stdout).toContain("[jira-jql] assignee = currentUser()");
+  });
+
+  it("keeps a Jira card's edited title over the issue's summary", async () => {
+    vi.stubGlobal("fetch", stubGithub({ jira: [{ key: "ACME-1", summary: "Fix login", category: "new" }, { key: "ACME-2", summary: "In flight", category: "new" }] }));
+    await load({ ...jiraSettings, autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [jiraSource] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const ticket = (await board()).tickets.find((entry) => entry.jira?.key === "ACME-1")!;
+    await current().harness.behavior.callRpc("ticket_update", { id: ticket.id, title: "Login, properly" });
+
+    vi.stubGlobal("fetch", stubGithub({ jira: [{ key: "ACME-1", summary: "Fix login v2", category: "new" }, { key: "ACME-2", summary: "Still in flight", category: "new" }] }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    const titles = new Map((await board()).tickets.map((entry) => [entry.jira?.key, entry.title]));
+    expect(titles.get("ACME-1")).toBe("Login, properly");
+    expect(titles.get("ACME-2")).toBe("Still in flight");
   });
 
   it("reports missing Jira settings and per-source failures without blocking GitHub sources", async () => {
