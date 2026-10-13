@@ -50,7 +50,7 @@ export function EndpointSwitcher({
     <div ref={root} className="relative min-w-0 flex-1">
       <button
         type="button"
-        className={cx("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-state-hover", PRESS)}
+        className={cx("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-state-hover", PRESS, FOCUS_RING)}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={`${endpoint.target} · ${sourceName}`}

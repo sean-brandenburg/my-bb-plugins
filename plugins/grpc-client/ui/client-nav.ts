@@ -69,7 +69,8 @@ export const CTRL_KEYMAP: Record<string, ClientCommand> = {
 
 /** What the shortcuts dialog lists, in display order. */
 export const KEY_HELP: readonly { keys: readonly string[]; action: string }[] = [
-  { keys: ["j", "k"], action: "Next / previous method, call, or request field; scroll the response" },
+  { keys: ["j", "k"], action: "Next / previous method, call, or request field; scroll the response. k past the list's top reaches the buttons above it" },
+  { keys: ["h", "l"], action: "On those buttons (or call history's Clear): previous / next button" },
   { keys: ["gg", "G"], action: "First / last row" },
   { keys: ["l"], action: "Expand, open the method into its fields, step to a field's buttons (like Now), then on to the response" },
   { keys: ["h"], action: "Step back: collapse, go up a level, or from the response to the fields and on to the list" },
@@ -77,7 +78,8 @@ export const KEY_HELP: readonly { keys: readonly string[]; action: string }[] = 
   { keys: ["i", "I"], action: "Edit the field, with the caret at the start" },
   { keys: ["a", "A"], action: "Edit the field, with the caret at the end" },
   { keys: ["j", "k", "/", "Enter", "Esc"], action: "In an open enum or bool list: move, filter, pick, or close it unchanged" },
-  { keys: ["dd"], action: "Remove the list item or optional field, or empty the field" },
+  { keys: ["j", "k", "Enter", "Esc"], action: "In the endpoint or filter menu: move, press, or close it" },
+  { keys: ["dd"], action: "Remove the list item or optional field, empty the field, or delete the call from history" },
   { keys: ["/"], action: "Search methods (Enter opens the first match), or the response when you're in it" },
   { keys: ["n", "N"], action: "Next / previous match in the response" },
   { keys: ["f"], action: "Filter methods" },

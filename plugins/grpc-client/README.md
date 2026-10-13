@@ -9,7 +9,9 @@ trailers. Call history is shared between the UI and `bb grpc`.
 
 Outside text boxes the view takes vim-style keys, with one cursor that moves
 through the method list (or call history) and the request's fields. `j`/`k`
-move it, `gg`/`G` jump to the ends, and `l` goes deeper: it expands a service,
+move it, `gg`/`G` jump to the ends, and `k` from the list's top row reaches
+the endpoint, history, and collapse (or close) buttons above it, which `h`/`l` step across
+and `o` or Enter presses. Elsewhere `l` goes deeper: it expands a service,
 opens a method and carries the cursor into its fields, steps into a section,
 or steps across a field's buttons (a timestamp's Now, a list item's remove;
 Enter or Space presses them), and past the last of those moves on to the
@@ -28,7 +30,9 @@ Space picks, and Escape closes it unchanged. `/` filters the list as you type
 (every word must match); Enter picks the highlighted match, and Escape leaves
 the filter box with the matches still shown, so `j`/`k` keep going. `dd` removes a
 list item, map entry, or header, unsets a field that is set (an optional field
-goes back to unset), and otherwise empties the field's box.
+goes back to unset), and otherwise empties the field's box. In call history,
+`dd` deletes the call, and `k` from the first call reaches Clear (`h`/`l` step
+between Delete all and Cancel once it asks).
 
 `/` searches (Enter opens the first match and leaves the cursor on it, Escape
 clears the search, then leaves it), `f` opens the filters, `e` the endpoint
@@ -37,7 +41,7 @@ picker, `c` toggles call history, and `b` shows or hides the list. `[`/`]` and
 JSON, `y` copies the grpcurl command, and ⌘↵ sends. Ctrl-d/Ctrl-u (half a
 page) and Ctrl-f/Ctrl-b (a page) work in whichever pane you're in: in the list
 and the fields they move the cursor and scroll with it, as in vim. `j`/`k` and the arrows step through the open endpoint, filter, and
-actions panels. `?` (or More → Keyboard shortcuts) lists them all; arrows work
+actions panels; on the Protos dropdown the arrows change it and `j`/`k` move on. `?` (or More → Keyboard shortcuts) lists them all; arrows work
 as `hjkl`.
 
 The method search, the filter panel's API search, and the request form's,

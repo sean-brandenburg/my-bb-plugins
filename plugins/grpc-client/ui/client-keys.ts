@@ -116,10 +116,13 @@ export function usePanelKeys(panel: RefObject<HTMLElement | null>, open: boolean
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
     const node = panel.current;
     const target = event.target as Element;
-    // A select's arrows change its value.
-    if (node === null || target instanceof HTMLSelectElement) return;
-    const typing = isTextEntry(target);
-    const step = event.key === "ArrowDown" || (event.key === "j" && !typing) ? 1 : event.key === "ArrowUp" || (event.key === "k" && !typing) ? -1 : 0;
+    if (node === null) return;
+    // A select's arrows change its value, but j and k still leave it.
+    const select = target instanceof HTMLSelectElement;
+    const typing = isTextEntry(target) && !select;
+    const down = (event.key === "ArrowDown" && !select) || (event.key === "j" && !typing);
+    const up = (event.key === "ArrowUp" && !select) || (event.key === "k" && !typing);
+    const step = down ? 1 : up ? -1 : 0;
     if (step === 0) return;
     const stops = [...node.querySelectorAll<HTMLElement>(PANEL_STOPS)].filter((stop) => stop.getClientRects().length > 0);
     const index = stops.findIndex((stop) => stop === target || stop.contains(target));
@@ -131,7 +134,10 @@ export function usePanelKeys(panel: RefObject<HTMLElement | null>, open: boolean
   };
 }
 
-/** Rows the cursor moves over carry `data-nav-row` ("group" or "item"); list rows also a `data-nav-key`. */
+/**
+ * Rows the cursor moves over carry `data-nav-row`: "group", "toolbar" for a row of buttons that
+ * h and l step across, else "item". List rows also carry a `data-nav-key`.
+ */
 export const NAV_ROW = "[data-nav-row]";
 /** Wraps a group's row and everything nested under it. */
 const NAV_GROUP = "[data-nav-group]";
@@ -271,11 +277,24 @@ export function pageCursor(rows: HTMLElement[], current: HTMLElement, step: 1 | 
   }
   if (best === current) best = rows[rows.indexOf(current) + step] ?? current;
   pane?.scrollBy({ top: best.getBoundingClientRect().top - from });
-  best.focus({ preventScroll: true });
-  best.scrollIntoView({ block: "nearest" });
+  focusRow(best);
 }
 
+export function isToolbar(row: HTMLElement): boolean {
+  return row.dataset.navRow === "toolbar";
+}
+
+/** A toolbar row's buttons; a panel that opens from one of them is not part of the row. */
+export function toolbarButtons(row: HTMLElement): HTMLButtonElement[] {
+  return [...row.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")].filter(
+    (button) => button.closest('[role="dialog"]') === null && button.getClientRects().length > 0,
+  );
+}
+
+/** Puts the cursor on a row; a toolbar row keeps it on the button it is on, else takes it on its first. */
 export function focusRow(element: HTMLElement): void {
-  element.focus({ preventScroll: true });
-  element.scrollIntoView({ block: "nearest" });
+  const buttons = isToolbar(element) ? toolbarButtons(element) : [];
+  const target = isToolbar(element) ? (buttons.find((button) => button === document.activeElement) ?? buttons[0] ?? element) : element;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: "nearest" });
 }

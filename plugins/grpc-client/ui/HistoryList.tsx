@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, EntranceScope, usePresenceList } from "bb-motion";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
@@ -21,6 +21,18 @@ export function HistoryList({ selectedId, onOpen }: { selectedId: number | null;
   const rpc = useRpc<typeof rpcContract>();
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const header = useRef<HTMLDivElement>(null);
+  // Clear and its confirmation swap places, so a cursor on one moves to the other.
+  const headerFocused = useRef(false);
+  const toggleConfirm = (next: boolean) => {
+    headerFocused.current = header.current?.contains(document.activeElement) ?? false;
+    setConfirmClear(next);
+  };
+  useLayoutEffect(() => {
+    if (!headerFocused.current) return;
+    headerFocused.current = false;
+    header.current?.querySelector<HTMLButtonElement>(confirmClear ? "[data-history-cancel]" : "button")?.focus({ preventScroll: true });
+  }, [confirmClear]);
   const refetch = useCallback(() => {
     rpc.call("history", { limit: HISTORY_LIST_LIMIT }).then(
       (result) => setEntries(result.entries),
@@ -37,31 +49,40 @@ export function HistoryList({ selectedId, onOpen }: { selectedId: number | null;
     });
   };
   const presence = usePresenceList(entries ?? [], (entry) => String(entry.id));
-  if (entries === null) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (entries === null) return <p className="p-4 text-sm text-muted-foreground" data-nav-loading="">Loading…</p>;
   if (presence.entries.length === 0) return <p className={cx("p-4 text-sm text-muted-foreground", enter.fade)}>Calls you make here or with `bb grpc call` appear here.</p>;
   return (
     <EntranceScope>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        <div className="flex items-center justify-between px-2 pb-1">
+        <div ref={header} className="flex items-center justify-between px-2 pb-1" data-nav-row="toolbar">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Recent calls</p>
           {confirmClear ? (
             <span className={cx("flex items-center gap-1 text-xs", enter.fade, speed.fast)}>
               <button
                 type="button"
-                className={cx("rounded px-1.5 py-0.5 text-destructive hover:bg-destructive/10", PRESS)}
+                className={cx("rounded px-1.5 py-0.5 text-destructive hover:bg-destructive/10", PRESS, FOCUS_RING)}
                 onClick={() => {
-                  setConfirmClear(false);
+                  toggleConfirm(false);
                   rpc.call("clearHistory").then(refetch, (cause) => toast.error(errorMessage(cause)));
                 }}
               >
                 Delete all
               </button>
-              <button type="button" className={cx("rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground", PRESS)} onClick={() => setConfirmClear(false)}>
+              <button
+                type="button"
+                className={cx("rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground", PRESS, FOCUS_RING)}
+                data-history-cancel=""
+                onClick={() => toggleConfirm(false)}
+              >
                 Cancel
               </button>
             </span>
           ) : (
-            <button type="button" className={cx("text-xs text-muted-foreground hover:text-foreground", enter.fade, speed.fast, PRESS)} onClick={() => setConfirmClear(true)}>
+            <button
+              type="button"
+              className={cx("rounded text-xs text-muted-foreground hover:text-foreground", enter.fade, speed.fast, PRESS, FOCUS_RING)}
+              onClick={() => toggleConfirm(true)}
+            >
               Clear
             </button>
           )}
@@ -97,6 +118,7 @@ export function HistoryList({ selectedId, onOpen }: { selectedId: number | null;
               type="button"
               className={cx("mr-1 mt-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground", REVEAL)}
               aria-label={`Delete ${entry.method} from history`}
+              data-history-delete=""
               title="Delete from history"
               onClick={() => remove(entry.id)}
             >

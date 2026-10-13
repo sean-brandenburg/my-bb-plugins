@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, pageCursor, rowCells, isTextEntry, NAV_ROW, readRows, useClientKeys } from "./client-keys";
+import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, isToolbar, pageCursor, rowCells, isTextEntry, NAV_ROW, readRows, toolbarButtons, useClientKeys } from "./client-keys";
 import { type Caret, type ClientCommand, cycle, listAction, type ListMotion } from "./client-nav";
 import { Centered, FOCUS_RING, MenuItem, Segmented, Tabs } from "./controls";
 import { EndpointSwitcher } from "./EndpointSwitcher";
@@ -269,9 +269,15 @@ export function ClientView() {
     if (!listShown) showList();
     setPendingFocus({ target, at: Date.now() });
   };
+  /** Resumes on the list's last or open row; the toolbar above it only once the list has loaded with no rows. */
   const landCursor = (list: HTMLElement): boolean => {
-    const rows = [...list.querySelectorAll<HTMLElement>(NAV_ROW)];
-    const row = rows.find((candidate) => candidate.dataset.navKey === lastRowKey.current) ?? rows.find((candidate) => candidate.getAttribute("aria-current") === "true") ?? rows[0];
+    const all = [...list.querySelectorAll<HTMLElement>(NAV_ROW)];
+    const rows = all.filter((candidate) => !isToolbar(candidate));
+    const row =
+      rows.find((candidate) => candidate.dataset.navKey === lastRowKey.current) ??
+      rows.find((candidate) => candidate.getAttribute("aria-current") === "true") ??
+      rows[0] ??
+      (list.querySelector("[data-nav-loading]") === null ? all[0] : undefined);
     if (row === undefined) return false;
     focusRow(row);
     return true;
@@ -373,7 +379,16 @@ export function ClientView() {
     const focused = focusedRow(list);
     let current = focused === null ? -1 : elements.indexOf(focused);
     if (current === -1) current = elements.findIndex((element) => element.dataset.navKey === lastRowKey.current);
-    const start = Math.max(0, elements.findIndex((element) => element.getAttribute("aria-current") === "true"));
+    const row = elements[current];
+    if (row !== undefined && isToolbar(row) && (motion === "left" || motion === "right" || motion === "open")) {
+      const buttons = toolbarButtons(row);
+      const at = buttons.findIndex((button) => button === document.activeElement);
+      if (motion === "open") (buttons[at] ?? buttons[0])?.click();
+      else buttons[at + (motion === "right" ? 1 : -1)]?.focus({ preventScroll: true });
+      return;
+    }
+    const open = elements.findIndex((element) => element.getAttribute("aria-current") === "true");
+    const start = open !== -1 ? open : Math.max(0, elements.findIndex((element) => !isToolbar(element)));
     const action = listAction(rows, current === -1 ? null : current, motion, start);
     if (action === null) return;
     const element = elements[action.index]!;
@@ -453,6 +468,22 @@ export function ClientView() {
         return;
       }
       const { elements } = readRows(pane);
+      const next = elements[Math.min(index, elements.length - 1)];
+      if (next !== undefined) focusRow(next);
+    }, 0);
+    return true;
+  };
+
+  /** Deletes the call under the cursor from history; the cursor takes the call that moves up into its place. */
+  const deleteHistoryRow = (): boolean => {
+    const list = listRef.current;
+    const row = focusedRow(list);
+    const button = row?.parentElement?.querySelector<HTMLButtonElement>("[data-history-delete]");
+    if (list === null || row === null || button == null) return false;
+    const index = readRows(list).elements.indexOf(row);
+    button.click();
+    setTimeout(() => {
+      const { elements } = readRows(list);
       const next = elements[Math.min(index, elements.length - 1)];
       if (next !== undefined) focusRow(next);
     }, 0);
@@ -559,8 +590,10 @@ export function ClientView() {
         pageCursor(elements, cursor, command.step, share);
         return;
       }
-      case "delete":
-        return currentPane() === "fields" && deleteField();
+      case "delete": {
+        const pane = currentPane();
+        return pane === "fields" ? deleteField() : pane === "list" && deleteHistoryRow();
+      }
       case "escape":
         if (command.fromField) {
           const row = document.activeElement?.parentElement?.closest<HTMLElement>(NAV_ROW);
@@ -644,7 +677,7 @@ export function ClientView() {
         if (key !== undefined) lastRowKey.current = key;
       }}
     >
-      <div className="flex items-center gap-1 border-b border-border px-1.5 py-1.5">
+      <div className="flex items-center gap-1 border-b border-border px-1.5 py-1.5" data-nav-row="toolbar">
         <EndpointSwitcher
           overview={overview}
           endpoint={endpoint}
@@ -662,6 +695,7 @@ export function ClientView() {
           className={cn(
             "rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground",
             PRESS,
+            FOCUS_RING,
             leftTab === "history" && "bg-state-active text-foreground",
           )}
           aria-label="Call history"
@@ -672,13 +706,13 @@ export function ClientView() {
           <Icon name="grpc-client/history" className="size-4" />
         </button>
         {overlayList ? (
-          <button type="button" className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Close method list" onClick={() => setListOpen(false)}>
+          <button type="button" className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS, FOCUS_RING)} aria-label="Close method list" onClick={() => setListOpen(false)}>
             <Icon name="X" className="size-4" />
           </button>
         ) : (
           <button
             type="button"
-            className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}
+            className={cx("rounded-md p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS, FOCUS_RING)}
             aria-label="Collapse method list"
             title="Collapse method list"
             onClick={() => setListCollapsed(true)}
@@ -698,7 +732,7 @@ export function ClientView() {
           </Button>
         </div>
       ) : serviceData === null ? (
-        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground" data-nav-loading="">
           <Icon name="Spinner" className="size-4" />
           Loading protos…
         </div>
