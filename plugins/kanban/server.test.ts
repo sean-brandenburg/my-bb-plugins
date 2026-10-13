@@ -614,6 +614,25 @@ describe("GitHub sync", () => {
     expect(titles.get(3)).toBe("Gone from search");
   });
 
+  it("attaches a PR pushed from an ad hoc card's thread to that card", async () => {
+    await load();
+    const add = await current().harness.behavior.runCli(["add", "Widget UI cleanups", "--json"], { threadId: "thr_f2xxnrzt6a", signal: new AbortController().signal });
+    const card = JSON.parse(add.stdout ?? "") as Ticket;
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        authored: [searchItem("acme-co/widgets", 5, { title: "Clean up the Widget UI" })],
+        heads: { "acme-co/widgets#5": { headRef: "bb/widget-ui-cleanups-thr_f2xxnrzt6a", rollup: "SUCCESS" } },
+      }),
+    );
+    await current().harness.behavior.callRpc("sync_now", null);
+
+    const { tickets } = await board();
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0]).toMatchObject({ id: card.id, kind: "pr", title: "Widget UI cleanups", threadId: "thr_f2xxnrzt6a", pr: { repo: "acme-co/widgets", number: 5 } });
+    expect(spawned).toHaveLength(0);
+  });
+
   it("reports a missing token without throwing when the gh binary is not found", async () => {
     vi.stubGlobal("fetch", stubGithub({}));
     await load({ githubToken: "", ghPath: "/nonexistent/gh" });
