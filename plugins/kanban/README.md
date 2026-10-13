@@ -48,7 +48,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   `j` comes back down, and `o`, Enter or Space press; `j`/`k` also step through
   the Settings menu.
   Opening a card from the keyboard puts the keys in the card, with the cursor
-  on its View changes button when it has one; the keys move the way the card
+  on its View changes button when it has changes to show; the keys move the way the card
   is laid out: `j`/`k` go to the field or button below or above,
   `h`/`l` along a row (such as the buttons beside the title), `gg`/`G` to the
   first or last, and Ctrl-d/Ctrl-u scroll half a page. Enter or Space presses a button; on a text box, Enter or `i` starts
@@ -139,7 +139,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a
   file list with per-file stats that jumps to a file and tracks the one in
   view. PR cards diff the pull request from GitHub; thread-backed cards diff
-  their environment against its merge base. `diff/thread/<threadId>` opens a
+  their environment against its merge base. The button, hover icon and `d` are
+  greyed out and do nothing on a card with no PR whose thread has no changed
+  files yet (or that has no thread). `diff/thread/<threadId>` opens a
   thread's changes the same way, as its card when it has one; submitting
   comments from a thread without a card creates one first. A thread's own
   Changes button and side-panel tab come from the `diff-view` plugin.

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { useBbNavigate, experimental_usePluginId as usePluginId, experimental_useSidebarThreadActions as useSidebarThreadActions, experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc, useSdk,  } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../contract";
-import type { Board } from "../shared/board";
+import { knownChangeTotals } from "bb-diff-view/app/change-totals";
+import { useThreadChangeTotals } from "bb-diff-view/app/use-change-totals";
+import type { Board, Ticket } from "../shared/board";
 import { BOARD_CHANGED } from "../shared/events";
 import { errorMessage } from "./format";
 
@@ -92,6 +94,24 @@ export function useCreateProjectFromFolder(): () => Promise<ProjectOption | null
 export function useThreadIndex(): ReadonlyMap<string, PluginSidebarThread> {
   const { threads } = useSidebarThreads({ experimental_lifecycles: ["active", "archived"] });
   return useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+}
+
+/**
+ * Whether the card has changes to show: a PR always does, a thread once its environment has changed files.
+ * Totals not fetched yet count as changes, so a board's buttons don't all flash disabled while they load.
+ */
+export function useTicketHasDiff(ticket: Ticket, thread: PluginSidebarThread | null | undefined): boolean {
+  const totals = useThreadChangeTotals(ticket.pr === null ? thread : null);
+  if (ticket.pr !== null) return true;
+  if (ticket.threadId === null) return false;
+  return totals === null || totals.files > 0;
+}
+
+/** `useTicketHasDiff` for key handlers, from whatever totals the card's buttons last fetched. */
+export function ticketHasDiff(ticket: Ticket): boolean {
+  if (ticket.pr !== null) return true;
+  if (ticket.threadId === null) return false;
+  return (knownChangeTotals(ticket.threadId)?.files ?? 1) > 0;
 }
 
 /** Sidebar `open` silently ignores threads the sidebar does not list, which includes every hidden code review thread. */

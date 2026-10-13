@@ -8,7 +8,9 @@ plugins embed.
 - **Changes button** at the right end of every thread's top bar, muted and
   disabled while the thread has no changes. It opens the thread's diff in the
   side panel. "Changes" is also in the side panel's new-tab launcher. The
-  plugin adds no page to the left sidebar.
+  plugin adds no page to the left sidebar. On a thread with no changes,
+  Cmd-Shift-D shows a toast instead of opening an empty panel. Other plugins
+  share the button's change counts through `bb-diff-view/app/use-change-totals`.
 - The view: every changed file in one scroll with sticky headers, a resizable
   file tree once the container is at least 48rem wide (hidden in a narrow side
   panel), structural (difftastic) diffs, with a text (Pierre) diff for any file

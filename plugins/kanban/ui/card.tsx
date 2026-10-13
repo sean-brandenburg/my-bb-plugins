@@ -10,6 +10,7 @@ import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
 import { ChecksMark, JiraStatusGlyph, PrStateGlyph, ReviewBadge } from "./badges";
 import { jiraStatusMark } from "./source-marks";
+import { useTicketHasDiff } from "./data";
 
 export function CardView({
   ticket,
@@ -57,6 +58,7 @@ export function CardView({
   onDragEnd: () => void;
 }) {
   const review = ticket.latestReview;
+  const hasDiff = useTicketHasDiff(ticket, thread);
   const ownTags = ticket.tags.filter((tag) => !hiddenTags.has(tag));
   const iconButton = cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS);
   const entrance = useEntrance(arrival === "intro" ? cn(enter.rise, STAGGER) : arrival === "new" ? enter.pop : undefined);
@@ -149,11 +151,17 @@ export function CardView({
               <Icon name="kanban-search-check" className="size-3.5" />
             </button>
           ) : null}
-          {ticket.pr !== null || ticket.threadId !== null ? (
-            <button type="button" aria-label="View changes" title="View changes" className={iconButton} onClick={stopping(onOpenDiff)}>
+          <span className="inline-flex" title={hasDiff ? "View changes" : "No changes"} onClick={stopping(() => {})}>
+            <button
+              type="button"
+              aria-label={hasDiff ? "View changes" : "View changes: no changes"}
+              className={cn(iconButton, "disabled:pointer-events-none disabled:opacity-50")}
+              disabled={!hasDiff}
+              onClick={stopping(onOpenDiff)}
+            >
               <Icon name="kanban-diff" className="size-3.5" />
             </button>
-          ) : null}
+          </span>
           {ticket.threadId !== null ? (
             <button type="button" aria-label="Open thread" title="Open thread" className={iconButton} onClick={stopping(onOpenThread)}>
               <Icon name="MessageSquare" className="size-3.5" />

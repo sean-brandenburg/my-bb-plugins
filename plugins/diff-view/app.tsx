@@ -2,7 +2,7 @@
 //
 // A Changes button in every thread's top bar opens the thread's diff in its side panel. The view itself lives in
 // lib/app so other plugins can bundle and embed it with their own data source.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   definePluginApp,
@@ -11,7 +11,6 @@ import {
   useBbNavigate,
   useRealtime,
   useRpc,
-  useSdk,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -20,6 +19,8 @@ import { POP, cx, enter, speed } from "bb-motion";
 import { DIFF_CHANGED } from "./events";
 import type { rpcContract } from "./server";
 import { DiffRefreshButton, DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "./lib/app/diff-view";
+import { knownChangeTotals } from "./lib/app/change-totals";
+import { useThreadChangeTotals } from "./lib/app/use-change-totals";
 import { registerDiffViewIcons } from "./lib/app/icons";
 import { errorMessage } from "./lib/app/format";
 import { requestFocus } from "./lib/app/state";
@@ -137,72 +138,11 @@ function ThreadChangesPanel({ threadId }: PluginThreadPanelProps) {
   );
 }
 
-const TOTALS_REFRESH_DELAY_MS = 2_000;
-
-interface ChangeTotals {
-  files: number;
-  additions: number;
-  deletions: number;
-}
-
-const NO_CHANGES: ChangeTotals = { files: 0, additions: 0, deletions: 0 };
-
-/** A thread's change totals as bb's changes panel counts them, refetched shortly after the thread updates. */
-function useThreadChangeTotals(threadId: string): ChangeTotals | null {
-  const sdk = useSdk();
-  const { threads } = useSidebarThreads();
-  const thread = threads.find((entry) => entry.id === threadId);
-  const environmentId = thread?.environment?.id ?? null;
-  const updatedAt = thread?.updatedAt ?? null;
-  const [totals, setTotals] = useState<({ threadId: string } & ChangeTotals) | null>(null);
-  useEffect(() => {
-    if (environmentId === null) {
-      setTotals({ threadId, ...NO_CHANGES });
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(
-      () => {
-        // The same status bb's own changes panel reads: uncommitted files (untracked too) plus the branch's commits
-        // since its merge base.
-        sdk.environments.status({ environmentId }).then(
-          (status) => {
-            if (cancelled) return;
-            if (status.outcome !== "available") {
-              setTotals({ threadId, ...NO_CHANGES });
-              return;
-            }
-            const byPath = new Map<string, { insertions: number | null; deletions: number | null }>();
-            for (const file of status.workspace.mergeBase?.files ?? []) byPath.set(file.path, file);
-            for (const file of status.workspace.workingTree.files) byPath.set(file.path, file);
-            const files = [...byPath.values()];
-            setTotals({
-              threadId,
-              files: files.length,
-              additions: files.reduce((sum, file) => sum + (file.insertions ?? 0), 0),
-              deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
-            });
-          },
-          () => {
-            if (!cancelled) setTotals({ threadId, ...NO_CHANGES });
-          },
-        );
-      },
-      totals?.threadId === threadId ? TOTALS_REFRESH_DELAY_MS : 0,
-    );
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-    // totals is read only to skip the delay on a thread switch.
-  }, [environmentId, sdk, threadId, updatedAt]);
-  return totals !== null && totals.threadId === threadId ? totals : null;
-}
-
 /** Thread top-bar button: always present, muted and disabled while the thread has nothing to diff; opens the side panel. */
 function ChangesButton({ threadId }: { threadId: string; projectId: string; isCompactViewport: boolean }) {
   const navigate = useBbNavigate();
-  const totals = useThreadChangeTotals(threadId);
+  const { threads } = useSidebarThreads();
+  const totals = useThreadChangeTotals(threads.find((entry) => entry.id === threadId));
   const empty = totals === null || totals.files === 0;
   const open = () => {
     if (!navigate.openThreadPanel({ actionId: PANEL_ACTION_ID, title: "Changes" })) toast.message("Open the side panel to see this thread's changes.");
@@ -244,6 +184,10 @@ export default definePluginApp((app) => {
     isAvailable: ({ threadId }) => threadId !== null,
     run: ({ threadId, openPanel }) => {
       if (threadId === null) return;
+      if (knownChangeTotals(threadId)?.files === 0) {
+        toast.message("This thread has no changes.");
+        return;
+      }
       if (!openPanel({ actionId: PANEL_ACTION_ID, title: "Changes" })) {
         toast.message("Open the side panel to see this thread's changes.");
         return;

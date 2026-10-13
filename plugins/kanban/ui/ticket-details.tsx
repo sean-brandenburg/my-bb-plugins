@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus, localDay, threadStatusText } from "./format";
-import { type Rpc, type ProjectOption, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
+import { type Rpc, type ProjectOption, useBoard, useTicketHasDiff, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { collapseRightPanel, pageUi, TICKET_TAB } from "./page-state";
 import { focusBoard, requestCardFocus, useCardKeys } from "./card-keys";
 import { ExternalLink, ThreadStatusDot, Select, HEADER_ICON_BUTTON, COMPACT, Group, Property } from "./primitives";
@@ -102,13 +102,14 @@ function TicketDetails({
   const pendingPop = usePopOnChange(ticket.pendingDiffComments);
   const nerdFont = useNerdFont();
   const jiraMark = nerdFont && ticket.jira !== null ? jiraStatusMark(ticket.jira) : null;
+  const hasDiff = useTicketHasDiff(ticket, thread);
   const rootRef = useRef<HTMLDivElement>(null);
   const keys = useCardKeys(rootRef, ticket.id, focusOnMount, {
     onThread: () => {
       if (ticket.threadId !== null) onOpenThread(ticket.threadId);
     },
     onDiff: () => {
-      if (ticket.pr !== null || ticket.threadId !== null) onOpenDiff(ticket.id);
+      if (hasDiff) onOpenDiff(ticket.id);
     },
     onHelp: () => pageUi.set({ dialog: "keys" }),
     onBack,
@@ -185,13 +186,16 @@ function TicketDetails({
               </span>
             </button>
           ) : null}
-          {ticket.pr !== null || ticket.threadId !== null ? (
+          <span
+            className="inline-flex"
+            title={!hasDiff ? "No changes" : ticket.pendingDiffComments > 0 ? `View changes · ${ticket.pendingDiffComments} comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet` : "View changes"}
+          >
             <button
               type="button"
-              className={HEADER_ICON_BUTTON}
-              aria-label="View changes"
-              data-kanban-initial-stop=""
-              title={ticket.pendingDiffComments > 0 ? `View changes · ${ticket.pendingDiffComments} comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet` : "View changes"}
+              className={cn(HEADER_ICON_BUTTON, "disabled:pointer-events-none disabled:opacity-50")}
+              aria-label={hasDiff ? "View changes" : "View changes: no changes"}
+              data-kanban-initial-stop={hasDiff ? "" : undefined}
+              disabled={!hasDiff}
               onClick={() => onOpenDiff(ticket.id)}
             >
               <Icon name="kanban-diff" className="size-3.5" />
@@ -205,7 +209,7 @@ function TicketDetails({
                 </span>
               ) : null}
             </button>
-          ) : null}
+          </span>
         </div>
       </header>
 

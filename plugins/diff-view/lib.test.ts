@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDiffThreads, localCommentState, threadIsOpen, threadKeyActions } from "./lib/app/comments/threads";
+import { fetchChangeTotals, knownChangeTotals } from "./lib/app/change-totals";
 import { buildFileTree } from "./lib/app/file-tree/build-file-tree";
 import { statusMark } from "./lib/app/file-status";
 import { activeReviews, distinctFindings, filterFindings, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
@@ -660,5 +661,51 @@ describe("h into the file list", () => {
   it("on an added line, the first h only wants the old side and the second enters the list", () => {
     expect(run(at("RIGHT", 2))).toEqual({ cursor: at("RIGHT", 2, "LEFT"), calls: [] });
     expect(run(at("RIGHT", 2, "LEFT")).calls).toEqual(["tree"]);
+  });
+});
+
+describe("fetchChangeTotals", () => {
+  const file = (path: string, insertions: number | null, deletions: number | null) => ({ path, insertions, deletions });
+  const sdkReturning = (status: unknown) => {
+    const calls: string[] = [];
+    const sdk = {
+      environments: {
+        status: async ({ environmentId }: { environmentId: string }) => {
+          calls.push(environmentId);
+          return status;
+        },
+      },
+    } as unknown as Parameters<typeof fetchChangeTotals>[0];
+    return { sdk, calls };
+  };
+
+  it("counts a file changed in both the branch and the working tree once, with its working-tree numbers", async () => {
+    const { sdk } = sdkReturning({
+      outcome: "available",
+      workspace: {
+        mergeBase: { files: [file("a.ts", 5, 1), file("b.ts", 2, null)] },
+        workingTree: { files: [file("a.ts", 7, 3), file("c.ts", null, 4)] },
+      },
+    });
+    expect(await fetchChangeTotals(sdk, "thr_count", "env_1", "env_1:1")).toEqual({ files: 3, additions: 9, deletions: 7 });
+    expect(knownChangeTotals("thr_count")).toEqual({ files: 3, additions: 9, deletions: 7 });
+  });
+
+  it("asks once while the same thread update is in flight", async () => {
+    const { sdk, calls } = sdkReturning({ outcome: "available", workspace: { mergeBase: null, workingTree: { files: [file("a.ts", 1, 0)] } } });
+    await Promise.all([fetchChangeTotals(sdk, "thr_dedupe", "env_1", "env_1:1"), fetchChangeTotals(sdk, "thr_dedupe", "env_1", "env_1:1")]);
+    expect(calls).toEqual(["env_1"]);
+    await fetchChangeTotals(sdk, "thr_dedupe", "env_1", "env_1:2");
+    expect(calls).toEqual(["env_1", "env_1"]);
+  });
+
+  it("treats an unavailable status as no changes", async () => {
+    const { sdk } = sdkReturning({ outcome: "not_applicable", message: "no git" });
+    expect(await fetchChangeTotals(sdk, "thr_none", "env_1", "env_1:1")).toEqual({ files: 0, additions: 0, deletions: 0 });
+    expect(knownChangeTotals("thr_none")?.files).toBe(0);
+  });
+
+  it("knows nothing about a thread no button has fetched", () => {
+    expect(knownChangeTotals("thr_unseen")).toBeNull();
   });
 });

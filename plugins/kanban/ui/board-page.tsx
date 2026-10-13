@@ -6,7 +6,7 @@ import { SHIMMER, enter, speed, useArrivals } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { agedOut, doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
-import { useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
+import { ticketHasDiff, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { localDay } from "./format";
 import { pageUi, usePageUi, TICKET_TAB } from "./page-state";
 import { KanbanDiffView, diffSubjectFromSubPath } from "./diff-page";
@@ -202,7 +202,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         if (ticket?.threadId != null) openThread(ticket.threadId);
         return;
       case "diff":
-        if (ticket !== undefined && (ticket.pr !== null || ticket.threadId !== null)) openDiff(ticket.id);
+        if (ticket !== undefined && ticketHasDiff(ticket)) openDiff(ticket.id);
         return;
       case "add":
         pageUi.set({ dialog: "new", newTicketColumn: (at?.band === "columns" ? at.stop.dataset.columnId : ticket?.columnId) ?? null });
