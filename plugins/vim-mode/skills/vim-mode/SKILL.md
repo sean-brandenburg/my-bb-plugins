@@ -23,7 +23,10 @@ vault editor), and ordinary text fields and textareas.
   top or bottom. `/` and `?` search forward or backward and `n`/`N` repeat;
   matches are highlighted, and Escape clears the highlights. `i` returns to
   the text box that was left (or the thread's prompt box if it is gone) in
-  insert mode. Other keys go to bb. Focusing any text box ends scroll mode.
+  insert mode. Other keys go to bb. Focusing a text box vim attaches to ends
+  scroll mode; focus anywhere else outside the conversation (a popup like the
+  Project switcher, a sidebar button) only pauses it, and it comes back when
+  focus returns to the page.
 - Scroll mode search is case-insensitive unless the pattern has a capital
   (vim's smartcase), uses JavaScript regex syntax plus `\<` and `\>`, and
   searches only visible text. It scrolls through the whole conversation,
@@ -64,7 +67,7 @@ Settings live under Settings → Plugins → Vim Mode, or
 Command palettes, comboboxes, terminals, Monaco editors, and CodeMirror's own
 search panel are always excluded. CodeMirror editors count as "All text boxes",
 not "Prompt box only". Add `data-vim-ignore` to an element to exclude it and its contents.
-Focus moving into such an element also ends scroll mode, so a plugin's own
+Focus moving into such an element also pauses scroll mode, so a plugin's own
 keys there (Prompt keys' question banner, say) aren't taken for scrolling.
 
 ## Not supported

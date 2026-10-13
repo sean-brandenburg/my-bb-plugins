@@ -211,7 +211,6 @@ export function mountVimMode(getOptions: () => VimModeOptions, report: Reporter 
   }
 
   function onFocusIn(event: FocusEvent): void {
-    if (!scrollMode.keepsFocus(event.target)) scrollMode.exit();
     guarded(active, () => activate(event.target, event.relatedTarget));
   }
 

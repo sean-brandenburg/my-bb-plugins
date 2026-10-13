@@ -75,6 +75,7 @@ export class ScrollMode {
   private prompt: HTMLInputElement | null = null;
   private readonly observer = new MutationObserver(() => this.schedule());
   private readonly onScroll = () => this.schedule();
+  private readonly onFocusChange = () => this.schedule();
 
   constructor(private readonly returnToTextBox: (viewport: HTMLElement) => void) {
     this.indicator = document.createElement("div");
@@ -108,6 +109,8 @@ export class ScrollMode {
     this.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener("scroll", this.onScroll, true);
     window.addEventListener("resize", this.onScroll);
+    document.addEventListener("focusin", this.onFocusChange, true);
+    document.addEventListener("focusout", this.onFocusChange, true);
     this.render();
   }
 
@@ -120,6 +123,8 @@ export class ScrollMode {
     this.observer.disconnect();
     window.removeEventListener("scroll", this.onScroll, true);
     window.removeEventListener("resize", this.onScroll);
+    document.removeEventListener("focusin", this.onFocusChange, true);
+    document.removeEventListener("focusout", this.onFocusChange, true);
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.indicator.remove();
@@ -129,9 +134,11 @@ export class ScrollMode {
   }
 
   /**
-   * True while focus on `target` keeps scroll mode: the page itself, or
-   * something inside the conversation that hasn't opted out of vim (another
-   * plugin's UI with keys of its own).
+   * True while focus on `target` leaves scroll mode in charge: the page
+   * itself, or something inside the conversation that hasn't opted out of vim
+   * (another plugin's UI with keys of its own). Focus anywhere else only pauses
+   * scroll mode, because popups like the project picker drop focus back on the
+   * page when they close; only a text box vim attaches to ends it.
    */
   keepsFocus(target: EventTarget | null): boolean {
     if (!(target instanceof Element) || target === document.body || target === document.documentElement) return true;
@@ -145,7 +152,7 @@ export class ScrollMode {
   handleKey(event: KeyboardEvent): boolean {
     if (!this.active || event.defaultPrevented || event.isComposing || event.metaKey || event.altKey) return false;
     if (MODIFIER_KEYS.has(event.key)) return false;
-    if (event.target instanceof Element && event.target.closest(`[${VIM_IGNORE_ATTRIBUTE}]`)) return false;
+    if (!this.keepsFocus(event.target)) return false;
     const viewport = this.viewport();
     if (!viewport) {
       this.exit();
@@ -437,6 +444,12 @@ export class ScrollMode {
     if (!this.active) return;
     const viewport = this.viewport();
     if (!viewport) {
+      this.indicator.hidden = true;
+      this.bar.hidden = true;
+      clearHighlights();
+      return;
+    }
+    if (!this.keepsFocus(document.activeElement)) {
       this.indicator.hidden = true;
       this.bar.hidden = true;
       clearHighlights();

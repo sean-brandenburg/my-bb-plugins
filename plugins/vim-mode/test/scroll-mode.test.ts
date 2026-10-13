@@ -209,9 +209,9 @@ test("focus moving into another text box ends scroll mode", async () => {
   expect(press(field, "j").defaultPrevented).toBe(false);
 });
 
-test("focus moving into a part of the page that opted out of vim ends scroll mode", async () => {
+test("focus moving into a part of the page that opted out of vim pauses scroll mode until it leaves", async () => {
   mount();
-  const page = threadPage(["one"]);
+  const page = threadPage(["one", "two", "three", "four", "five", "six", "seven"]);
   await enterScrollMode(page);
   const banner = document.createElement("section");
   banner.setAttribute("data-vim-ignore", "");
@@ -219,9 +219,52 @@ test("focus moving into a part of the page that opted out of vim ends scroll mod
   banner.append(choice);
   page.viewport.append(banner);
   choice.focus();
+  await waitFor(() => badge() !== "SCROLL");
   expect(badge()).not.toBe("SCROLL");
   expect(press(choice, "j").defaultPrevented).toBe(false);
   expect(page.viewport.scrollTop).toBe(0);
+  banner.remove();
+  await waitFor(() => badge() === "SCROLL");
+  expect(badge()).toBe("SCROLL");
+  expect(press(document.body, "j").defaultPrevented).toBe(true);
+  expect(page.viewport.scrollTop).toBe(60);
+});
+
+test("i goes back to the text box after a popup that took focus closes", async () => {
+  mount();
+  const page = threadPage(["one"]);
+  await enterScrollMode(page);
+  const picker = document.createElement("div");
+  picker.setAttribute("data-vim-ignore", "");
+  picker.tabIndex = -1;
+  const search = document.createElement("input");
+  picker.append(search);
+  document.body.append(picker);
+  picker.focus();
+  search.focus();
+  picker.focus();
+  picker.remove();
+  await waitFor(() => badge() === "SCROLL");
+  expect(badge()).toBe("SCROLL");
+  expect(press(document.body, "i").defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(page.prompt.view.dom);
+});
+
+test("focus moving to a button outside the conversation pauses scroll mode until it is blurred", async () => {
+  mount();
+  const page = threadPage(["one", "two", "three", "four", "five", "six", "seven"]);
+  await enterScrollMode(page);
+  const button = document.createElement("button");
+  document.body.prepend(button);
+  button.focus();
+  await waitFor(() => badge() !== "SCROLL");
+  expect(badge()).not.toBe("SCROLL");
+  expect(press(button, "j").defaultPrevented).toBe(false);
+  button.blur();
+  await waitFor(() => badge() === "SCROLL");
+  expect(badge()).toBe("SCROLL");
+  press(document.body, "j");
+  expect(page.viewport.scrollTop).toBe(60);
 });
 
 test("/ finds matches in order, n wraps at the bottom, and N goes back", async () => {
