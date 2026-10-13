@@ -10,6 +10,8 @@ export type BoardCommand =
   | { kind: "open" }
   | { kind: "thread" }
   | { kind: "diff" }
+  | { kind: "delete" }
+  | { kind: "undo" }
   | { kind: "add" }
   | { kind: "help" }
   | { kind: "toggle-hidden" }
@@ -36,7 +38,9 @@ export const KEYMAP: Record<string, BoardCommand> = {
   K: { kind: "move", direction: "up" },
   o: { kind: "open" },
   t: { kind: "thread" },
-  d: { kind: "diff" },
+  D: { kind: "diff" },
+  d: { kind: "delete" },
+  u: { kind: "undo" },
   a: { kind: "add" },
   T: { kind: "toggle-view" },
   x: { kind: "toggle-done" },
@@ -74,7 +78,9 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["J", "K"], action: "Move card down / up" },
       { keys: ["o", "Enter"], action: "Open card" },
       { keys: ["t"], action: "Open the card's thread" },
-      { keys: ["d"], action: "View the card's changes" },
+      { keys: ["D"], action: "View the card's changes" },
+      { keys: ["d"], action: "Delete card" },
+      { keys: ["u"], action: "Undo the last delete" },
       { keys: ["a"], action: "New card in this column" },
       { keys: ["za"], action: "Show / hide cards past the column's hide-after days" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Scroll the column half a page" },
@@ -115,7 +121,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["Enter", "Space"], action: "Press the button, or start typing in the field" },
       { keys: ["i"], action: "Start typing in the field, or the description" },
       { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
-      { keys: ["t", "d"], action: "Open the card's thread / changes" },
+      { keys: ["t", "D"], action: "Open the card's thread / changes" },
     ],
   },
 ];

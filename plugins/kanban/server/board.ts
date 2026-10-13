@@ -28,6 +28,19 @@ export function doneColumn(columns: Column[]): string {
   return doneColumnId(columns)!;
 }
 
+/** Tables whose rows belong to one card through `ticket_id` and go with it when it's deleted. */
+const TICKET_TABLES = ["reviews", "pr_comments", "comment_applies", "diff_comments", "diff_viewed", "narratives", "hunk_explanations"] as const;
+/** How long a deleted card can still be put back. */
+const DELETED_KEPT_MS = 7 * 24 * 60 * 60 * 1000;
+
+type Row = Record<string, unknown>;
+
+interface DeletedTicket {
+  ticket: TicketRow;
+  children: string[];
+  rows: Partial<Record<(typeof TICKET_TABLES)[number], Row[]>>;
+}
+
 /** Cards, columns, sources and tags: the board's own storage. */
 export function createBoardStore(ctx: KanbanContext) {
   const { bb, db, stmts, publish } = ctx;
@@ -225,18 +238,58 @@ export function createBoardStore(ctx: KanbanContext) {
   }
 
   function deleteTicket(id: string): { deleted: boolean } {
-    // Subtasks outlive their parent as top-level cards rather than disappearing with it.
-    stmts.detachChildren.run(Date.now(), id);
-    stmts.deleteReviewsForTicket.run(id);
-    stmts.deleteCommentsForTicket.run(id);
-    stmts.deleteCommentAppliesForTicket.run(id);
-    stmts.deleteDiffCommentsForTicket.run(id);
-    stmts.deleteViewedForTicket.run(id);
-    stmts.deleteNarrativesForTicket.run(id);
-    stmts.deleteExplanationsForTicket.run(id);
-    const result = stmts.remove.run(id);
-    if (result.changes > 0) publish();
-    return { deleted: result.changes > 0 };
+    const deleted = db.transaction(() => {
+      const row = stmts.byId.get(id);
+      if (row === undefined) return false;
+      const now = Date.now();
+      const snapshot: DeletedTicket = {
+        ticket: row,
+        children: stmts.childrenOf.all(id).map((child) => child.id),
+        rows: Object.fromEntries(TICKET_TABLES.map((table) => [table, db.prepare(`SELECT * FROM ${table} WHERE ticket_id = ?`).all(id) as Row[]])),
+      };
+      stmts.forgetDeletedBefore.run(now - DELETED_KEPT_MS);
+      stmts.saveDeleted.run(id, JSON.stringify(snapshot), now);
+      // Subtasks outlive their parent as top-level cards rather than disappearing with it.
+      stmts.detachChildren.run(now, id);
+      stmts.deleteReviewsForTicket.run(id);
+      stmts.deleteCommentsForTicket.run(id);
+      stmts.deleteCommentAppliesForTicket.run(id);
+      stmts.deleteDiffCommentsForTicket.run(id);
+      stmts.deleteViewedForTicket.run(id);
+      stmts.deleteNarrativesForTicket.run(id);
+      stmts.deleteExplanationsForTicket.run(id);
+      stmts.remove.run(id);
+      return true;
+    })();
+    if (deleted) publish();
+    return { deleted };
+  }
+
+  /** Puts a deleted card back as it was, subtasks included. False when it can't come back, such as sync having already made a new card for its PR or issue. */
+  function restoreTicket(id: string): { restored: boolean } {
+    const restored = db.transaction(() => {
+      const saved = stmts.deletedById.get(id);
+      if (saved === undefined || stmts.byId.get(id) !== undefined) return false;
+      const { ticket, children, rows } = JSON.parse(saved.snapshot) as DeletedTicket;
+      if (ticket.pr_repo !== null && ticket.pr_number !== null && stmts.byPr.get(ticket.pr_repo, ticket.pr_number) !== undefined) return false;
+      if (ticket.jira_key !== null && stmts.byJira.get(ticket.jira_key) !== undefined) return false;
+      const parentId = ticket.parent_id !== null && stmts.byId.get(ticket.parent_id) !== undefined ? ticket.parent_id : null;
+      insertRow("tickets", { ...ticket, parent_id: parentId });
+      for (const table of TICKET_TABLES) for (const row of rows[table] ?? []) insertRow(table, row);
+      const now = Date.now();
+      for (const child of children) {
+        if (!wouldCycle(child, id)) stmts.reattachChild.run(id, now, child);
+      }
+      stmts.forgetDeleted.run(id);
+      return true;
+    })();
+    if (restored) publish();
+    return { restored };
+  }
+
+  function insertRow(table: string, row: Row): void {
+    const columns = Object.keys(row);
+    db.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map((column) => `@${column}`).join(", ")})`).run(row);
   }
 
   async function setColumns(columns: Column[]): Promise<{ columns: Column[] }> {
@@ -268,6 +321,7 @@ export function createBoardStore(ctx: KanbanContext) {
     moveTicket,
     updateText,
     deleteTicket,
+    restoreTicket,
     setParent,
     setTags,
     setDueDate,

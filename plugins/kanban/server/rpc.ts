@@ -95,6 +95,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       return board.moveTicket(id, columnId, index);
     },
     ticket_delete: ({ id }) => board.deleteTicket(id),
+    ticket_restore: ({ id }) => board.restoreTicket(id),
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
     ticket_review_pr: async ({ id, projectId, mode }) => {
       const ticket = board.getTicket(id);

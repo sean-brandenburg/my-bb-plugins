@@ -119,6 +119,10 @@ export const rpcContract = defineRpcContract({
     input: z.object({ id: z.string() }).strict(),
     output: z.object({ deleted: z.boolean() }),
   },
+  ticket_restore: {
+    input: z.object({ id: z.string() }).strict(),
+    output: z.object({ restored: z.boolean() }),
+  },
   ticket_start_thread: {
     input: z.object({ id: z.string(), projectId: z.string() }).strict(),
     output: ticketSchema,

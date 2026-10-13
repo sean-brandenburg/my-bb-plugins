@@ -228,7 +228,7 @@ export function useCardKeys(
       case "t":
         handlers.onThread();
         break;
-      case "d":
+      case "D":
         handlers.onDiff();
         break;
       case "?":

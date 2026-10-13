@@ -1318,6 +1318,27 @@ describe("persisted reviews", () => {
     const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
     expect(reviews).toEqual([]);
   });
+
+  it("restores a deleted card with its id and reviews, unless sync has added the PR again", async () => {
+    const card = await reviewedCard();
+    await current().harness.behavior.callRpc("ticket_delete", { id: card.id });
+    expect((await board()).tickets).toEqual([]);
+
+    expect(await current().harness.behavior.callRpc("ticket_restore", { id: card.id })).toEqual({ restored: true });
+    const restored = (await board()).tickets;
+    expect(restored.map((ticket) => ticket.id)).toEqual([card.id]);
+    expect(restored[0]).toMatchObject({ reviewThreadId: card.reviewThreadId, columnId: card.columnId });
+    const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
+    expect(reviews).toHaveLength(1);
+    expect(await current().harness.behavior.callRpc("ticket_restore", { id: card.id })).toEqual({ restored: false });
+
+    await current().harness.behavior.callRpc("ticket_delete", { id: card.id });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const resynced = (await board()).tickets;
+    expect(resynced).toHaveLength(1);
+    expect(await current().harness.behavior.callRpc("ticket_restore", { id: card.id })).toEqual({ restored: false });
+    expect((await board()).tickets.map((ticket) => ticket.id)).toEqual([resynced[0]!.id]);
+  });
 });
 
 describe("tags and sources", () => {
@@ -1986,6 +2007,11 @@ describe("subtasks", () => {
 
     await current().harness.behavior.callRpc("ticket_delete", { id: parent.id });
     expect((await board()).tickets.find((ticket) => ticket.id === a.id)?.parentId).toBeNull();
+    await current().harness.behavior.callRpc("ticket_set_parent", { id: c.id, parentId: b.id });
+    await current().harness.behavior.callRpc("ticket_restore", { id: parent.id });
+    const restored = (await board()).tickets;
+    expect(restored.find((ticket) => ticket.id === a.id)?.parentId).toBe(parent.id);
+    expect(restored.find((ticket) => ticket.id === c.id)?.parentId).toBe(b.id);
   });
 
   it("starts one thread per open subtask under the parent's thread, or one sequential thread", async () => {

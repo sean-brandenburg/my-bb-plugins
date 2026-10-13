@@ -24,6 +24,9 @@ import { cardShown, requestCardFocus } from "./card-keys";
 import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop, scrollHalfPage } from "./stops";
 import { BoardKeysDialog } from "./board-keys-dialog";
 
+/** Cards deleted from the board this session, newest last, for `u`; kept across visits to the page. */
+const deletedIds: string[] = [];
+
 export function BoardPage({ subPath }: { subPath: string }) {
   const trimmed = subPath.replace(/^\/+|\/+$/gu, "");
   const diffTicketId = diffSubjectFromSubPath(trimmed);
@@ -127,6 +130,36 @@ export function BoardPage({ subPath }: { subPath: string }) {
     refetch();
   };
 
+  const restoreTicket = async (id = deletedIds[deletedIds.length - 1]) => {
+    if (id === undefined) return;
+    const at = deletedIds.lastIndexOf(id);
+    if (at !== -1) deletedIds.splice(at, 1);
+    try {
+      const { restored } = await rpc.call("ticket_restore", { id });
+      if (restored) pendingFocusId.current = id;
+      else toast.message("Couldn't bring the card back; sync may have already added it again");
+    } catch (cause) {
+      toastError(cause);
+    }
+    refetch();
+  };
+
+  const deleteTicket = async (ticket: Ticket) => {
+    if (board === null) return;
+    const below = cursorAfter(layout, ticket.id, "down");
+    const neighbour = below !== ticket.id ? below : cursorAfter(layout, ticket.id, "up");
+    pendingFocusId.current = neighbour !== ticket.id ? neighbour : null;
+    setBoard({ ...board, tickets: board.tickets.filter((entry) => entry.id !== ticket.id) });
+    try {
+      await rpc.call("ticket_delete", { id: ticket.id });
+      deletedIds.push(ticket.id);
+      toast("Card deleted", { description: ticket.title, action: { label: "Undo", onClick: () => void restoreTicket(ticket.id) } });
+    } catch (cause) {
+      toastError(cause);
+    }
+    refetch();
+  };
+
   const todoCommand = useRef<((command: BoardCommand) => void) | null>(null);
   const todoRef = useRef<HTMLDivElement>(null);
   const columnCards = (columnId: string | undefined) => layout[board?.columns.findIndex((column) => column.id === columnId) ?? -1] ?? [];
@@ -139,6 +172,10 @@ export function BoardPage({ subPath }: { subPath: string }) {
     }
     if (command.kind === "help") {
       pageUi.set({ dialog: "keys" });
+      return;
+    }
+    if (command.kind === "undo") {
+      void restoreTicket();
       return;
     }
     if (view === "todo") {
@@ -203,6 +240,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
         return;
       case "diff":
         if (ticket !== undefined && ticketHasDiff(ticket)) openDiff(ticket.id);
+        return;
+      case "delete":
+        if (at === null && ticket !== undefined) void deleteTicket(ticket);
         return;
       case "add":
         pageUi.set({ dialog: "new", newTicketColumn: (at?.band === "columns" ? at.stop.dataset.columnId : ticket?.columnId) ?? null });

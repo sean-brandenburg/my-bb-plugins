@@ -188,5 +188,10 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE tickets ADD COLUMN pr_head_ref TEXT`,
     `ALTER TABLE tickets ADD COLUMN pr_checks TEXT`,
     `ALTER TABLE tickets ADD COLUMN title_edited INTEGER NOT NULL DEFAULT 0`,
+    `CREATE TABLE IF NOT EXISTS deleted_tickets (
+      id TEXT PRIMARY KEY,
+      snapshot TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL
+    )`,
   ]);
 }

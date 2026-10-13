@@ -44,7 +44,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   between columns (skipping empty ones), `j`/`k` between cards, `gg`/`G` jump
   to a column's first or last card, `0`/`$` to the first or last column.
   `H`/`L` move the card to the neighbouring column and `J`/`K` reorder it.
-  `o` (or Enter) opens the card, `t` its thread, `d` its changes, `a` adds a
+  `o` (or Enter) opens the card, `t` its thread, `D` its changes, `d` deletes
+  it (no confirmation; `u` or the toast's Undo brings it back with its
+  reviews, comments and subtasks, for up to a week), `a` adds a
   card to the current column, `za` shows or hides the column's old cards
   (see Columns), Ctrl-d/Ctrl-u scroll the column, `T` switches to the Todo
   view, and `?` (or Settings → Keyboard shortcuts) lists them all. Arrow keys
@@ -63,7 +65,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   it and returns to the keys. Escape returns to the keys;
   with vim-mode it takes two (the first enters vim's normal mode). Escape again
   closes the card and puts the cursor back on the board, and `h` past a row's
-  left edge goes back to the board leaving the card open. `t` and `d` open the card's thread and
+  left edge goes back to the board leaving the card open. `t` and `D` open the card's thread and
   changes.
 - Card details follow one hierarchy: the title with a quiet meta line (kind,
   id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
@@ -149,7 +151,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a
   file list with per-file stats that jumps to a file and tracks the one in
   view. PR cards diff the pull request from GitHub; thread-backed cards diff
-  their environment against its merge base. The button, hover icon and `d` are
+  their environment against its merge base. The button, hover icon and `D` are
   greyed out and do nothing on a card with no PR whose thread has no changed
   files yet (or that has no thread). `diff/thread/<threadId>` opens a
   thread's changes the same way, as its card when it has one; submitting
