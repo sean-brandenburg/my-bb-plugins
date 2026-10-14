@@ -8,7 +8,6 @@ import type { HistoryEntry, Overview, rpcContract } from "../server/rpc-contract
 import { CHANGED_CHANNEL, MASKED_VALUE, errorMessage, formatResponse, isClientStreaming } from "../shared/common";
 import type { MethodInfo } from "../shared/schema";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, isToolbar, pageCursor, rowCells, isTextEntry, NAV_ROW, readRows, toolbarButtons, useClientKeys } from "./client-keys";
@@ -19,6 +18,7 @@ import { HistoryList, type HistoryListHandle } from "./HistoryList";
 import { useServices, useTypeClosure, useWidth } from "./hooks";
 import { EditorOptionsContext, inputClass } from "./MessageEditor";
 import { MetadataEditor, type MetadataRow } from "./MetadataEditor";
+import { ConfirmSendDialog } from "./ConfirmSendDialog";
 import { KeysDialog } from "./KeysDialog";
 import { MethodBadges, MethodList, type MethodListHandle } from "./MethodList";
 import { Popover } from "./Popover";
@@ -1020,24 +1020,7 @@ export function ClientView() {
       </div>
 
       <KeysDialog open={keysOpen} onOpenChange={setKeysOpen} />
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send to {endpoint.name}?</DialogTitle>
-            <DialogDescription>
-              {endpoint.name} ({endpoint.target}) is protected. This really calls {method?.name ?? "the method"}.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={send}>
-              Send to {endpoint.name}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmSendDialog open={confirming} onOpenChange={setConfirming} endpoint={endpoint.name} target={endpoint.target} methodName={method?.name ?? null} onSend={send} />
     </div>
   );
 }

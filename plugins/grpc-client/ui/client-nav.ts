@@ -93,6 +93,7 @@ export const KEY_HELP: readonly { keys: readonly string[]; action: string }[] = 
   { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up in the pane you're in" },
   { keys: ["Ctrl-f", "Ctrl-b"], action: "A page down / up in the pane you're in" },
   { keys: ["⌘↵"], action: "Send" },
+  { keys: ["h", "l", "Enter", "Esc"], action: "Asked to confirm a send to a protected endpoint: move between Cancel and Send, press, or cancel" },
   { keys: ["Esc"], action: "Stop editing a field, then clear the search" },
   { keys: ["?"], action: "Show these shortcuts" },
 ];
