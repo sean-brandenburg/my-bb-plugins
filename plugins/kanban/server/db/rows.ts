@@ -38,6 +38,8 @@ export interface TicketRow {
   jira_assignee: string | null;
   jira_updated_at: string | null;
   comments_synced_for: string | null;
+  /** 1 once a tracked PR stops appearing in its source, until it shows up again. */
+  left_source: number;
   parent_id: string | null;
   due_date: string | null;
   position: number;

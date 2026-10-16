@@ -521,6 +521,51 @@ describe("GitHub sync", () => {
     expect(byNumber.get(4)).toMatchObject({ columnId: "done", pr: { state: "open" } });
   });
 
+  it("reopens a PR in todo when it comes back to its source, but not one moved to Done while still in it", async () => {
+    const requested = (...numbers: number[]) => numbers.map((number) => searchItem("acme-co/widgets", number));
+    const open = { state: "open" as const, merged: false };
+    const pulls = { "acme-co/widgets#4": open, "acme-co/widgets#5": open, "acme-co/widgets#6": open };
+    vi.stubGlobal("fetch", stubGithub({ requested: requested(4, 5, 6) }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const idOf = new Map((await board()).tickets.map((ticket) => [ticket.pr?.number, ticket.id]));
+    const columnOf = async (number: number) => (await board()).tickets.find((ticket) => ticket.pr?.number === number)?.columnId;
+
+    // #4 is reviewed and sync finishes it; #5 is moved to Done by hand and stays requested; #6 is moved by hand, then reviewed.
+    await current().harness.behavior.callRpc("ticket_move", { id: idOf.get(5), columnId: "done" });
+    await current().harness.behavior.callRpc("ticket_move", { id: idOf.get(6), columnId: "done" });
+    vi.stubGlobal("fetch", stubGithub({ requested: requested(5), pulls }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(await columnOf(4)).toBe("done");
+
+    vi.stubGlobal("fetch", stubGithub({ requested: requested(4, 5, 6), pulls }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(await columnOf(4)).toBe("todo");
+    expect(await columnOf(5)).toBe("done");
+    expect(await columnOf(6)).toBe("todo");
+
+    // Back in the source clears the mark: moving it to Done by hand now sticks.
+    await current().harness.behavior.callRpc("ticket_move", { id: idOf.get(4), columnId: "done" });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(await columnOf(4)).toBe("done");
+  });
+
+  it("does not reopen a PR that only left a source that was disabled", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 4)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const [card] = (await board()).tickets;
+    await current().harness.behavior.callRpc("ticket_move", { id: card!.id, columnId: "done" });
+    const sources = (await board()).sources;
+    const withReviews = (enabled: boolean) => sources.map((source) => (source.id === "pr-reviews" ? { ...source, enabled } : source));
+
+    await current().harness.behavior.callRpc("sources_set", { sources: withReviews(false) });
+    await current().harness.behavior.callRpc("sync_now", null);
+    await current().harness.behavior.callRpc("sources_set", { sources: withReviews(true) });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect((await board()).tickets[0]!.columnId).toBe("done");
+  });
+
   it("reads open PRs' branches and checks every sync, keeping the last values when the read fails or the PR is finished", async () => {
     const fetchMock = stubGithub({
       authored: [searchItem("acme-co/widgets", 1), searchItem("acme-co/widgets", 2), searchItem("acme-co/widgets", 3)],

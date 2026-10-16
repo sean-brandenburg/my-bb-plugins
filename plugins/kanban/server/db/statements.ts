@@ -70,6 +70,7 @@ export function prepareStatements(db: KanbanDatabase) {
       `UPDATE tickets SET kind = 'pr', pr_repo = ?, pr_number = ?, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?,
          source_id = COALESCE(source_id, ?), title_edited = 1, updated_at = ? WHERE id = ?`,
     ),
+    setLeftSource: db.prepare<[number, string]>(`UPDATE tickets SET left_source = ? WHERE id = ?`),
     // CI flips without anyone editing the card, so this leaves updated_at alone.
     setPrHead: db.prepare<[string, PullRequest["checks"], string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ? WHERE id = ?`),
     setTags: db.prepare<[string, number, string]>(`UPDATE tickets SET tags = ?, updated_at = ? WHERE id = ?`),

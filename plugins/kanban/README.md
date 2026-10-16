@@ -22,7 +22,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   - **GitHub search**: a GitHub search query; PRs or issues become cards.
     Two ship by default: your open PRs (`#my-prs`) and open, non-draft PRs
     where your review is requested (`#pr-reviews`, "done when it leaves this
-    search"). Merged or closed PRs move to Done. A PR whose branch ends in an
+    search"). Merged or closed PRs move to Done. An open PR card in Done
+    that left its source and comes back (your review is requested again, or
+    a closed PR is reopened) returns to Todo. A PR whose branch ends in an
     ad hoc card's thread id joins that card instead.
   - **Jira (JQL)**: a JQL query on your Jira Cloud site. Needs the Jira site
     URL, account email, and API token plugin settings. Cards land in To Do or
@@ -318,7 +320,8 @@ remote, and whether a card moves to In Progress when its thread starts working.
 Default columns: `backlog`, `todo`, `in-progress`, `review`, `done`. Edit them
 under Settings → Columns on the page; agents refer to columns by id. New PR cards land in `todo`,
 whether you authored them or were asked to review. Sync never moves an open PR
-card you placed by hand.
+card you placed by hand, except one in Done that comes back to its source after
+leaving it.
 
 Each column has options behind its cog in Settings → Columns. "Hide cards
 that have been in this column for more than N days" keeps old cards off the

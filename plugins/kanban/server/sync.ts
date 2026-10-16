@@ -224,6 +224,13 @@ export function createSourceSync(
       }
       stmts.setPr.run(item.title, item.html_url, pr.state, pr.role, pr.author, item.updated_at, now, existing.id);
       mergeTags(pass, existing, sourceTags);
+      if (existing.left_source === 1) {
+        stmts.setLeftSource.run(0, existing.id);
+        // Back in a source after leaving it, such as a re-requested review: it needs you again.
+        if ((pr.state === "open" || pr.state === "draft") && existing.column_id === doneColumn(pass.columns)) {
+          moveTicket(existing.id, initialColumn(pass.columns, pr), null);
+        }
+      }
     }
     // Cards still without a project (created before auto-creation, or whose clone failed): try again each sync.
     const unprojectedRepos = new Set(stmts.openPrs.all().filter((row) => row.project_id === null && row.pr_repo !== null).map((row) => row.pr_repo!));
@@ -245,6 +252,8 @@ export function createSourceSync(
     for (const row of stmts.openPrs.all()) {
       if (anyFailed || row.pr_repo === null || row.pr_number === null) continue;
       if (seenPrs.has(`${row.pr_repo}#${row.pr_number}`)) continue;
+      // A disabled or removed source says nothing about whether the PR still wants you.
+      if (row.left_source === 0 && row.source_id !== null && pass.sourceById.has(row.source_id)) stmts.setLeftSource.run(1, row.id);
       let pull: GithubPull;
       try {
         pull = await github<GithubPull>(`/repos/${row.pr_repo}/pulls/${row.pr_number}`, token, signal);
