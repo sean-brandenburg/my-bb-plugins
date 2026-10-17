@@ -15,6 +15,7 @@ The Obsidian Vault plugin connects bb to one Obsidian vault. Run `bb obsidian pa
 | `bb obsidian today` | Print the absolute path of today's daily note, creating it first. Add `--content` to print the note instead. |
 | `bb obsidian search <query>` | Full-text search across the vault. Add `--json` for structured output. |
 | `bb obsidian activity [--date YYYY-MM-DD\|today\|yesterday]` | bb threads worked on that day: project, title, time span, turns, last reply. |
+| `bb obsidian calendar [--date YYYY-MM-DD\|today\|yesterday\|tomorrow]` | That day's meetings from macOS Calendar: time, title, attendee count, the user's response when it isn't "accepted", and the video call link. Skips all-day, declined, and canceled events unless you add `--all`. `--json` adds organizer, location, and a shortened description. It works inside the sandbox. If it fails (no calendar access, Calendar not set up), report its error message as the reason the meetings are missing. |
 | `bb obsidian start` / `bb obsidian wrap` | Start a Claude thread running `/daily-note start` or `/daily-note wrap` in the vault. |
 
 ## Logging

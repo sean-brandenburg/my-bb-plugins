@@ -7,6 +7,7 @@ import nodePath from "node:path";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk";
 import { hostContract, hostSignals } from "./contract.ts";
 import { basename, joinPath } from "./shared/obsidian.ts";
+import { calendarEvents } from "./host/calendar.ts";
 import { absolutePath, ensureParent, trashFolder } from "./host/confine.ts";
 import { errorCode, exists, readNoFollow, sha256, writeNoFollow } from "./host/fs.ts";
 import { moveEntry } from "./host/moves.ts";
@@ -134,6 +135,8 @@ export default experimental_defineHostEntry({
       const index = await getIndex(vaultPath);
       return searchVault(index.files.values(), index.notes, query, limit);
     },
+
+    calendarEvents: ({ from, to }, context) => calendarEvents(from, to, context.experimental_paths),
   },
   dispose: stopWatch,
 });

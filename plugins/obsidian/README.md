@@ -53,6 +53,7 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
 - **Capture**: ⌘⇧L anywhere in bb, the "Log to today" box on the Vault home, "Save to today's daily note" on any chat message, or `bb obsidian log "…"` from agents. Entries are appended with a timestamp to the daily note's Inbox section. The note is created from the template if needed, and the append merges with edits you have open.
 - **Activity**: every bb thread that finishes a turn is recorded per day (title, project, last reply): `bb obsidian activity`. Turn it off with *Record bb thread activity*.
 - **Routines**: **Start day** / **Wrap up** (Vault home, today's note, command palette, `bb obsidian start|wrap`) start a Claude thread running `/daily-note start|wrap` in a bb project rooted at the vault. That project is created on first use.
+- **Calendar**: `bb obsidian calendar [--date D] [--json]` lists a day's meetings from macOS Calendar, so add your Google account under System Settings → Internet Accounts. The plugin builds a small helper app, *bb Calendar Reader*, in its host data folder the first time; macOS asks once for calendar access for it. *Calendars for meetings* limits which calendars are read.
 - **Vault home**: today's inbox, carried-forward items, active `Tickets/` notes, and recently edited notes.
 - **`@` mentions**: attach any vault note, or "Today's daily note", as context in any thread.
 - The bundled `obsidian-vault` skill teaches agents the CLI and the vault conventions.

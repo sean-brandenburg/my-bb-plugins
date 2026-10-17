@@ -123,6 +123,7 @@ describe("dates", () => {
     assert.equal(parseDateArg(undefined, now), "2026-03-01");
     assert.equal(parseDateArg("today", now), "2026-03-01");
     assert.equal(parseDateArg("yesterday", now), "2026-02-28");
+    assert.equal(parseDateArg("tomorrow", now), "2026-03-02");
     assert.equal(parseDateArg("2026-10-06", now), "2026-10-06");
     assert.throws(() => parseDateArg("10/06", now), /Expected a date like/);
   });

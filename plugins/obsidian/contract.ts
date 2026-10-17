@@ -66,6 +66,34 @@ export const moveResultSchema = z.object({
   skippedNotes: z.array(z.string()),
 });
 
+const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const calendarEventSchema = z.object({
+  title: z.string(),
+  /** ISO 8601 with the machine's UTC offset. */
+  start: z.string(),
+  end: z.string(),
+  allDay: z.boolean(),
+  calendar: z.string(),
+  account: z.string(),
+  /** Everyone invited, including the user; 0 when there's no guest list. */
+  attendees: z.number(),
+  canceled: z.boolean(),
+  /** The user's response, when they're on the guest list. */
+  myStatus: z.string().optional(),
+  organizer: z.string().optional(),
+  location: z.string().optional(),
+  url: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type CalendarEvent = z.infer<typeof calendarEventSchema>;
+
+export const calendarEventsSchema = z.object({
+  events: z.array(calendarEventSchema),
+  calendars: z.array(z.object({ title: z.string(), account: z.string() })),
+});
+export type CalendarEvents = z.infer<typeof calendarEventsSchema>;
+
 export const hostContract = defineRpcContract({
   checkVault: {
     input: z.object({ vaultPath }).strict(),
@@ -116,6 +144,11 @@ export const hostContract = defineRpcContract({
   search: {
     input: z.object({ vaultPath, query: z.string().min(1).max(500), limit: z.number().int().min(1).max(500) }).strict(),
     output: searchSchema,
+  },
+  /** Not vault-scoped: macOS Calendar on the vault's machine, `to` exclusive. */
+  calendarEvents: {
+    input: z.object({ from: dateKey, to: dateKey }).strict(),
+    output: calendarEventsSchema,
   },
 });
 

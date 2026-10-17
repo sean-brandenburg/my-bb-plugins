@@ -2,6 +2,7 @@
 import nodePath from "node:path";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
 import type { ActivityItem } from "../rpc-contract.ts";
+import { formatMeeting } from "../shared/calendar.ts";
 import { localDateKey, localTime, parseDateArg } from "../shared/daily.ts";
 import { errorMessage } from "../shared/errors.ts";
 import type { Daily } from "./daily.ts";
@@ -17,6 +18,7 @@ const USAGE = [
   "  bb obsidian log <text…>            Append a timestamped entry to today's daily-note inbox",
   "  bb obsidian today [--content]      Print today's daily-note path (creating it), or its content",
   "  bb obsidian activity [--date D]    bb threads worked on that day (default today) [--json]",
+  "  bb obsidian calendar [--date D]    Meetings that day from macOS Calendar (default today) [--all] [--json]",
   "  bb obsidian search <query…>        Full-text search the vault [--json]",
   "  bb obsidian path                   Print the vault's absolute path",
   "  bb obsidian start|wrap             Start a Claude thread running /daily-note start or wrap",
@@ -46,6 +48,11 @@ export function registerCli(bb: BbPluginApi, { vault, daily }: { vault: Vault; d
       { name: "log", summary: "Append a timestamped entry to today's daily-note inbox", usage: "bb obsidian log <text…>" },
       { name: "today", summary: "Print today's daily-note path (creating it) or its content", usage: "bb obsidian today [--content]" },
       { name: "activity", summary: "List bb threads worked on for a day", usage: "bb obsidian activity [--date YYYY-MM-DD|today|yesterday] [--json]" },
+      {
+        name: "calendar",
+        summary: "List a day's meetings from macOS Calendar",
+        usage: "bb obsidian calendar [--date YYYY-MM-DD|today|yesterday|tomorrow] [--all] [--json]",
+      },
       { name: "search", summary: "Full-text search the vault", usage: "bb obsidian search <query…> [--json]" },
       { name: "path", summary: "Print the vault's absolute path", usage: "bb obsidian path" },
       { name: "start", summary: "Start a thread running /daily-note start", usage: "bb obsidian start" },
@@ -80,6 +87,13 @@ export function registerCli(bb: BbPluginApi, { vault, daily }: { vault: Vault; d
             const dateKey = parseDateArg(dateIndex === -1 ? undefined : rest[dateIndex + 1]);
             const items = daily.activityFor(dateKey);
             return { exitCode: 0, stdout: bounded(json ? JSON.stringify(items) : formatActivity(items)) };
+          }
+          case "calendar": {
+            const dateIndex = rest.indexOf("--date");
+            const dateKey = parseDateArg(dateIndex === -1 ? undefined : rest[dateIndex + 1]);
+            const meetings = await daily.meetingsFor(dateKey, rest.includes("--all"));
+            if (json) return { exitCode: 0, stdout: bounded(JSON.stringify(meetings)) };
+            return { exitCode: 0, stdout: bounded(meetings.length === 0 ? "No meetings on the calendar that day." : meetings.map(formatMeeting).join("\n")) };
           }
           case "search": {
             const query = rest.join(" ").trim();

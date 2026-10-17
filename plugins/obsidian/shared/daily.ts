@@ -43,11 +43,12 @@ export function dateKeyOfDailyPath(folder: string, path: string): string | null 
   return dir === prefix && isDateKey(match[2]!) ? match[2]! : null;
 }
 
-/** A date argument as the CLI accepts it: YYYY-MM-DD, "today" (the default) or "yesterday". */
+/** A date argument as the CLI accepts it: YYYY-MM-DD, "today" (the default), "yesterday" or "tomorrow". */
 export function parseDateArg(value: string | undefined, now = new Date()): string {
   if (value === undefined || value === "today") return localDateKey(now);
   if (value === "yesterday") return localDateKey(daysBefore(now, 1));
-  if (!isDateKey(value)) throw new Error(`Expected a date like 2026-10-06, "today" or "yesterday"; got ${value}`);
+  if (value === "tomorrow") return localDateKey(daysBefore(now, -1));
+  if (!isDateKey(value)) throw new Error(`Expected a date like 2026-10-06, "today", "yesterday" or "tomorrow"; got ${value}`);
   return value;
 }
 

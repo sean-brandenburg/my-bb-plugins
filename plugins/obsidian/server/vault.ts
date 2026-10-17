@@ -32,10 +32,12 @@ const WATCH_RECONCILE_MS = 60_000;
 const PREVIEW_TTL_MS = 60 * 60 * 1000;
 const SEARCH_LIMIT = 100;
 const MOVE_TIMEOUT_MS = 120_000;
+/** Long enough for the user to answer macOS's calendar permission prompt. */
+const CALENDAR_TIMEOUT_MS = 150_000;
 
 type HostContract = typeof hostContract;
-/** Every host method but checkVault acts on the configured vault. */
-type VaultMethod = Exclude<keyof HostContract & string, "checkVault">;
+/** Every host method but these acts on the configured vault. */
+type VaultMethod = Exclude<keyof HostContract & string, "checkVault" | "calendarEvents">;
 type VaultMethodInput<M extends VaultMethod> = Omit<z.input<HostContract[M]["input"]>, "vaultPath">;
 
 /** `status` minus the daily-note fields, which the daily module supplies. */
@@ -130,6 +132,7 @@ export function createVault(bb: BbPluginApi, settings: PluginSettingsHandle<type
     },
     write: (path, content, expectedSha256) => callVault("write", { path, content, expectedSha256 }),
     tree: () => callVault("tree", {}),
+    calendarEvents: async (from, to) => host.call("calendarEvents", { from, to }, { hostId: await hostId(), timeoutMs: CALENDAR_TIMEOUT_MS }),
   };
 
   async function status(): Promise<VaultStatus> {

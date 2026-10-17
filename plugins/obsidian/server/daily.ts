@@ -2,8 +2,9 @@
 // bb thread activity log, and the agent routines (start/log/wrap). Everything
 // here reaches the vault only through `VaultAccess`.
 import type { BbPluginApi, PluginRpcHandlers, PluginSettingDescriptor, PluginSettingsHandle } from "@get-bb/plugin-sdk";
-import type { NoteContent, VaultTree, WriteResult } from "../contract.ts";
+import type { CalendarEvents, NoteContent, VaultTree, WriteResult } from "../contract.ts";
 import type { dailyRpcContract } from "../rpc-contract.ts";
+import { meetingsFrom, nextDateKey, parseCalendarNames, type Meeting } from "../shared/calendar.ts";
 import {
   DEFAULT_DAILY_TEMPLATE,
   appendToSection,
@@ -32,6 +33,8 @@ export interface VaultAccess {
   read(path: string): Promise<NoteContent | null>;
   write(path: string, content: string, expectedSha256: string | null): Promise<WriteResult>;
   tree(): Promise<VaultTree>;
+  /** macOS Calendar events on the vault's machine between two local dates, `to` exclusive. */
+  calendarEvents(from: string, to: string): Promise<CalendarEvents>;
 }
 
 const DEFAULT_DAILY_FOLDER = "DailyNotes";
@@ -69,6 +72,12 @@ export const DAILY_SETTINGS = {
     description: "Provider that runs Start day / Wrap up. It must have the daily-note skill.",
     default: DEFAULT_ROUTINE_PROVIDER,
   },
+  calendarNames: {
+    type: "string",
+    label: "Calendars for meetings",
+    description: "Comma-separated macOS Calendar names to list meetings from. Blank uses every calendar.",
+    default: "",
+  },
   captureActivity: {
     type: "boolean",
     label: "Record bb thread activity for daily notes",
@@ -88,6 +97,7 @@ function normalize(values: DailySettings): DailySettings {
     inboxHeading: values.inboxHeading.trim() || DEFAULT_INBOX_HEADING,
     ticketsFolder: values.ticketsFolder.trim() || DEFAULT_TICKETS_FOLDER,
     routineProvider: values.routineProvider.trim() || DEFAULT_ROUTINE_PROVIDER,
+    calendarNames: values.calendarNames,
     captureActivity: values.captureActivity,
   };
 }
@@ -207,6 +217,11 @@ export function createDaily(bb: BbPluginApi, vault: VaultAccess, settingsHandle:
     };
   }
 
+  async function meetingsFor(dateKey: string, all: boolean): Promise<Meeting[]> {
+    const { events } = await vault.calendarEvents(dateKey, nextDateKey(dateKey));
+    return meetingsFrom(events, { calendars: parseCalendarNames((await settings()).calendarNames), all });
+  }
+
   async function status() {
     return { dailyFolder: (await settings()).dailyFolder, todayKey: localDateKey(new Date()) };
   }
@@ -226,6 +241,7 @@ export function createDaily(bb: BbPluginApi, vault: VaultAccess, settingsHandle:
     ensureDailyNote,
     startRoutine: routines.start,
     activityFor: activity.forDay,
+    meetingsFor,
     status,
     rpcHandlers,
   };
