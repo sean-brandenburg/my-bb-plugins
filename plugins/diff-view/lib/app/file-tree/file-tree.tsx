@@ -9,7 +9,7 @@ import { cn } from "../utils";
 import { isGeneratedFile } from "../generated";
 import { RISK_DOT, riskTint } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
-import { keyToken } from "../keys/keymap";
+import { keyToken } from "../ui/vim-keys";
 import { FileGlyph, FileStatusLetter } from "../file-marks";
 import { useNerdFont } from "../ui/nerd-font";
 
@@ -89,7 +89,7 @@ export function FileTree({
   const pendingG = useRef(0);
   // Vim keys over the visible rows, in the order they are drawn; Enter is the focused button's own click.
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
-    const token = keyToken(event);
+    const token = keyToken(event.nativeEvent);
     if (token === null) return;
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-tree-row]"));
     const current = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-tree-row]") : null;

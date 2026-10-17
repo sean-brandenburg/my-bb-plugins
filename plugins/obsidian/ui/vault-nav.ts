@@ -1,4 +1,4 @@
-export type ListMotion = "up" | "down" | "top" | "bottom" | "left" | "right" | "open";
+import type { KeyHelpSection, Keymap, ListMotion } from "bb-vim-keys";
 
 /** The right-panel tabs keys can jump to. */
 export type PanelTab = "files" | "outline" | "backlinks";
@@ -28,18 +28,18 @@ export type VaultCommand =
   | { kind: "escape"; fromField: boolean }
   | { kind: "help" };
 
-export const KEYMAP: Record<string, VaultCommand> = {
+export const KEYMAP: Keymap<VaultCommand> = {
   j: { kind: "list", motion: "down" },
-  ArrowDown: { kind: "list", motion: "down" },
+  "<Down>": { kind: "list", motion: "down" },
   k: { kind: "list", motion: "up" },
-  ArrowUp: { kind: "list", motion: "up" },
+  "<Up>": { kind: "list", motion: "up" },
   G: { kind: "list", motion: "bottom" },
   l: { kind: "list", motion: "right" },
-  ArrowRight: { kind: "list", motion: "right" },
+  "<Right>": { kind: "list", motion: "right" },
   h: { kind: "list", motion: "left" },
-  ArrowLeft: { kind: "list", motion: "left" },
+  "<Left>": { kind: "list", motion: "left" },
   o: { kind: "list", motion: "open" },
-  Enter: { kind: "list", motion: "open" },
+  "<CR>": { kind: "list", motion: "open" },
   "/": { kind: "search" },
   n: { kind: "searchNext", step: 1 },
   N: { kind: "searchNext", step: -1 },
@@ -48,7 +48,7 @@ export const KEYMAP: Record<string, VaultCommand> = {
   a: { kind: "newNote" },
   A: { kind: "newFolder" },
   r: { kind: "rename" },
-  F2: { kind: "rename" },
+  "<F2>": { kind: "rename" },
   y: { kind: "copyPath" },
   Y: { kind: "copyLink" },
   x: { kind: "cut" },
@@ -58,12 +58,8 @@ export const KEYMAP: Record<string, VaultCommand> = {
   W: { kind: "routine", mode: "wrap" },
   "-": { kind: "panel", tab: "files" },
   t: { kind: "sidebar" },
-  Escape: { kind: "escape", fromField: false },
+  "<Esc>": { kind: "escape", fromField: false },
   "?": { kind: "help" },
-};
-
-/** Two-key commands; their first keys wait for the second instead of acting. */
-export const PREFIX_KEYMAP: Record<string, VaultCommand> = {
   gg: { kind: "list", motion: "top" },
   gO: { kind: "panel", tab: "outline" },
   gb: { kind: "panel", tab: "backlinks" },
@@ -71,20 +67,11 @@ export const PREFIX_KEYMAP: Record<string, VaultCommand> = {
   gt: { kind: "today" },
   dd: { kind: "delete" },
   zM: { kind: "collapseAll" },
+  "<C-d>": { kind: "scroll", step: 1, amount: "half" },
+  "<C-u>": { kind: "scroll", step: -1, amount: "half" },
+  "<C-f>": { kind: "scroll", step: 1, amount: "page" },
+  "<C-b>": { kind: "scroll", step: -1, amount: "page" },
 };
-
-/** Vim's scroll keys keep their Ctrl. */
-export const CTRL_KEYMAP: Record<string, VaultCommand> = {
-  d: { kind: "scroll", step: 1, amount: "half" },
-  u: { kind: "scroll", step: -1, amount: "half" },
-  f: { kind: "scroll", step: 1, amount: "page" },
-  b: { kind: "scroll", step: -1, amount: "page" },
-};
-
-export interface KeyHelpSection {
-  title: string;
-  keys: readonly { keys: readonly string[]; action: string }[];
-}
 
 /** What the shortcuts dialog lists, in display order. */
 export const KEY_HELP: readonly KeyHelpSection[] = [
@@ -159,51 +146,10 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
   },
 ];
 
-/** A row of a list or tree, in display order; `parent` is the index of the folder it sits in. */
-export type NavRow = { kind: "group"; expanded: boolean; parent: number | null } | { kind: "item"; parent: number | null };
-
-export type ListAction = { kind: "focus"; index: number } | { kind: "activate"; index: number };
-
-/**
- * What a motion does from row `current`: move the cursor, or activate a row (open a note,
- * toggle a folder). Left and right walk the tree the way file trees do. With no cursor yet,
- * any motion lands on `start`.
- */
-export function listAction(rows: readonly NavRow[], current: number | null, motion: ListMotion, start: number): ListAction | null {
-  if (rows.length === 0) return null;
-  if (current === null || current < 0 || current >= rows.length) return { kind: "focus", index: Math.min(Math.max(start, 0), rows.length - 1) };
-  const row = rows[current]!;
-  switch (motion) {
-    case "up":
-      return { kind: "focus", index: Math.max(current - 1, 0) };
-    case "down":
-      return { kind: "focus", index: Math.min(current + 1, rows.length - 1) };
-    case "top":
-      return { kind: "focus", index: 0 };
-    case "bottom":
-      return { kind: "focus", index: rows.length - 1 };
-    case "open":
-      return { kind: "activate", index: current };
-    case "right":
-      if (row.kind === "item" || !row.expanded) return { kind: "activate", index: current };
-      return rows[current + 1]?.parent === current ? { kind: "focus", index: current + 1 } : null;
-    case "left":
-      if (row.kind === "group" && row.expanded) return { kind: "activate", index: current };
-      return row.parent === null ? null : { kind: "focus", index: row.parent };
-  }
-}
-
 /** Search matches flattened in result order; a file matched by name alone has no line. */
 export interface SearchStop {
   path: string;
   line?: number;
-}
-
-/** The match `step` places from `current`, wrapping; with none chosen yet, n starts at the first and N at the last. */
-export function stepSearch(count: number, current: number | null, step: 1 | -1): number | null {
-  if (count === 0) return null;
-  if (current === null || current < 0 || current >= count) return step === 1 ? 0 : count - 1;
-  return (current + step + count) % count;
 }
 
 /** Whether moving `path` into `folder` would change anything and is possible at all. */

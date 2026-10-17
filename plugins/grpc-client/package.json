@@ -35,6 +35,7 @@
     "@bufbuild/protobuf": "^2.16.0",
     "@radix-ui/react-slot": "^1.3.0",
     "bb-motion": "file:../motion/lib",
+    "bb-vim-keys": "file:../vim-mode/lib",
     "dev": "^0.1.5",
     "zod": "^4.6.5"
   },
@@ -67,7 +68,8 @@
   },
   "pnpm": {
     "overrides": {
-      "bb-motion": "link:../motion/lib"
+      "bb-motion": "link:../motion/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
     }
   }
 }

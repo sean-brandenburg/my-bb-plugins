@@ -443,7 +443,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     };
     runReviewCommand(command, count, env);
   };
-  const keyboardScope = useReviewKeys(rootRef, keys, overlay === null, runCommand);
+  useReviewKeys(rootRef, keys, overlay === null, runCommand);
   const runCommandRef = useRef(runCommand);
   runCommandRef.current = runCommand;
   // Scrolling by hand (wheel, trackpad, touch, the scrollbar) drags the cursor along, so it stays on the middle line.
@@ -524,7 +524,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     <DiffSourceContext.Provider value={sourceContext}>
       <DiffCommentsContext.Provider value={commentActions}>
         <ReviewKeysContext.Provider value={keys}>
-          <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none" {...keyboardScope}>
+          <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none">
             {toolbar}
             {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? (
               <div data-diff-submit-bar="">{renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments })}</div>

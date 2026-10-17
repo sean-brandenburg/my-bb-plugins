@@ -11,7 +11,8 @@ import { detectMoves } from "./lib/app/structural/moves";
 import { hunkSpan, structuralRows, visibleRows } from "./lib/app/structural/rows";
 import { buildLineAnnotations } from "./lib/app/text/line-annotations";
 import { navRows, patchRows, selectionRange } from "./lib/app/text/patch-rows";
-import { keyToken, parseKeys } from "./lib/app/keys/keymap";
+import { REVIEW_KEYMAP } from "./lib/app/keys/keymap";
+import { createKeyReader, keymapConflicts } from "../vim-mode/lib/index.ts";
 import { anchorsAtCursor, hunkSpanAt, moveChange, moveFile, moveHunk, moveLines, nextAnchor, visualRange, type Cursor, type NavFile } from "./lib/app/keys/nav";
 import { rankFiles } from "./lib/app/keys/rank-files";
 import { runReviewCommand, type ReviewEnv } from "./lib/app/keys/review-commands";
@@ -589,29 +590,28 @@ describe("review keys", () => {
   });
 
   it("reads counts, prefixes and sequences, and drops keys that cannot make one", () => {
-    expect(parseKeys(["j"])).toEqual({ status: "command", command: { kind: "line", direction: 1 }, count: 1 });
-    expect(parseKeys(["1", "2", "k"])).toEqual({ status: "command", command: { kind: "line", direction: -1 }, count: 12 });
-    expect(parseKeys(["g"])).toEqual({ status: "pending" });
-    expect(parseKeys(["3"])).toEqual({ status: "pending" });
-    expect(parseKeys(["g", "g"])).toMatchObject({ status: "command", command: { kind: "top" } });
-    expect(parseKeys(["F"])).toMatchObject({ status: "command", command: { kind: "findingFilter" } });
-    expect(parseKeys(["t"])).toMatchObject({ status: "command", command: { kind: "fileTree" } });
-    expect(parseKeys(["T"])).toMatchObject({ status: "command", command: { kind: "target" } });
-    expect(parseKeys(["]", "c"])).toMatchObject({ status: "command", command: { kind: "change", direction: 1 } });
-    expect(parseKeys(["d", "d"])).toMatchObject({ status: "command", command: { kind: "delete" } });
-    expect(parseKeys(["g", "j"])).toEqual({ status: "none" });
-    expect(parseKeys(["0"])).toEqual({ status: "none" });
-    expect(parseKeys(["q"])).toEqual({ status: "none" });
-    expect(parseKeys(["i"])).toMatchObject({ status: "command", command: { kind: "comment" } });
-    expect(parseKeys(["a"])).toMatchObject({ status: "command", command: { kind: "reply" } });
-    expect(parseKeys(["<CR>"])).toMatchObject({ status: "command", command: { kind: "fold", action: "annotation" } });
-    expect(parseKeys(["o"])).toEqual({ status: "none" });
-  });
-
-  it("names keys as vim does and leaves ⌘ and ⌥ to the app", () => {
-    const key = (init: Partial<KeyboardEventInit> & { key: string }) => keyToken({ ctrlKey: false, metaKey: false, altKey: false, ...init });
-    expect([key({ key: "j" }), key({ key: "G" }), key({ key: "d", ctrlKey: true }), key({ key: "Escape" }), key({ key: "ArrowDown" })]).toEqual(["j", "G", "<C-d>", "<Esc>", "<Down>"]);
-    expect([key({ key: "d", metaKey: true }), key({ key: "Shift" })]).toEqual([null, null]);
+    const read = (tokens: string[]) => {
+      const reader = createKeyReader(REVIEW_KEYMAP, { counts: true });
+      return tokens.map((token) => reader.read(token, 0)).at(-1);
+    };
+    expect(read(["j"])).toMatchObject({ kind: "command", command: { kind: "line", direction: 1 }, count: null });
+    expect(read(["1", "2", "k"])).toMatchObject({ kind: "command", command: { kind: "line", direction: -1 }, count: 12 });
+    expect(read(["g"])).toEqual({ kind: "pending", keys: "g" });
+    expect(read(["3"])).toEqual({ kind: "pending", keys: "3" });
+    expect(read(["g", "g"])).toMatchObject({ kind: "command", command: { kind: "top" } });
+    expect(read(["F"])).toMatchObject({ kind: "command", command: { kind: "findingFilter" } });
+    expect(read(["t"])).toMatchObject({ kind: "command", command: { kind: "fileTree" } });
+    expect(read(["T"])).toMatchObject({ kind: "command", command: { kind: "target" } });
+    expect(read(["]", "c"])).toMatchObject({ kind: "command", command: { kind: "change", direction: 1 } });
+    expect(read(["d", "d"])).toMatchObject({ kind: "command", command: { kind: "delete" } });
+    expect(read(["g", "j"])).toMatchObject({ kind: "command", command: { kind: "line", direction: 1 } });
+    expect(read(["0"])).toEqual({ kind: "none" });
+    expect(read(["q"])).toEqual({ kind: "none" });
+    expect(read(["i"])).toMatchObject({ kind: "command", command: { kind: "comment" } });
+    expect(read(["a"])).toMatchObject({ kind: "command", command: { kind: "reply" } });
+    expect(read(["<CR>"])).toMatchObject({ kind: "command", command: { kind: "fold", action: "annotation" } });
+    expect(read(["o"])).toEqual({ kind: "none" });
+    expect(keymapConflicts(REVIEW_KEYMAP)).toEqual([]);
   });
 
   it("ranks file-name matches above path matches", () => {

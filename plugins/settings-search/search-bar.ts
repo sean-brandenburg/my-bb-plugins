@@ -1,3 +1,4 @@
+import { ANY_OVERLAY, isTextEntry } from "bb-vim-keys";
 import { crawlPages, createFrameLoader, type PageLoader } from "./crawler.js";
 import { createPageCursor, CURSOR_ATTRIBUTE, PAGE_ROOT } from "./page-cursor.js";
 import { createSidebarCursor, SETTINGS_LINK } from "./sidebar-cursor.js";
@@ -37,8 +38,6 @@ const NAV_LIST = ":scope > .overflow-auto";
 // Lists of threads and plugin cards, not settings. Installed plugins also has
 // no page viewport, so indexing it only waits out the timeout.
 const UNINDEXED_PAGES = new Set(["/settings/archived", "/settings/plugins"]);
-// While one of these is open, the keys belong to it.
-const OVERLAY = '[role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper]';
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="switch"], [tabindex]:not([tabindex="-1"])';
 
@@ -223,17 +222,6 @@ export const SETTINGS_SEARCH_CSS = `
 export interface SettingsSearchOptions {
   /** Replaces the hidden-iframe page loader, for tests. */
   createLoader?: () => { load: PageLoader; dispose(): void };
-}
-
-function isEditable(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT" ||
-    target.isContentEditable ||
-    !!target.closest("[contenteditable='true']")
-  );
 }
 
 function appendMarked(parent: HTMLElement, text: string, terms: readonly string[]) {
@@ -510,8 +498,9 @@ export function mountSettingsSearch(doc: Document, win: Window, options: Setting
 
   const onDocumentKey = (event: KeyboardEvent) => {
     if (!input || event.isComposing || event.metaKey || event.altKey) return;
-    if (doc.querySelector(OVERLAY)) return;
-    if (isEditable(event.target)) {
+    // While one of these is open, the keys belong to it.
+    if (doc.querySelector(ANY_OVERLAY)) return;
+    if (event.target instanceof HTMLElement && isTextEntry(event.target)) {
       // vim-mode marks the Escape that leaves a text box as handled, and only
       // leaves text boxes on thread pages itself; one it kept never gets here.
       const target = event.target as HTMLElement;

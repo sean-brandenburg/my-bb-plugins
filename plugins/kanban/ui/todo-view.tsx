@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, STAGGER, enter, exit, speed, stagger, type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "bb-motion";
+import { scrollKeepingCursor } from "bb-vim-keys";
 import type { Board, Column, Ticket } from "../shared/board";
 import { doneColumnId, todoColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { tagTone, TagBadges } from "./tags";
 import { PrBadges, JiraBadges, ReviewBadge, DueBadge } from "./badges";
 import { toastError } from "./actions";
 import type { BoardCommand } from "./board-nav";
-import { focusStop, focusedStop, moveAlongBand, nearestStop, pressStop, scrollHalfPage } from "./stops";
+import { focusStop, focusedStop, moveAlongBand, nearestStop, pressStop } from "./stops";
 
 export function TodoView({
   commandRef,
@@ -132,7 +133,7 @@ export function TodoView({
       case "scroll": {
         const scroller = listRef.current?.closest<HTMLElement>("[data-kanban-keys]");
         if (scroller == null) return;
-        const next = scrollHalfPage(scroller, rows, row, command.direction);
+        const next = scrollKeepingCursor(scroller, rows, row, command.direction);
         if (next !== null && next !== row) focusRow(next);
         return;
       }

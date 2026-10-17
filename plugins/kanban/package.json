@@ -23,6 +23,7 @@
     "bb-diff-view": "file:../diff-view/lib",
     "bb-motion": "file:../motion/lib",
     "bb-nerd-font": "file:../nerd-font/lib",
+    "bb-vim-keys": "file:../vim-mode/lib",
     "@radix-ui/react-slot": "^1.3.0",
     "zod": "^4.6.5"
   },
@@ -58,7 +59,8 @@
     "overrides": {
       "bb-diff-view": "link:../diff-view/lib",
       "bb-motion": "link:../motion/lib",
-      "bb-nerd-font": "link:../nerd-font/lib"
+      "bb-nerd-font": "link:../nerd-font/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
     }
   },
   "scripts": {

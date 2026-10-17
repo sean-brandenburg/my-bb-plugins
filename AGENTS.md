@@ -10,7 +10,7 @@ Build every plugin to be driven from the keyboard, with vim-style keys wherever 
 - Ignore keys when focus is in a text box or a Cmd/Alt modifier is held, and don't take keys bb or the vim-mode plugin already use.
 - Every mouse action needs a keyboard path.
 
-kanban's board, grpc-client, and vim-mode's scroll mode are working examples.
+Build key handling on `bb-vim-keys` (`plugins/vim-mode/lib`, see vim-mode's README): one keymap in vim notation, `useKeyScope` or `bindKeyScope` for the listener, and its row cursors, rather than another copy of the text-box checks and `gg` timers. kanban's board, grpc-client, and obsidian use it; vim-mode's scroll mode is the reference for scrolling a thread.
 
 ## Finishing work
 

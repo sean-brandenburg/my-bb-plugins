@@ -100,16 +100,3 @@ export function useDiffInstance(key: string): InstanceState {
   const map = useSyncExternalStore(instances.subscribe, instances.get, instances.get);
   return map.get(key) ?? IDLE;
 }
-
-/** The view that last saw a pointer or focus; single-key shortcuts go only to it when several views are mounted. */
-let keyboardOwner: symbol | null = null;
-export function claimKeyboard(owner: symbol): void {
-  keyboardOwner = owner;
-}
-export function releaseKeyboard(owner: symbol): void {
-  if (keyboardOwner === owner) keyboardOwner = null;
-}
-export function ownsKeyboard(owner: symbol): boolean {
-  keyboardOwner ??= owner;
-  return keyboardOwner === owner;
-}

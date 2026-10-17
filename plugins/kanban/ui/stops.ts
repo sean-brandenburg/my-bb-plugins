@@ -64,18 +64,3 @@ export function pressStop(stop: HTMLElement): void {
   if (stop.hasAttribute("aria-haspopup")) stop.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   else stop.click();
 }
-
-/**
- * Scrolls half a page and, like vim, moves the cursor only when the scroll took it out of view:
- * to the first item now in view going down, the last going up. Returns where the cursor goes.
- */
-export function scrollHalfPage(scroller: HTMLElement, items: readonly HTMLElement[], current: HTMLElement | null, direction: 1 | -1): HTMLElement | null {
-  scroller.scrollBy({ top: (direction * scroller.clientHeight) / 2, behavior: "instant" });
-  const view = scroller.getBoundingClientRect();
-  const inView = items.filter((item) => {
-    const rect = item.getBoundingClientRect();
-    return rect.top >= view.top && rect.bottom <= view.bottom;
-  });
-  if (current !== null && inView.includes(current)) return current;
-  return (direction === 1 ? inView[0] : inView[inView.length - 1]) ?? current;
-}

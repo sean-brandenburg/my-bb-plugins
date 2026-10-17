@@ -17,7 +17,8 @@
     "app": "./app.tsx"
   },
   "dependencies": {
-    "bb-motion": "file:../motion/lib"
+    "bb-motion": "file:../motion/lib",
+    "bb-vim-keys": "file:../vim-mode/lib"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.15",
@@ -29,7 +30,8 @@
   },
   "pnpm": {
     "overrides": {
-      "bb-motion": "link:../motion/lib"
+      "bb-motion": "link:../motion/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
     }
   },
   "scripts": {

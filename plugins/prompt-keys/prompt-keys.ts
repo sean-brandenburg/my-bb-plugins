@@ -1,10 +1,11 @@
+import { ANY_OVERLAY, createKeyReader, isTextEntry, type Keymap, keyToken } from "bb-vim-keys";
+
 export const OWNED_ATTRIBUTE = "data-prompt-keys";
 const PANEL_ATTRIBUTE = "data-prompt-keys-panel";
 const STYLE_ATTRIBUTE = "data-prompt-keys-style";
 // Opts the banner out of vim-mode: the "Other…" box's Escape has to reach
 // these keys, and focus in the banner ends vim-mode's scroll mode.
 const VIM_IGNORE_ATTRIBUTE = "data-vim-ignore";
-const G_TIMEOUT_MS = 1000;
 // How soon after an Escape keydown a prompt box blur counts as caused by it.
 const ESCAPE_BLUR_MS = 500;
 const LINE_STEP_PX = 40;
@@ -21,7 +22,22 @@ const PROMPT_EDITOR = '[data-promptbox] [contenteditable="true"]';
 const QUESTION_FORM = 'div[tabindex="-1"]';
 const CHOICES = "fieldset button[aria-pressed]";
 // While one of these is open, the keys belong to it.
-const OVERLAY = '[role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper]';
+// Commands keep the names of the keys that type them.
+const BANNER_KEYMAP: Keymap<string> = {
+  j: "j",
+  k: "k",
+  h: "h",
+  l: "l",
+  gg: "gg",
+  G: "G",
+  x: "x",
+  i: "i",
+  "<CR>": "Enter",
+  "<Esc>": "Escape",
+  "?": "?",
+  "<C-d>": "C-d",
+  "<C-u>": "C-u",
+};
 
 const QUESTION_KEYS: [string, string][] = [
   ["j  k", "Next or previous answer"],
@@ -79,17 +95,6 @@ export const PROMPT_KEYS_CSS = `
   white-space: pre;
 }
 `;
-
-function isEditable(target: EventTarget | null): target is HTMLElement {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT" ||
-    target.isContentEditable ||
-    !!target.closest("[contenteditable='true']")
-  );
-}
 
 const isQuestion = (banner: Element) => banner.matches(QUESTION);
 const isExpanded = (banner: Element) => banner.hasAttribute("data-expanded");
@@ -175,7 +180,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
   // Where focus was in a banner, so a bb re-render that drops the focused
   // node, or the banner going away, can put it back somewhere useful.
   let last: { banner: HTMLElement; element: Element; composer: Element | null } | null = null;
-  let pendingG = 0;
+  const reader = createKeyReader(BANNER_KEYMAP);
   let panel: { element: HTMLElement; banner: Element } | null = null;
   let scan = 0;
   let escapeAt = -Infinity;
@@ -245,8 +250,8 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     afterRender(() => formOf(banner)?.querySelector<HTMLElement>("fieldset textarea")?.focus());
   };
 
-  const questionKey = (banner: HTMLElement, key: string, wasG: boolean): boolean => {
-    if (["j", "k", "h", "l", "G", "g", "x", "i"].includes(key) && unfold(banner, () => placeCursor(banner))) return true;
+  const questionKey = (banner: HTMLElement, key: string): boolean => {
+    if (["j", "k", "h", "l", "G", "gg", "x", "i"].includes(key) && unfold(banner, () => placeCursor(banner))) return true;
     const form = formOf(banner);
     if (!form) return false;
     const choices = choicesOf(form);
@@ -260,11 +265,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
       case "k":
         step(at < 0 ? choices.length - 1 : at - 1);
         return true;
-      case "g":
-        if (!wasG) {
-          pendingG = win.setTimeout(() => (pendingG = 0), G_TIMEOUT_MS);
-          return true;
-        }
+      case "gg":
         step(0);
         return true;
       case "G":
@@ -310,13 +311,13 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     }
   };
 
-  const decisionKey = (banner: HTMLElement, key: string, wasG: boolean): boolean => {
+  const decisionKey = (banner: HTMLElement, key: string): boolean => {
     const enterRow = (fromEnd: boolean) => {
       const decisions = decisionsOf(banner);
       focus(fromEnd ? decisions.at(-1) : decisions[0], banner);
     };
     if (["h", "l"].includes(key) && unfold(banner, () => enterRow(key === "h"))) return true;
-    if (["j", "k", "g", "G"].includes(key) && unfold(banner, () => {})) return true;
+    if (["j", "k", "gg", "G"].includes(key) && unfold(banner, () => {})) return true;
     switch (key) {
       case "h":
       case "l": {
@@ -330,11 +331,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
       case "k":
         scrollBy(banner, () => (key === "j" ? LINE_STEP_PX : -LINE_STEP_PX));
         return true;
-      case "g":
-        if (!wasG) {
-          pendingG = win.setTimeout(() => (pendingG = 0), G_TIMEOUT_MS);
-          return true;
-        }
+      case "gg":
         scrollBy(banner, (content) => -content.scrollTop);
         return true;
       case "G":
@@ -359,11 +356,11 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     let banner = target instanceof Element ? target.closest<HTMLElement>(BANNER) : null;
     if (!banner) {
       if (target !== doc.body && target !== doc.documentElement) return;
-      if (doc.querySelector(OVERLAY)) return;
+      if (doc.querySelector(ANY_OVERLAY)) return;
       banner = fallbackBanner();
       if (!banner) return;
     }
-    if (isEditable(target)) {
+    if (target instanceof HTMLElement && isTextEntry(target)) {
       // Escape leaves "Other…" for the answers instead of folding the banner.
       const plain = !event.ctrlKey && !event.shiftKey;
       if (event.key !== "Escape" || !plain || !isQuestion(banner) || !target.matches("fieldset textarea")) return;
@@ -374,12 +371,19 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
       focus(otherChoice(choices) ?? form, banner);
       return;
     }
-    const wasG = pendingG !== 0;
-    if (pendingG !== 0) win.clearTimeout(pendingG);
-    pendingG = 0;
-    let key: string | null = event.key;
-    if (event.ctrlKey) key = event.key === "d" || event.key === "u" ? `C-${event.key}` : null;
-    if (key === null) return;
+    const token = keyToken(event);
+    if (token === null) return;
+    const read = reader.read(token, event.timeStamp);
+    if (read.kind === "pending") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (read.kind === "none") {
+      closePanel();
+      return;
+    }
+    const key = read.command;
     let handled: boolean;
     if (key === "Escape" && panel) {
       closePanel();
@@ -393,7 +397,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
       handled = true;
     } else {
       closePanel();
-      handled = isQuestion(banner) ? questionKey(banner, key, wasG) : decisionKey(banner, key, wasG);
+      handled = isQuestion(banner) ? questionKey(banner, key) : decisionKey(banner, key);
     }
     if (!handled) return;
     event.preventDefault();
@@ -445,7 +449,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
       seen.add(banner);
       banner.setAttribute(OWNED_ATTRIBUTE, "");
       banner.setAttribute(VIM_IGNORE_ATTRIBUTE, "");
-      if (!doc.querySelector(OVERLAY) && mayTakeFocus(banner)) placeCursor(banner);
+      if (!doc.querySelector(ANY_OVERLAY) && mayTakeFocus(banner)) placeCursor(banner);
     }
   };
 
@@ -462,7 +466,6 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
   return () => {
     observer.disconnect();
     if (scan !== 0) win.cancelAnimationFrame(scan);
-    if (pendingG !== 0) win.clearTimeout(pendingG);
     win.removeEventListener("keydown", onKeyDown, true);
     doc.removeEventListener("focusin", onFocusIn, true);
     doc.removeEventListener("focusout", onFocusOut, true);

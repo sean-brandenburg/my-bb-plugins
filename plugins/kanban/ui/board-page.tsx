@@ -3,6 +3,7 @@ import type { DragEvent } from "react";
 import { useBbNavigate, experimental_useAppPanel as useAppPanel } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { SHIMMER, enter, speed, useArrivals } from "bb-motion";
+import { scrollKeepingCursor } from "bb-vim-keys";
 import type { Ticket } from "../shared/board";
 import { agedOut, doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ import { toastError } from "./actions";
 import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 import { useBoardKeys } from "./board-keys";
 import { cardShown, requestCardFocus } from "./card-keys";
-import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop, scrollHalfPage } from "./stops";
+import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop } from "./stops";
 import { BoardKeysDialog } from "./board-keys-dialog";
 
 /** Cards deleted from the board this session, newest last, for `u`; kept across visits to the page. */
@@ -220,7 +221,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         const card = current === null ? null : (boardRef.current?.querySelector<HTMLElement>(`[data-ticket-id="${CSS.escape(current)}"]`) ?? null);
         const list = card?.closest<HTMLElement>("[data-kanban-column-list]");
         if (card == null || list == null) return;
-        const next = scrollHalfPage(list, Array.from(list.querySelectorAll<HTMLElement>("[data-ticket-id]")), card, command.direction);
+        const next = scrollKeepingCursor(list, Array.from(list.querySelectorAll<HTMLElement>("[data-ticket-id]")), card, command.direction);
         if (next !== null && next !== card) next.focus({ preventScroll: true });
         return;
       }

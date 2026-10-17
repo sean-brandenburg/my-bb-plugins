@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
+import { createKeyReader, isTextEntry, type Keymap, keyToken, scrollKeepingCursor, scrollParent } from "bb-vim-keys";
 import { spatialStep, type Direction } from "./board-nav";
 
-const NON_TEXT_INPUTS = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file", "image"]);
 const STOPS =
   'a[href], button:not(:disabled), input:not(:disabled):not([readonly]):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled):not([readonly]), [contenteditable="true"]';
 /** The text box the cursor rests on while focus stays on the card, so keys still move. */
@@ -11,15 +11,30 @@ const PARKED = "data-kanban-cursor";
 const INITIAL_STOP = "[data-kanban-initial-stop]";
 /** The card's main text box, which `i` goes to when the cursor is on no text box. */
 const MAIN_INPUT = "[data-kanban-main-input]";
-const PREFIX_TIMEOUT_MS = 500;
 const FOCUS_REQUEST_TTL_MS = 2000;
 
-/** Whether keys typed at `element` are text, so j or Escape mean something there. */
-export function isTextEntry(element: Element | null): boolean {
-  if (element === null) return false;
-  if (element instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(element.type);
-  return element.closest('textarea, select, [contenteditable]:not([contenteditable="false"])') !== null;
-}
+type CardCommand = { kind: "step"; direction: Direction } | { kind: "first" } | { kind: "last" } | { kind: "press" } | { kind: "type" } | { kind: "thread" } | { kind: "diff" } | { kind: "help" } | { kind: "scroll"; direction: 1 | -1 };
+
+const CARD_KEYMAP: Keymap<CardCommand> = {
+  j: { kind: "step", direction: "down" },
+  "<Down>": { kind: "step", direction: "down" },
+  k: { kind: "step", direction: "up" },
+  "<Up>": { kind: "step", direction: "up" },
+  l: { kind: "step", direction: "right" },
+  "<Right>": { kind: "step", direction: "right" },
+  h: { kind: "step", direction: "left" },
+  "<Left>": { kind: "step", direction: "left" },
+  gg: { kind: "first" },
+  G: { kind: "last" },
+  "<CR>": { kind: "press" },
+  "<Space>": { kind: "press" },
+  i: { kind: "type" },
+  t: { kind: "thread" },
+  D: { kind: "diff" },
+  "?": { kind: "help" },
+  "<C-d>": { kind: "scroll", direction: 1 },
+  "<C-u>": { kind: "scroll", direction: -1 },
+};
 
 // A card opened from the keyboard, or while another card is showing, takes focus once it renders;
 // one opened with the mouse onto an empty panel leaves focus where it is. The panel may already
@@ -53,14 +68,6 @@ export function focusBoard(ticketId: string): void {
   card?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function scrollParent(element: HTMLElement): HTMLElement {
-  for (let node = element.parentElement; node !== null; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node);
-    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return node;
-  }
-  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
-}
-
 export interface CardKeyHandlers {
   onThread: () => void;
   onDiff: () => void;
@@ -85,7 +92,7 @@ export function useCardKeys(
   /** Leaves a text box for the keys with the cursor still on it, as Escape does. */
   leave: (field: HTMLElement) => void;
 } {
-  const pendingG = useRef(0);
+  const reader = useRef(createKeyReader(CARD_KEYMAP));
 
   const stops = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>(STOPS)).filter((stop) => stop.getClientRects().length > 0);
   const parked = (root: HTMLElement) => root.querySelector<HTMLElement>(`[${PARKED}]`);
@@ -137,105 +144,73 @@ export function useCardKeys(
     const root = rootRef.current;
     const target = event.target as HTMLElement;
     // Portaled popovers (the tag picker) bubble here through React but handle their own keys.
-    if (root === null || !root.contains(target)) return;
-    if (event.defaultPrevented || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
+    if (root === null || !root.contains(target) || event.defaultPrevented) return;
+    const token = keyToken(event.nativeEvent);
+    if (token === null) return;
     if (isTextEntry(target)) {
       // With vim-mode, this is the second Escape: the first only entered vim's normal mode.
-      if (event.key !== "Escape" || event.ctrlKey || event.shiftKey) return;
+      if (token !== "<Esc>") return;
       event.preventDefault();
       land(root, target);
+      return;
+    }
+    const read = reader.current.read(token, event.timeStamp);
+    if (read.kind === "none") return;
+    if (read.kind === "pending") {
+      event.preventDefault();
       return;
     }
     const list = stops(root);
     const current = target === root ? parked(root) : (list.find((stop) => stop === target || stop.contains(target)) ?? null);
     const index = current === null ? -1 : list.indexOf(current);
-    const boxes = () => list.map((stop) => stop.getBoundingClientRect());
-    const step = (direction: Direction) => {
-      const next = spatialStep(boxes(), index, direction);
-      if (next !== null) go(next);
-    };
     const go = (next: number) => {
       const stop = list[next];
       if (stop !== undefined) land(root, stop);
     };
-    if (event.ctrlKey) {
-      if (event.shiftKey || (event.key !== "d" && event.key !== "u")) return;
-      event.preventDefault();
-      const scroller = scrollParent(root);
-      const direction = event.key === "d" ? 1 : -1;
-      scroller.scrollBy({ top: (direction * scroller.clientHeight) / 2, behavior: "instant" });
-      // Like vim, the cursor stays put unless the scroll took it out of view.
-      const view = scroller === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
-      const inView = list.filter((stop) => {
-        const rect = stop.getBoundingClientRect();
-        return rect.top >= view.top && rect.bottom <= view.bottom;
-      });
-      if (current !== null && inView.includes(current)) return;
-      const next = direction === 1 ? inView[0] : inView[inView.length - 1];
-      if (next !== undefined) land(root, next);
-      return;
-    }
-    if (event.key === "g") {
-      event.preventDefault();
-      if (event.timeStamp - pendingG.current > PREFIX_TIMEOUT_MS) {
-        pendingG.current = event.timeStamp;
-        return;
+    const command = read.command;
+    switch (command.kind) {
+      case "step": {
+        const next = spatialStep(list.map((stop) => stop.getBoundingClientRect()), index, command.direction);
+        if (next !== null) go(next);
+        else if (command.direction === "left" && handlers.onBack !== undefined) {
+          unpark(root);
+          handlers.onBack();
+        } else if (command.direction === "left") return;
+        break;
       }
-      pendingG.current = 0;
-      go(0);
-      return;
-    }
-    pendingG.current = 0;
-    switch (event.key) {
-      case "j":
-      case "ArrowDown":
-        step("down");
+      case "first":
+        go(0);
         break;
-      case "k":
-      case "ArrowUp":
-        step("up");
-        break;
-      case "l":
-      case "ArrowRight":
-        step("right");
-        break;
-      case "G":
+      case "last":
         go(list.length - 1);
         break;
-      case "Enter":
-      case " ":
+      case "scroll": {
+        const scroller = scrollParent(root) ?? (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+        // Like vim, the cursor stays put unless the scroll took it out of view.
+        const next = scrollKeepingCursor(scroller, list, current, command.direction);
+        if (next !== null && next !== current) land(root, next);
+        break;
+      }
+      case "press":
         // A focused button or checkbox presses itself.
-        if (target !== root) return;
-        if (current === null) return;
+        if (target !== root || current === null) return;
         type(root, current);
         break;
-      case "i": {
+      case "type": {
         const field = (current !== null && isTextEntry(current) ? current : null) ?? root.querySelector<HTMLElement>(MAIN_INPUT);
         if (field === null) return;
         type(root, field);
         break;
       }
-      case "h":
-      case "ArrowLeft": {
-        const next = spatialStep(boxes(), index, "left");
-        if (next !== null) go(next);
-        else if (handlers.onBack !== undefined) {
-          unpark(root);
-          handlers.onBack();
-        } else return;
-        break;
-      }
-      case "t":
+      case "thread":
         handlers.onThread();
         break;
-      case "D":
+      case "diff":
         handlers.onDiff();
         break;
-      case "?":
+      case "help":
         handlers.onHelp();
         break;
-      default:
-        return;
     }
     event.preventDefault();
   };

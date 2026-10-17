@@ -1,11 +1,12 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { stepWrapping } from "bb-vim-keys";
 import { openToday } from "./daily";
 import { PANEL_PATH, useOpenNote } from "./navigation";
 import { getSearchStops, requestPanelTab, setKeysHelpOpen, setSearchStopIndex } from "./state";
 import { requestSurfaceFocus } from "./vault-keys";
-import { stepSearch, type VaultCommand } from "./vault-nav";
+import type { VaultCommand } from "./vault-nav";
 
 /** Keys that mean the same on every surface: search, panels, home, today, help. */
 export function useGlobalCommands(): (command: VaultCommand) => boolean {
@@ -20,7 +21,7 @@ export function useGlobalCommands(): (command: VaultCommand) => boolean {
           return true;
         case "searchNext": {
           const { stops, index } = getSearchStops();
-          const next = stepSearch(stops.length, index, command.step);
+          const next = stepWrapping(stops.length, index, command.step);
           if (next === null) {
             toast.message("No search matches. Press / to search the vault.");
             return true;

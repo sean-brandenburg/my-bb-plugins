@@ -6,6 +6,7 @@ settings:
 
 overrides:
   bb-motion: link:../motion/lib
+  bb-vim-keys: link:../vim-mode/lib
 
 importers:
 
@@ -14,6 +15,9 @@ importers:
       bb-motion:
         specifier: link:../motion/lib
         version: link:../motion/lib
+      bb-vim-keys:
+        specifier: link:../vim-mode/lib
+        version: link:../vim-mode/lib
     devDependencies:
       '@get-bb/plugin-sdk':
         specifier: 0.6.15

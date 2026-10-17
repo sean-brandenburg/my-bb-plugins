@@ -1,3 +1,5 @@
+import type { KeyHelpSection, Keymap } from "bb-vim-keys";
+
 /** Ticket ids per column, left to right, top to bottom, as the board shows them. */
 export type BoardLayout = readonly (readonly string[])[];
 
@@ -20,15 +22,15 @@ export type BoardCommand =
   | { kind: "focus-input" }
   | { kind: "scroll"; direction: 1 | -1 };
 
-export const KEYMAP: Record<string, BoardCommand> = {
+export const KEYMAP: Keymap<BoardCommand> = {
   h: { kind: "cursor", motion: "left" },
-  ArrowLeft: { kind: "cursor", motion: "left" },
+  "<Left>": { kind: "cursor", motion: "left" },
   l: { kind: "cursor", motion: "right" },
-  ArrowRight: { kind: "cursor", motion: "right" },
+  "<Right>": { kind: "cursor", motion: "right" },
   j: { kind: "cursor", motion: "down" },
-  ArrowDown: { kind: "cursor", motion: "down" },
+  "<Down>": { kind: "cursor", motion: "down" },
   k: { kind: "cursor", motion: "up" },
-  ArrowUp: { kind: "cursor", motion: "up" },
+  "<Up>": { kind: "cursor", motion: "up" },
   G: { kind: "cursor", motion: "bottom" },
   "0": { kind: "cursor", motion: "first-column" },
   $: { kind: "cursor", motion: "last-column" },
@@ -46,23 +48,10 @@ export const KEYMAP: Record<string, BoardCommand> = {
   x: { kind: "toggle-done" },
   i: { kind: "focus-input" },
   "?": { kind: "help" },
-};
-
-/** Ctrl chords, which the single-key map can't hold because every other modifier turns keys off. */
-export const CTRL_KEYMAP: Record<string, BoardCommand> = {
-  d: { kind: "scroll", direction: 1 },
-  u: { kind: "scroll", direction: -1 },
-};
-
-export interface KeyHelpSection {
-  title: string;
-  keys: readonly { keys: readonly string[]; action: string }[];
-}
-
-/** Two-key commands; their first key does nothing until the second arrives. */
-export const PREFIXED_KEYMAP: Record<string, BoardCommand> = {
   gg: { kind: "cursor", motion: "top" },
   za: { kind: "toggle-hidden" },
+  "<C-d>": { kind: "scroll", direction: 1 },
+  "<C-u>": { kind: "scroll", direction: -1 },
 };
 
 /** What the shortcuts dialog lists, in display order. */

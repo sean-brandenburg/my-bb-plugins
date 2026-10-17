@@ -1,8 +1,20 @@
+import { createKeyReader, type Keymap, keyToken } from "bb-vim-keys";
 import { CURSOR_ATTRIBUTE } from "./page-cursor.js";
 
 export const SETTINGS_LINK = 'a[href^="/settings"]';
-const G_TIMEOUT_MS = 1000;
 const FALLBACK_ROW_HEIGHT_PX = 28;
+
+type SidebarCommand = "down" | "up" | "top" | "bottom" | "escape" | "half-down" | "half-up";
+
+const SIDEBAR_KEYMAP: Keymap<SidebarCommand> = {
+  j: "down",
+  k: "up",
+  gg: "top",
+  G: "bottom",
+  "<Esc>": "escape",
+  "<C-d>": "half-down",
+  "<C-u>": "half-up",
+};
 
 export interface SidebarCursor {
   /** Handles a keydown while the page list has the keys; returns true when it was a cursor key. */
@@ -21,7 +33,7 @@ export interface SidebarCursor {
  */
 export function createSidebarCursor(win: Window, nav: () => Element | null): SidebarCursor {
   let ring: Element | null = null;
-  let pendingG = 0;
+  const reader = createKeyReader(SIDEBAR_KEYMAP);
 
   const links = () => [...(nav()?.querySelectorAll<HTMLAnchorElement>(SETTINGS_LINK) ?? [])];
 
@@ -61,32 +73,29 @@ export function createSidebarCursor(win: Window, nav: () => Element | null): Sid
   };
 
   const handleKey = (event: KeyboardEvent): boolean => {
-    const wasG = pendingG !== 0;
-    if (pendingG !== 0) win.clearTimeout(pendingG);
-    pendingG = 0;
-    if (event.ctrlKey) {
-      if (event.shiftKey || (event.key !== "d" && event.key !== "u")) return false;
-      go(here(links()) + (event.key === "d" ? 1 : -1) * halfList());
-      return true;
-    }
-    switch (event.key) {
-      case "j":
-      case "k":
-        go(here(links()) + (event.key === "j" ? 1 : -1));
+    const token = keyToken(event);
+    if (token === null) return false;
+    const read = reader.read(token, event.timeStamp);
+    if (read.kind !== "command") return read.kind === "pending";
+    switch (read.command) {
+      case "half-down":
+      case "half-up":
+        go(here(links()) + (read.command === "half-down" ? 1 : -1) * halfList());
         return true;
-      case "g":
-        if (wasG) go(0);
-        else pendingG = win.setTimeout(() => (pendingG = 0), G_TIMEOUT_MS);
+      case "down":
+      case "up":
+        go(here(links()) + (read.command === "down" ? 1 : -1));
         return true;
-      case "G":
+      case "top":
+        go(0);
+        return true;
+      case "bottom":
         go(Infinity);
         return true;
-      case "Escape":
+      case "escape":
         if (!ring) return false;
         mark(undefined);
         return true;
-      default:
-        return false;
     }
   };
 
@@ -104,7 +113,6 @@ export function createSidebarCursor(win: Window, nav: () => Element | null): Sid
       if (link !== ring) mark(link);
     },
     dispose() {
-      if (pendingG !== 0) win.clearTimeout(pendingG);
       mark(undefined);
     },
   };

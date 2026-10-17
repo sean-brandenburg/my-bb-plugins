@@ -1,3 +1,5 @@
+import type { Keymap } from "../ui/vim-keys";
+
 /** What a key sequence asks the view to do. Motions repeat by the count typed before them. */
 export type ReviewCommand =
   | { kind: "line"; direction: 1 | -1 }
@@ -38,29 +40,8 @@ export type ReviewCommand =
   /** No key: the reader scrolled by hand, and the cursor moves to the line now in the middle. */
   | { kind: "follow" };
 
-/** Keys as typed: printable characters as themselves, the rest as `<C-d>`, `<Esc>`, `<CR>`, `<Down>`. */
-export function keyToken(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): string | null {
-  if (event.metaKey || event.altKey) return null;
-  if (event.ctrlKey) return event.key.length === 1 ? `<C-${event.key.toLowerCase()}>` : null;
-  switch (event.key) {
-    case "Escape":
-      return "<Esc>";
-    case "Enter":
-      return "<CR>";
-    case "ArrowDown":
-      return "<Down>";
-    case "ArrowUp":
-      return "<Up>";
-    case "ArrowLeft":
-      return "<Left>";
-    case "ArrowRight":
-      return "<Right>";
-    default:
-      return event.key.length === 1 ? event.key : null;
-  }
-}
-
-const SEQUENCES: Record<string, ReviewCommand> = {
+/** Review commands by key sequence; a count typed before one repeats it. */
+export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   j: { kind: "line", direction: 1 },
   "<Down>": { kind: "line", direction: 1 },
   k: { kind: "line", direction: -1 },
@@ -120,30 +101,6 @@ const SEQUENCES: Record<string, ReviewCommand> = {
   "?": { kind: "help" },
   "<Esc>": { kind: "escape" },
 };
-
-const PREFIXES = new Set(Object.keys(SEQUENCES).flatMap((sequence) => (sequence.startsWith("<") ? [] : [...sequence].slice(0, -1).map((_, index) => sequence.slice(0, index + 1)))));
-
-export type ParseResult = { status: "pending" } | { status: "none" } | { status: "command"; command: ReviewCommand; count: number };
-
-/**
- * Reads the keys typed so far: an optional count, then a sequence. `pending` means more keys may complete one
- * (a count, or a prefix such as `g`, `z`, `]`, `d`); `none` means nothing will, and the caller drops the keys.
- */
-export function parseKeys(tokens: readonly string[]): ParseResult {
-  let index = 0;
-  let digits = "";
-  while (index < tokens.length && /^[0-9]$/u.test(tokens[index]!) && !(digits === "" && tokens[index] === "0")) {
-    digits += tokens[index];
-    index += 1;
-  }
-  const rest = tokens.slice(index);
-  if (rest.length === 0) return digits === "" ? { status: "none" } : { status: "pending" };
-  const sequence = rest.join("");
-  const command = SEQUENCES[sequence];
-  if (command !== undefined) return { status: "command", command, count: digits === "" ? 1 : Math.min(Number(digits), 9999) };
-  if (rest.every((token) => !token.startsWith("<")) && PREFIXES.has(sequence)) return { status: "pending" };
-  return { status: "none" };
-}
 
 /** The `?` sheet, in the order a review goes. */
 export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys: string[]; action: string }> }> = [

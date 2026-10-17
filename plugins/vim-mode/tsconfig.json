@@ -14,13 +14,15 @@
       "node"
     ],
     "noEmit": true,
-    "skipLibCheck": false
+    "skipLibCheck": false,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "server.ts",
     "app.tsx",
     "src",
     "test",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "lib"
   ]
 }

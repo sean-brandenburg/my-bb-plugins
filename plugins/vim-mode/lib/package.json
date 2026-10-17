@@ -1,0 +1,16 @@
+{
+  "name": "bb-vim-keys",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vim-style keys for bb plugin surfaces: one keymap table in vim notation, a key reader for gg/dd-style sequences and counts, a window listener scoped to a plugin's root, row-list cursors, and the shortcuts grid. The root entry imports nothing, so node's test runner and content scripts can load it; ./react adds hooks and the grid, importing only modules bb shims to the host.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./react": "./react.ts"
+  },
+  "bb": {
+    "pluginTailwindContent": [
+      "**/*.{ts,tsx}"
+    ]
+  }
+}

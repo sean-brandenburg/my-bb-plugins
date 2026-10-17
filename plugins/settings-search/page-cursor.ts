@@ -1,5 +1,6 @@
+import { createKeyReader, type Keymap, keyToken } from "bb-vim-keys";
+
 export const CURSOR_ATTRIBUTE = "data-settings-search-cursor";
-const G_TIMEOUT_MS = 1000;
 // Taller than any list row, shorter than a section.
 const MAX_ROW_HEIGHT_PX = 160;
 
@@ -69,12 +70,26 @@ function primaryControl(item: Element): HTMLElement | null {
   );
 }
 
+type PageCommand = "down" | "up" | "top" | "bottom" | "activate" | "focus" | "escape" | "half-down" | "half-up";
+
+const PAGE_KEYMAP: Keymap<PageCommand> = {
+  j: "down",
+  k: "up",
+  gg: "top",
+  G: "bottom",
+  "<CR>": "activate",
+  i: "focus",
+  "<Esc>": "escape",
+  "<C-d>": "half-down",
+  "<C-u>": "half-up",
+};
+
 export function createPageCursor(doc: Document, win: Window): PageCursor {
   let current: Element | null = null;
   let index = -1;
   let path: string | null = null;
   let parked: { path: string; index: number } | null = null;
-  let pendingG = 0;
+  const reader = createKeyReader(PAGE_KEYMAP);
 
   const root = () => doc.querySelector(PAGE_ROOT);
 
@@ -179,39 +194,35 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
   };
 
   const handleKey = (event: KeyboardEvent): boolean => {
-    const wasG = pendingG !== 0;
-    if (pendingG !== 0) win.clearTimeout(pendingG);
-    pendingG = 0;
-    if (event.ctrlKey) {
-      if (event.shiftKey || (event.key !== "d" && event.key !== "u")) return false;
-      leaveControl();
-      halfPage(event.key === "d" ? 1 : -1);
-      return true;
-    }
-    switch (event.key) {
-      case "j":
-      case "k":
+    const token = keyToken(event);
+    if (token === null) return false;
+    const read = reader.read(token, event.timeStamp);
+    if (read.kind !== "command") return read.kind === "pending";
+    switch (read.command) {
+      case "half-down":
+      case "half-up":
         leaveControl();
-        move(event.key === "j" ? 1 : -1);
+        halfPage(read.command === "half-down" ? 1 : -1);
         return true;
-      case "g":
-        if (!wasG) {
-          pendingG = win.setTimeout(() => (pendingG = 0), G_TIMEOUT_MS);
-          return true;
-        }
+      case "down":
+      case "up":
+        leaveControl();
+        move(read.command === "down" ? 1 : -1);
+        return true;
+      case "top":
         leaveControl();
         move(-Infinity);
         return true;
-      case "G":
+      case "bottom":
         leaveControl();
         move(Infinity);
         return true;
-      case "Enter":
-      case "i":
+      case "activate":
+      case "focus":
         // A focused control keeps its own Enter.
         if (focusIsOnPage()) return false;
-        return activate(event.key === "i");
-      case "Escape":
+        return activate(read.command === "focus");
+      case "escape":
         if (focusIsOnPage()) {
           leaveControl();
           return true;
@@ -219,8 +230,6 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
         if (!current) return false;
         clear();
         return true;
-      default:
-        return false;
     }
   };
 
@@ -271,7 +280,6 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
       else clear();
     },
     dispose() {
-      if (pendingG !== 0) win.clearTimeout(pendingG);
       doc.removeEventListener("pointerdown", onPointerDown, true);
       clear();
     },

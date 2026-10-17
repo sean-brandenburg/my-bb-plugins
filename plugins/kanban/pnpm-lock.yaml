@@ -8,6 +8,7 @@ overrides:
   bb-diff-view: link:../diff-view/lib
   bb-motion: link:../motion/lib
   bb-nerd-font: link:../nerd-font/lib
+  bb-vim-keys: link:../vim-mode/lib
 
 importers:
 
@@ -28,6 +29,9 @@ importers:
       bb-nerd-font:
         specifier: link:../nerd-font/lib
         version: link:../nerd-font/lib
+      bb-vim-keys:
+        specifier: link:../vim-mode/lib
+        version: link:../vim-mode/lib
       zod:
         specifier: ^4.6.5
         version: 4.6.5
