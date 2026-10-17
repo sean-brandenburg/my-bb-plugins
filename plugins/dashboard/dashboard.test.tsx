@@ -157,6 +157,7 @@ describe("Dashboard", () => {
     const cleanups: string[] = [];
     const slot = await render(null, cleanups);
     await slot.findByText("Old work");
+    await press("j");
     await press("G");
     expect(document.activeElement?.textContent).toContain("Old work");
     await press("d");

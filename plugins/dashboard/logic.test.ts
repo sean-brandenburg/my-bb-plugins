@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { summarizeWorktrees, type ThreadRef, type WorktreeEnvironment } from "./server/worktrees.js";
-import { nearestIndex, stepIndex } from "./ui/cursor.js";
+import { nearestIndex } from "./ui/cursor.js";
 import { formatSpan, shortBranch } from "./ui/format.js";
 import { latestWindows } from "./ui/limits.js";
 import { attentionOf, groupThreads } from "./ui/threads.js";
-import { createKeyReader, keyToken } from "./ui/vim-keys.js";
 import { canCleanUp } from "./worktree.js";
 
 const environment = (id: string, updatedAt = 1000): WorktreeEnvironment => ({
@@ -166,17 +165,6 @@ describe("latestWindows", () => {
 });
 
 describe("cursor", () => {
-  it("steps within bounds and starts on the first row", () => {
-    expect(stepIndex(0, null, "down")).toBeNull();
-    expect(stepIndex(4, null, "up")).toBe(0);
-    expect(stepIndex(4, null, "bottom")).toBe(3);
-    expect(stepIndex(4, 3, "down")).toBe(3);
-    expect(stepIndex(4, 0, "up")).toBe(0);
-    expect(stepIndex(12, 2, "pageDown")).toBe(7);
-    expect(stepIndex(12, 2, "pageUp")).toBe(0);
-    expect(stepIndex(12, 2, "bottom")).toBe(11);
-  });
-
   it("finds the row nearest in height", () => {
     expect(nearestIndex([10, 50, 90], 60)).toBe(1);
     expect(nearestIndex([], 60)).toBeNull();
@@ -196,28 +184,5 @@ describe("format", () => {
   it("strips bb's branch decoration", () => {
     expect(shortBranch("bb/fix-the-thing-thr_922qxpshrg")).toBe("fix-the-thing");
     expect(shortBranch("main")).toBe("main");
-  });
-});
-
-describe("keys", () => {
-  const key = (keyName: string, modifiers: Partial<KeyboardEvent> = {}) => ({ key: keyName, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, isComposing: false, ...modifiers });
-
-  it("names keys in vim notation and ignores ⌘ and ⌥ chords", () => {
-    expect(keyToken(key("j"))).toBe("j");
-    expect(keyToken(key("G", { shiftKey: true }))).toBe("G");
-    expect(keyToken(key("d", { ctrlKey: true }))).toBe("<C-d>");
-    expect(keyToken(key("Enter"))).toBe("<CR>");
-    expect(keyToken(key("j", { metaKey: true }))).toBeNull();
-    expect(keyToken(key("Shift", { shiftKey: true }))).toBeNull();
-  });
-
-  it("reads gg and dd, and restarts on a key that can't continue", () => {
-    const reader = createKeyReader({ gg: "top", dd: "cleanUp", j: "down" });
-    expect(reader.read("g", 0)).toEqual({ kind: "pending", keys: "g" });
-    expect(reader.read("g", 10)).toEqual({ kind: "command", command: "top", keys: "gg" });
-    expect(reader.read("d", 20)).toEqual({ kind: "pending", keys: "d" });
-    expect(reader.read("j", 30)).toEqual({ kind: "command", command: "down", keys: "j" });
-    expect(reader.read("d", 40)).toEqual({ kind: "pending", keys: "d" });
-    expect(reader.read("d", 2000)).toEqual({ kind: "pending", keys: "d" });
   });
 });

@@ -11,12 +11,12 @@ import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { WorktreeRow } from "../rpc-contract.js";
 import { canCleanUp } from "../worktree.js";
-import { cursorRow, focusRow, moveAcross, moveCursor, moveToMatch, NAV_COLUMN, navRows } from "./cursor.js";
+import { cursorRow, moveAcross, moveToMatch, pageColumn } from "./cursor.js";
 import { useNow, useProjectNames, useTurnStarts, useWorktrees } from "./data.js";
 import { formatAgo, formatSpan, plural, shortBranch } from "./format.js";
 import { type LimitStatus, SAMPLED_THREADS, useLimitWindows } from "./limits.js";
 import { ATTENTION_LABEL, type Attention, groupThreads } from "./threads.js";
-import { type KeyHelpSection, KeyHelp, type Keymap, Kbd, useKeyScope } from "./vim-keys.js";
+import { focusRow, Kbd, KeyHelp, type KeyHelpSection, type Keymap, readRows, runListMotion, useKeyScope } from "bb-vim-keys/react";
 
 type Command =
   | "down"
@@ -71,7 +71,7 @@ export const HELP: readonly KeyHelpSection[] = [
       { keys: ["j", "k"], action: "Next and previous row" },
       { keys: ["h", "l"], action: "Across columns" },
       { keys: ["gg", "G"], action: "First and last row" },
-      { keys: ["Ctrl-d", "Ctrl-u"], action: "Five rows down and up" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down and up" },
     ],
   },
   {
@@ -202,17 +202,17 @@ export function Dashboard({ projectId }: PluginHomepageSectionProps) {
       case "up":
       case "top":
       case "bottom":
+        return runListMotion(root, command);
       case "pageDown":
+        return pageColumn(root, 1);
       case "pageUp":
-        return moveCursor(root, command);
+        return pageColumn(root, -1);
       case "left":
         return moveAcross(root, -1);
       case "right":
         return moveAcross(root, 1);
       case "open":
-        if (action === undefined) return false;
-        action.open();
-        return true;
+        return runListMotion(root, "open");
       case "cleanUp":
         if (action?.cleanUp === undefined) return false;
         action.cleanUp();
@@ -259,7 +259,7 @@ export function Dashboard({ projectId }: PluginHomepageSectionProps) {
     setSearching(false);
     requestAnimationFrame(() => {
       if (root === null) return;
-      const first = navRows(root).find((row) => row.dataset.match === "true");
+      const first = readRows(root).elements.find((row) => row.dataset.match === "true");
       if (first !== undefined) focusRow(first);
       else root.focus({ preventScroll: true });
     });

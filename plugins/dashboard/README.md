@@ -16,7 +16,7 @@ Press Escape to leave the composer (twice with vim-mode on), then:
 | `j` `k` | Next and previous row |
 | `h` `l` | Across columns |
 | `gg` `G` | First and last row |
-| `Ctrl-d` `Ctrl-u` | Five rows down and up |
+| `Ctrl-d` `Ctrl-u` | Half a page down and up |
 | `Enter` `o` | Open the thread |
 | `dd`, then `y` | Clean up an unused worktree (`n` or Esc cancels) |
 | `r` | Recheck worktrees |
@@ -29,11 +29,11 @@ Every key has a mouse equivalent: click a row to open it, hover an unused worktr
 
 ## Cleanup
 
-Clean up removes the worktree through bb (`bb environment cleanup`). The server rechecks before it does: the worktree must be bb-managed, clean, and used by no live thread, hidden ones included. Its archived threads stay in the archive.
+Clean up removes the worktree through bb (`bb environment cleanup`). The server rechecks before it does: the worktree must be bb-managed, clean, and used by no live thread, hidden ones included.
 
 ## Development
 
-`ui/vim-keys.tsx` copies the part of `bb-vim-keys/react` (in `plugins/vim-mode/lib`) this plugin uses, with the same names and signatures. Once that library is on main, add `"bb-vim-keys": "file:../vim-mode/lib"` with a matching `link:` override, import from `bb-vim-keys/react`, and delete the copy. Rows already carry `data-nav-row`, so `ui/cursor.ts` can move to the library's `runListMotion` as well.
+The keys come from `bb-vim-keys` (`plugins/vim-mode/lib`), like the other plugins' lists: one keymap in vim notation, rows tagged `data-nav-row`, and the library's list motions. `ui/cursor.ts` adds the two motions this layout needs on top: `h`/`l` across columns and `n`/`N` across search matches.
 
 ```sh
 pnpm install --frozen-lockfile

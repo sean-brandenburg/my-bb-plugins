@@ -22,6 +22,7 @@
   "dependencies": {
     "bb-motion": "file:../motion/lib",
     "bb-nerd-font": "file:../nerd-font/lib",
+    "bb-vim-keys": "file:../vim-mode/lib",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -40,7 +41,8 @@
   "pnpm": {
     "overrides": {
       "bb-motion": "link:../motion/lib",
-      "bb-nerd-font": "link:../nerd-font/lib"
+      "bb-nerd-font": "link:../nerd-font/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
     }
   },
   "scripts": {
