@@ -1,0 +1,51 @@
+{
+  "name": "bb-plugin-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.45",
+    "bbPluginSdk": ">=0.6.15"
+  },
+  "bb": {
+    "name": "Dashboard",
+    "description": "Puts a dashboard under the new-thread composer: threads waiting on you, threads running now, Claude's usage-limit windows, and worktrees with uncommitted changes or no live threads.",
+    "branding": {
+      "icon": "LayoutDashboard"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "dependencies": {
+    "bb-motion": "file:../motion/lib",
+    "bb-nerd-font": "file:../nerd-font/lib",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.15",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "bb-motion": "link:../motion/lib",
+      "bb-nerd-font": "link:../nerd-font/lib"
+    }
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
