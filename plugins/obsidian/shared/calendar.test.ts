@@ -78,6 +78,14 @@ describe("toMeeting", () => {
     assert.ok(meeting.notes?.startsWith("Agenda - one x"));
     assert.ok(meeting.notes!.length <= 501);
   });
+
+  it("drops Google's join block but still finds its call link", () => {
+    const rule = "-::~:~::~:~:~:~:~:~::~:~::-";
+    const meeting = toMeeting(event({ notes: `Agenda first\n\n${rule}\nJoin with Google Meet: https://meet.google.com/qrs-tuvw-xyz\nOr dial: (US) +1 555-010-0199\n${rule}` }));
+    assert.equal(meeting.notes, "Agenda first");
+    assert.equal(meeting.meetingUrl, "https://meet.google.com/qrs-tuvw-xyz");
+    assert.equal(toMeeting(event({ notes: `${rule}\nJoin: https://meet.google.com/x\n${rule}` })).notes, null);
+  });
 });
 
 describe("formatMeeting", () => {
