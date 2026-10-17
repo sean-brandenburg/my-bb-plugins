@@ -1,5 +1,5 @@
 import { type KeyToken, keyToken } from "./keys.ts";
-import { createKeyReader, type Keymap } from "./reader.ts";
+import { createKeyReader, type Keymap, SEQUENCE_TIMEOUT_MS } from "./reader.ts";
 import { inWidgetWithin, isShown, isTextEntry, OPEN_DIALOG, OWN_KEYS, overlayOver, PRESSABLE } from "./targets.ts";
 
 export interface KeyContext {
@@ -94,15 +94,33 @@ export function bindKeyScope<C>(root: HTMLElement, options: KeyScopeOptions<C>):
   const group = groupOf(name);
   const member: Member = { root, primary: options.primary === true, alsoWithin: options.alsoWithin };
   group.members.push(member);
-  const reader = createKeyReader(options.keymap, { timeoutMs: options.timeoutMs, counts: options.counts });
+  const timeout = options.timeoutMs ?? SEQUENCE_TIMEOUT_MS;
+  const reader = createKeyReader(options.keymap, { timeoutMs: timeout, counts: options.counts });
   const blockedBy = options.blockedBy ?? OPEN_DIALOG;
+  const view = root.ownerDocument.defaultView ?? window;
   let shownPending = "";
+  let expiry = 0;
 
   const publish = () => {
+    view.clearTimeout(expiry);
+    // The reader drops a stale sequence only on the next key; a mode label shouldn't wait for one.
+    if (reader.pending !== "" && Number.isFinite(timeout)) {
+      expiry = view.setTimeout(() => {
+        reader.reset();
+        publish();
+      }, timeout);
+    }
     if (reader.pending === shownPending) return;
     shownPending = reader.pending;
     options.onPending?.(shownPending);
   };
+
+  const claim = () => {
+    group.last = root;
+  };
+  // Before takeFocus, so the focus it moves claims the group's body keys as a click would.
+  root.addEventListener("focusin", claim);
+  root.addEventListener("pointerdown", claim);
 
   if (options.takeFocus === true) {
     const active = root.ownerDocument.activeElement;
@@ -112,10 +130,6 @@ export function bindKeyScope<C>(root: HTMLElement, options: KeyScopeOptions<C>):
       (!group.members.some((other) => withinMember(other, active)) && !isTextEntry(active) && active.closest(OWN_KEYS) === null);
     if (unrelated) root.focus({ preventScroll: true });
   }
-
-  const claim = () => {
-    group.last = root;
-  };
 
   const take = (event: KeyboardEvent) => {
     event.preventDefault();
@@ -154,13 +168,11 @@ export function bindKeyScope<C>(root: HTMLElement, options: KeyScopeOptions<C>):
     if (options.onCommand(read.command, { event, target, keys: read.keys, count: read.count }) !== false) take(event);
   };
 
-  const view = root.ownerDocument.defaultView ?? window;
   const capture = options.capture === true;
-  root.addEventListener("focusin", claim);
-  root.addEventListener("pointerdown", claim);
   view.addEventListener("keydown", onKeyDown, capture);
   return () => {
     view.removeEventListener("keydown", onKeyDown, capture);
+    view.clearTimeout(expiry);
     root.removeEventListener("focusin", claim);
     root.removeEventListener("pointerdown", claim);
     group.members.splice(group.members.indexOf(member), 1);

@@ -28,7 +28,8 @@ describe("keyToken", () => {
     expect(keyToken(key("D", { ctrlKey: true, shiftKey: true }))).toBe("<C-S-d>");
     expect(keyToken(key("Escape"))).toBe("<Esc>");
     expect(keyToken(key("Enter"))).toBe("<CR>");
-    expect(keyToken(key("Enter", { shiftKey: true }))).toBe("<S-CR>");
+    expect(keyToken(key("Enter", { shiftKey: true }))).toBe("<CR>");
+    expect(keyToken(key("ArrowDown", { shiftKey: true }))).toBe("<Down>");
     expect(keyToken(key(" "))).toBe("<Space>");
     expect(keyToken(key("Tab", { shiftKey: true }))).toBe("<S-Tab>");
     expect(keyToken(key("ArrowDown"))).toBe("<Down>");
@@ -371,13 +372,18 @@ describe("bindKeyScope", () => {
     expect(seen).toEqual([]);
   });
 
-  it("reports the waiting keys", () => {
+  it("reports the waiting keys, and their timing out, every time", () => {
+    vi.useFakeTimers();
     const root = mount(`<div tabindex="-1"></div>`).firstElementChild as HTMLElement;
     const pending: string[] = [];
     scope(root, { onPending: (keys) => void pending.push(keys) });
     press(root, "g");
     press(root, "g");
-    expect(pending).toEqual(["g", ""]);
+    press(root, "g");
+    vi.advanceTimersByTime(1001);
+    press(root, "g");
+    expect(pending).toEqual(["g", "", "g", "", "g"]);
+    vi.useRealTimers();
   });
 
   it("listening in capture, keeps a key it takes from later listeners", () => {
@@ -389,6 +395,17 @@ describe("bindKeyScope", () => {
     press(root, "x");
     window.removeEventListener("keydown", later, true);
     expect(later).toHaveBeenCalledTimes(1);
+  });
+
+  it("claims the group's body keys when it takes focus", () => {
+    const host = mount(`<div id="a" tabindex="-1"></div><div id="b" tabindex="-1"></div>`);
+    const a = scope(host.querySelector("#a")!, { group: "grpc" });
+    host.querySelector<HTMLElement>("#a")!.focus();
+    host.querySelector<HTMLElement>("#a")!.blur();
+    const b = scope(host.querySelector("#b")!, { group: "grpc", takeFocus: true });
+    host.querySelector<HTMLElement>("#b")!.blur();
+    press(document.body, "j");
+    expect([a, b]).toEqual([[], ["down"]]);
   });
 
   it("moves focus onto its root from the page body or an unrelated element, not from a text box", () => {

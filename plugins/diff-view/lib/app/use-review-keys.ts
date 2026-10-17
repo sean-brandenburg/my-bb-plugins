@@ -1,8 +1,7 @@
-import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { REVIEW_KEYMAP, type ReviewCommand } from "./keys/keymap";
 import type { ReviewKeys } from "./keys/review-keys-context";
-import { SEQUENCE_TIMEOUT_MS, useKeyScope } from "./ui/vim-keys";
+import { useKeyScope } from "./ui/vim-keys";
 
 /** The file list moves with its own keys; of the diff's, only these reach past it. */
 const FROM_FILE_TREE: ReadonlySet<ReviewCommand["kind"]> = new Set(["help", "findFile"]);
@@ -14,8 +13,6 @@ const MAX_COUNT = 9999;
  * panels keep theirs.
  */
 export function useReviewKeys(rootRef: RefObject<HTMLElement | null>, keys: ReviewKeys, enabled: boolean, onCommand: (command: ReviewCommand, count: number) => void): void {
-  const clearPending = useRef(0);
-  useEffect(() => () => window.clearTimeout(clearPending.current), []);
   useKeyScope(rootRef, enabled, {
     keymap: REVIEW_KEYMAP,
     group: "diff-view",
@@ -26,9 +23,7 @@ export function useReviewKeys(rootRef: RefObject<HTMLElement | null>, keys: Revi
     },
     // The mode label shows a half-typed command until it completes or times out.
     onPending: (pending) => {
-      window.clearTimeout(clearPending.current);
       if (keys.get().pending !== pending) keys.set({ pending });
-      if (pending !== "") clearPending.current = window.setTimeout(() => keys.set({ pending: "" }), SEQUENCE_TIMEOUT_MS);
     },
   });
 }

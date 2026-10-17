@@ -37,8 +37,8 @@ export function keyToken(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKe
   if (event.isComposing || event.metaKey || event.altKey || MODIFIER_KEYS.has(key) || key === "Dead" || key === "Unidentified" || key === "Process") return null;
   const named = NAMED[key] ?? (FUNCTION_KEY.test(key) ? key : undefined);
   if (named !== undefined) {
-    // Space types the same character with or without Shift, so only Ctrl changes it.
-    const shift = event.shiftKey && key !== " " ? "S-" : "";
+    // Of the named keys only Tab means something else with Shift; an arrow or Enter still counts with Shift held.
+    const shift = event.shiftKey && key === "Tab" ? "S-" : "";
     return `<${event.ctrlKey ? "C-" : ""}${shift}${named}>`;
   }
   if ([...key].length !== 1) return null;
