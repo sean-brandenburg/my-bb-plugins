@@ -22,6 +22,7 @@ export interface Meeting {
 const MEETING_URL = /https:\/\/(?:[\w-]+\.)*(?:meet\.google\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com|webex\.com|chime\.aws|around\.co|whereby\.com)\/[^\s<>"')\]]*/i;
 /** The join/dial-in block Google Calendar wraps in "-::~:~::~…::-" rules. */
 const CONFERENCE_BLOCK = /-::~[:~]*::-[\s\S]*?-::~[:~]*::-/g;
+const HTML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", nbsp: " " };
 const NOTES_LIMIT = 500;
 
 /** The day after a YYYY-MM-DD date, using noon so DST changes can't skip or repeat a day. */
@@ -51,7 +52,14 @@ export function meetingUrl(event: Pick<CalendarEvent, "url" | "location" | "note
 
 function compactNotes(notes: string | undefined): string | null {
   if (notes === undefined) return null;
-  const text = notes.replace(CONFERENCE_BLOCK, " ").replace(/\s+/g, " ").trim();
+  // Google Calendar stores descriptions as HTML.
+  const text = notes
+    .replace(CONFERENCE_BLOCK, " ")
+    .replace(/<br\s*\/?>|<\/?(?:p|div|ul|ol|li)\b[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, name: string) => HTML_ENTITIES[name]!)
+    .replace(/\s+/g, " ")
+    .trim();
   if (text === "") return null;
   return text.length > NOTES_LIMIT ? `${text.slice(0, NOTES_LIMIT).trimEnd()}…` : text;
 }

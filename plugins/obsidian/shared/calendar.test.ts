@@ -79,6 +79,11 @@ describe("toMeeting", () => {
     assert.ok(meeting.notes!.length <= 501);
   });
 
+  it("turns HTML descriptions into plain text", () => {
+    const meeting = toMeeting(event({ notes: "Review the <b>design</b><br><br>Q&amp;A after.<ul><li>one</li><li>two</li></ul>" }));
+    assert.equal(meeting.notes, "Review the design Q&A after. one two");
+  });
+
   it("drops Google's join block but still finds its call link", () => {
     const rule = "-::~:~::~:~:~:~:~:~::~:~::-";
     const meeting = toMeeting(event({ notes: `Agenda first\n\n${rule}\nJoin with Google Meet: https://meet.google.com/qrs-tuvw-xyz\nOr dial: (US) +1 555-010-0199\n${rule}` }));
