@@ -1,17 +1,17 @@
 ---
 name: dashboard
-description: How the Dashboard plugin's section under the new-thread composer works: its Needs you, Running, Usage limits, and Worktrees groups, where each comes from, its keys, and its worktree cleanup. Use when the user asks about that dashboard, why a thread or worktree shows there, or what its keys do.
+description: How the Usage dashboard plugin's card under the new-thread composer works: the five-hour limit line, the current window's tokens by thread, the 14-day chart, where the numbers come from, and its keys. Use when the user asks about that card, its token numbers, or why a session shows up there.
 ---
 
-The plugin has no commands or settings. It adds one section, "Dashboard", below bb's new-thread composer. It follows the composer's project selection, or covers every project when none is selected.
+The plugin has no commands or settings. It adds one section, "Usage", below bb's new-thread composer.
 
-- **Needs you** lists threads by bb's own sidebar indicator: waiting for input (question, approval, plan), unread failure, failed queued message, unread finished turn. Most urgent first, then newest. Opening the thread clears it, as in the sidebar. Hidden helper threads are left out.
-- **Running** lists threads that are starting, active, stopping, or provisioning, with the time since their latest `turn/started` event and their background agents, commands, workflows, and queued message.
-- **Usage limits** reads the latest `provider/rateLimits/updated` event of the 8 most recently updated threads and keeps each window's newest report, dropping windows whose reset has passed. Statuses are OK, Nearly used, Reached. Providers report no percentage.
-- **Worktrees** comes from the plugin's `worktrees` RPC, which runs `environments.status` on every active bb-managed worktree (cached for a minute, rechecked when threads start or are archived, and on `r`). It lists worktrees with uncommitted or untracked changes, and worktrees with no live thread. A worktree whose only live threads are hidden plugin threads (kanban's review threads) is counted in a "kept by hidden kanban threads" line instead.
+- The limit line comes from the newest `provider/rateLimits/updated` event among the 8 most recently updated threads: the window's label, status (OK, Nearly used, Reached), and time to reset. Claude reports no percentage. The weekly window appears only once Claude reports it.
+- "This window" covers the five-hour window: from the reported reset minus five hours, or, when no reset has been reported, estimated from activity (a window opens at the hour of the first response after the last one closed). It lists the 6 biggest users, each a bb thread, or a Claude Code session outside bb under Claude Code's own title. A thread's sessions are added together.
+- "Last 14 days" is tokens per local day.
+- Tokens are summed from every assistant response in `~/.claude/projects/**/*.jsonl` (subagents included), counted once per message id: input + output + cache write + cache read. Cache reads usually dominate the total. The readout line under the card splits it.
+- Sessions are matched to bb threads through the `providerThreadId` on each thread's `thread/tokenUsage/updated` events, else the `thr_…` id in a worktree path.
+- The server rereads transcripts incrementally, at most every 20 seconds, when the card asks: on load, every minute, a few seconds after any thread changes, and on `r`.
 
-Keys work once focus leaves the composer (Escape, twice with vim-mode): `j`/`k`, `h`/`l` across columns, `gg`/`G`, Ctrl-d/Ctrl-u, Enter or `o` to open, `dd` then `y` to clean up an unused worktree, `r` to recheck worktrees, `/` with `n`/`N` to search, `i` back to the composer, `?` for the list, Esc to close or clear.
+Keys work once focus leaves the composer (Escape, twice with vim-mode): `j`/`k` move through bb's project/permission bar, the thread rows, and the chart; `h`/`l` step along the bar and the days; `gg`/`G`; Enter or `o` opens a thread or the picker under the cursor; `r` rereads; `i` returns to the composer; `?` lists the keys.
 
-Cleanup calls `environments.experimental_cleanup` after the server rechecks that the worktree is bb-managed, clean, and has no live thread, hidden ones included. It refuses otherwise. A worktree with uncommitted changes is never offered for cleanup.
-
-To remove the section, disable the plugin: `bb plugin disable dashboard`.
+To remove the card, disable the plugin: `bb plugin disable dashboard`.

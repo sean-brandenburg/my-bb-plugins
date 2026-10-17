@@ -8,10 +8,10 @@
     "bbPluginSdk": ">=0.6.15"
   },
   "bb": {
-    "name": "Dashboard",
-    "description": "Puts a dashboard under the new-thread composer: threads waiting on you, threads running now, Claude's usage-limit windows, and worktrees with uncommitted changes or no live threads.",
+    "name": "Usage dashboard",
+    "description": "Shows Claude usage under the new-thread composer: the five-hour limit's status and reset, which threads used the current window's tokens, and tokens per day for two weeks, read from Claude Code's transcripts.",
     "branding": {
-      "icon": "LayoutDashboard"
+      "icon": "ChartColumn"
     },
     "server": "./server.ts",
     "app": "./app.tsx",
@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "bb-motion": "file:../motion/lib",
-    "bb-nerd-font": "file:../nerd-font/lib",
     "bb-vim-keys": "file:../vim-mode/lib",
     "zod": "^4.6.5"
   },
@@ -41,7 +40,6 @@
   "pnpm": {
     "overrides": {
       "bb-motion": "link:../motion/lib",
-      "bb-nerd-font": "link:../nerd-font/lib",
       "bb-vim-keys": "link:../vim-mode/lib"
     }
   },
