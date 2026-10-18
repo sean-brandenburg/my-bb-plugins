@@ -16,7 +16,7 @@ function storage(): Storage | null {
 let recent: RecentThreads = loadRecentThreads(storage(), STORAGE_KEY);
 let openThread: ((threadId: string) => void) | null = null;
 
-/** Records each thread the route shows; mounted with the sidebar navigation on every viewport. */
+/** Records each thread the route shows; mounted as an app overlay, so it runs on every page and viewport. */
 export function ThreadTrail() {
   const { threadId } = useBbContext();
   const navigate = useBbNavigate();

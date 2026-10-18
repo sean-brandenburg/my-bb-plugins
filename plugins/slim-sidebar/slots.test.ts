@@ -1,34 +1,57 @@
-import { describe, expect, it, vi } from "vitest";
-import { activateRailSlot, publishRail, railSlotAvailable, railSlotLabel } from "./slots.js";
+// @vitest-environment jsdom
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { activateRailSlot, railItems, railSlotAvailable, railSlotLabel } from "./slots.js";
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+function renderRail() {
+  document.body.innerHTML = `
+    <div data-testid="app-nav-rail">
+      <nav>
+        <button id="home" aria-label="Home"></button>
+        <span data-nav-rail-item="kanban/board"><button id="kanban"></button></span>
+        <span data-nav-rail-item="__bb__/automations"><button id="automations" disabled></button></span>
+        <span data-nav-rail-item="__bb__/extensions"><button id="plugins"></button></span>
+        <button id="more"><svg data-icon="MoreHorizontal"></svg></button>
+      </nav>
+    </div>
+    <div data-sidebar="footer"><button id="settings"></button></div>`;
+}
 
 describe("rail slots", () => {
-  it("activates the visible item at the pressed digit and skips disabled ones without renumbering", () => {
-    const activate = vi.fn();
-    const unpublish = publishRail(
-      [
-        { id: "kanban/board", enabled: true },
-        { id: "__bb__/automations", enabled: false },
-        { id: "__bb__/extensions", enabled: true },
-      ],
-      activate,
-    );
-    expect([1, 2, 3, 4].map(railSlotAvailable)).toEqual([true, false, true, false]);
-    activateRailSlot(3);
-    activateRailSlot(2);
-    activateRailSlot(4);
-    expect(activate.mock.calls).toEqual([["__bb__/extensions"]]);
-    unpublish();
-    expect(railSlotAvailable(1)).toBe(false);
+  it("numbers Home and the visible items, leaving out More and the footer", () => {
+    renderRail();
+    expect(railItems(document).map((button) => button.id)).toEqual([
+      "home",
+      "kanban",
+      "automations",
+      "plugins",
+    ]);
   });
 
-  it("keeps the newest rail when an older one unmounts after it", () => {
-    const older = publishRail([{ id: "a", enabled: true }], vi.fn());
-    const activate = vi.fn();
-    const newer = publishRail([{ id: "b", enabled: true }], activate);
-    older();
-    activateRailSlot(1);
-    expect(activate).toHaveBeenCalledWith("b");
-    newer();
+  it("presses the item at the digit and skips disabled ones without renumbering", () => {
+    renderRail();
+    const pressed = vi.fn();
+    document.body.addEventListener("click", (event) => pressed((event.target as Element).id));
+    expect([1, 2, 3, 4, 5].map((slot) => railSlotAvailable(document, slot))).toEqual([
+      true,
+      true,
+      false,
+      true,
+      false,
+    ]);
+    activateRailSlot(document, 4);
+    activateRailSlot(document, 3);
+    activateRailSlot(document, 5);
+    expect(pressed.mock.calls).toEqual([["plugins"]]);
+  });
+
+  it("has nothing to press before the rail renders", () => {
+    expect(railSlotAvailable(document, 1)).toBe(false);
+    expect(() => activateRailSlot(document, 1)).not.toThrow();
   });
 
   it("labels the first nine items for the platform", () => {

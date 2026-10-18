@@ -4,26 +4,13 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  bb-motion: link:../motion/lib
-
 importers:
 
   .:
-    dependencies:
-      bb-motion:
-        specifier: link:../motion/lib
-        version: link:../motion/lib
     devDependencies:
       '@get-bb/plugin-sdk':
-        specifier: 0.6.15
-        version: 0.6.15(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/dom':
-        specifier: 10.4.2
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 16.3.3
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: 0.6.49
+        version: 0.6.49(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
@@ -127,8 +114,8 @@ packages:
       '@noble/hashes':
         optional: true
 
-  '@get-bb/plugin-sdk@0.6.15':
-    resolution: {integrity: sha512-S7UUC+mfY1V9wTU1NiWw+VyP1STcWm4+Cgoi/rzHhj1kfCuxnVdTozJ7XedKMeDM9vVGYU4y3+r/CpEWIdsiRg==}
+  '@get-bb/plugin-sdk@0.6.49':
+    resolution: {integrity: sha512-0YCOJm+iKWbmEaUF7JsrxRSWFz5OdOwVxM1KPuek8r55dYCPSgyA9NEdyq8OVlbhXSstF2wGlHXZ2Q9wwdMJzQ==}
     peerDependencies:
       '@testing-library/react': ^16.3.2
       '@types/better-sqlite3': ^7.6.12
@@ -806,10 +793,13 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
       js-tokens: 4.0.0
       picocolors: 1.1.1
+    optional: true
 
-  '@babel/helper-validator-identifier@7.29.7': {}
+  '@babel/helper-validator-identifier@7.29.7':
+    optional: true
 
-  '@babel/runtime@7.29.10': {}
+  '@babel/runtime@7.29.10':
+    optional: true
 
   '@bramus/specificity@2.4.3':
     dependencies:
@@ -841,7 +831,7 @@ snapshots:
 
   '@exodus/bytes@1.16.0': {}
 
-  '@get-bb/plugin-sdk@0.6.15(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@get-bb/plugin-sdk@0.6.49(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       cross-spawn: 7.0.6
       zod: 4.6.5
@@ -914,6 +904,7 @@ snapshots:
       lz-string: 1.5.0
       picocolors: 1.1.1
       pretty-format: 27.5.1
+    optional: true
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
@@ -924,8 +915,10 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
+    optional: true
 
-  '@types/aria-query@5.0.4': {}
+  '@types/aria-query@5.0.4':
+    optional: true
 
   '@types/chai@5.2.3':
     dependencies:
@@ -989,13 +982,16 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  ansi-regex@5.0.1: {}
+  ansi-regex@5.0.1:
+    optional: true
 
-  ansi-styles@5.2.0: {}
+  ansi-styles@5.2.0:
+    optional: true
 
   aria-query@5.3.0:
     dependencies:
       dequal: 2.0.3
+    optional: true
 
   assertion-error@2.0.1: {}
 
@@ -1029,11 +1025,13 @@ snapshots:
 
   decimal.js@10.6.0: {}
 
-  dequal@2.0.3: {}
+  dequal@2.0.3:
+    optional: true
 
   detect-libc@2.1.2: {}
 
-  dom-accessibility-api@0.5.16: {}
+  dom-accessibility-api@0.5.16:
+    optional: true
 
   entities@8.1.0: {}
 
@@ -1062,7 +1060,8 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  js-tokens@4.0.0: {}
+  js-tokens@4.0.0:
+    optional: true
 
   jsdom@29.1.1:
     dependencies:
@@ -1141,7 +1140,8 @@ snapshots:
 
   lru-cache@11.5.3: {}
 
-  lz-string@1.5.0: {}
+  lz-string@1.5.0:
+    optional: true
 
   magic-string@0.30.21:
     dependencies:
@@ -1176,6 +1176,7 @@ snapshots:
       ansi-regex: 5.0.1
       ansi-styles: 5.2.0
       react-is: 17.0.2
+    optional: true
 
   punycode@2.3.1: {}
 
@@ -1184,7 +1185,8 @@ snapshots:
       react: 19.3.0
       scheduler: 0.28.0
 
-  react-is@17.0.2: {}
+  react-is@17.0.2:
+    optional: true
 
   react@19.3.0: {}
 

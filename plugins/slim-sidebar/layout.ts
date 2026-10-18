@@ -1,132 +1,92 @@
-const RAIL_WIDTH_PX = 52;
-const TOP_BAR_HEIGHT_PX = 50;
-const CUSTOMIZE_WIDTH_PX = 280;
-const FOOTER_INSET_PX = 10;
+import { isMac, RAIL, railItems, railSlotLabel } from "./slots.js";
+
+/** Wide enough that bb never folds a footer icon into its More menu. */
 const FOOTER_MEASURE_WIDTH_PX = 400;
 const FOOTER_ICON_PX = 32;
-const FOOTER_GLYPH_PX = 16;
-const HEADER_GAP_PX = 20;
-// Phone-width windows keep bb's stock chrome.
+// Phone-width windows keep bb's stock drawer.
 const WIDE_VIEWPORT = "(min-width: 768px)";
 const STYLE_ATTRIBUTE = "data-slim-sidebar";
-const CLEAR_ATTRIBUTE = "data-slim-sidebar-clear";
-const CLEAR_PROPERTY = "--slim-sidebar-clear";
-const FRAME_ATTRIBUTE = "data-slim-sidebar-frame";
-const ZOOM_PROPERTY = "--slim-sidebar-zoom";
-const TOP_BAR_PROPERTY = "--slim-sidebar-top-bar";
-// bb's zoom commands step in 10% increments.
-const ZOOM_STEPS_PER_UNIT = 10;
-// The rail and top bar stay the same size at any zoom so they keep lining up
-// with the macOS window buttons, which the page zoom never scales.
-const ZOOM = `var(${ZOOM_PROPERTY}, 1)`;
-const UNZOOM = `zoom: calc(1 / ${ZOOM});`;
-const unzoomed = (px: number) => `calc(${px}px / ${ZOOM})`;
-// bb's page header paints bg-surface-scrim over the page's bg-background.
-const HEADER_SURFACE =
-  "linear-gradient(var(--surface-scrim), var(--surface-scrim)), var(--background)";
+export const SLOT_ATTRIBUTE = "data-slim-sidebar-slot";
+export const HELD_ATTRIBUTE = "data-slim-sidebar-held";
 
-// bb's sidebar and header markup has no plugin contract, so these selectors
-// and the stylesheet below follow the shipped DOM; a bb update that renames
-// them just leaves the normal sidebar.
-const ANY_SIDEBAR = '[data-side="left"][data-variant="sidebar"]';
-// Settings, Plugins, and Skills swap their own navigation into the same
-// sidebar element; only the main one carries the app resize handle.
-export const SIDEBAR = `${ANY_SIDEBAR}:has([data-testid="app-sidebar-resize-handle"])`;
-const SIDEBAR_TRIGGER = '[data-testid="app-desktop-sidebar-trigger"]';
-const SIDEBAR_TRIGGER_OVERLAY = '[data-testid="app-sidebar-trigger-overlay"]';
-const FALLBACK_SIDEBAR_TRIGGER = '[data-sidebar="trigger"]';
-const HEADER_ROW = '[data-testid="app-page-header-content-row"]';
+// bb's sidebar markup has no plugin contract, so these selectors and the
+// stylesheet below follow the shipped DOM; a bb update that renames them just
+// leaves bb's normal sidebar.
+const SIDEBAR = '[data-side="left"][data-variant="sidebar"]';
+// Settings, Plugins, and Skills swap their own list in beside the rail, and
+// keep it.
+const OWN_LIST = ["settings", "plugins", "skills"]
+  .map((page) => `[data-testid="${page}-sidebar-body"]`)
+  .join(", ");
+export const SLIM = `${SIDEBAR}:has(${RAIL}):not(:has(${OWN_LIST}))`;
+const FOOTER_ROW = '[data-testid="sidebar-footer-row"]';
+const FOOTER_BODY = `${FOOTER_ROW} > [data-sidebar="collapsible-body"]`;
+const RAIL_COLUMN = "(var(--bb-sidebar-control-size) + 2 * var(--bb-sidebar-rail-padding))";
 
 export const SLIM_SIDEBAR_CSS = `
 @media ${WIDE_VIEWPORT} {
-  ${SIDEBAR} > [data-sidebar="gap"],
-  ${SIDEBAR} > [data-sidebar="panel"] {
-    --sidebar-width: ${unzoomed(RAIL_WIDTH_PX)} !important;
+  ${SLIM}[data-state="expanded"] > :is([data-sidebar="gap"], [data-sidebar="panel"]) {
+    --sidebar-width: var(--sidebar-rail-width) !important;
   }
-  /* The panel itself stays at page zoom: it is sized to the window's height,
-     which zoom would inflate. */
-  ${SIDEBAR} > [data-sidebar="panel"] > *,
-  ${SIDEBAR_TRIGGER_OVERLAY},
-  ${SIDEBAR_TRIGGER} {
-    ${UNZOOM}
-    --bb-app-chrome-row-height: ${TOP_BAR_HEIGHT_PX}px !important;
-  }
-  ${SIDEBAR} [data-testid="app-sidebar-resize-handle"] {
-    display: none !important;
-  }
-  /* Back/forward don't fit the rail's top row. The buttons stay mounted
-     because History keys' Ctrl+O / Ctrl+I click them. */
-  [data-testid="app-sidebar-top-reserve-row"] > div {
-    display: none !important;
-  }
-  /* No sidebar toggle (Cmd+\ still works). Hidden rather than removed so its
-     box still marks where macOS's window buttons end. */
-  ${SIDEBAR_TRIGGER_OVERLAY},
-  ${SIDEBAR_TRIGGER} {
+  ${SLIM} [data-testid="nav-rail-sidebar-body"] {
     visibility: hidden !important;
-    pointer-events: none !important;
   }
-  /* One seamless frame: the rail wears the page header's surface (its scrim
-     over the page background), bb's darker sidebar fills inside it go
-     transparent, and the lines between rail, top bar, and page go away. */
-  ${SIDEBAR} > [data-sidebar="panel"] {
-    background: ${HEADER_SURFACE};
-    border-right-color: transparent !important;
+  /* Cmd+\\ hides the rail too, the way bb hides a sidebar that has no rail. */
+  ${SLIM}[data-state="collapsed"] > [data-sidebar="gap"] {
+    width: 0 !important;
   }
-  ${SIDEBAR} .bg-sidebar {
+  ${SLIM}[data-state="collapsed"] > [data-sidebar="panel"] {
+    left: calc(var(--sidebar-rail-width) * -1) !important;
+    visibility: hidden !important;
+    transition: left 200ms linear, width 200ms linear, visibility 0s linear 200ms !important;
+  }
+  /* The footer's own icons sit beside Settings, in the part of the footer
+     the rail hides, so they stack above it instead. */
+  ${SLIM} ${FOOTER_ROW} {
+    flex-direction: column-reverse;
+  }
+  ${SLIM} ${FOOTER_BODY} > div {
+    width: auto !important;
+  }
+  /* Inside the macOS window frame that part is the bottom of the thread
+     list's card; the rail itself has no fill there. */
+  ${SLIM} ${FOOTER_BODY} {
+    border-color: transparent !important;
+    border-radius: 0 !important;
     background-color: transparent !important;
   }
-  ${SIDEBAR} [data-overflow-fade-tone="sidebar"] {
-    display: none;
-  }
-  /* Top-row headers drop their see-through scrim for the same solid surface
-     as the rail. */
-  [${FRAME_ATTRIBUTE}] {
-    border-bottom-color: transparent !important;
-    background: ${HEADER_SURFACE} !important;
-  }
-  /* The new-thread page has no page header, only a see-through drag strip
-     over its backdrop, so the strip stands in as the top bar. */
-  [data-testid="root-compose-main-window-drag-strip"] {
-    background: ${HEADER_SURFACE};
-  }
-  /* bb's own editor renders inline in the navigation area, so give it the
-     normal width while it is open. */
-  ${SIDEBAR}:has([data-testid="sidebar-navigation-customize-inline"]) > [data-sidebar="gap"],
-  ${SIDEBAR}:has([data-testid="sidebar-navigation-customize-inline"]) > [data-sidebar="panel"] {
-    --sidebar-width: ${unzoomed(CUSTOMIZE_WIDTH_PX)} !important;
+  /* Outside the frame the rail has a darker fill of its own. */
+  [data-testid="app-layout-root"]:not([data-framed]) > ${SLIM} ${FOOTER_BODY} {
+    background-color: var(--surface-recessed) !important;
   }
   /* bb shows as many footer icons as fit across the footer's width and folds
      the rest into a More menu. A wide, click-through list keeps them all
-     visible while they stack vertically. */
-  ${SIDEBAR} [data-sidebar="footer"] {
+     visible while they stack. */
+  ${SLIM} ${FOOTER_BODY} [data-sidebar="footer"] {
     align-items: flex-start;
-    padding-left: ${FOOTER_INSET_PX}px;
-    padding-right: 0;
+    padding: 8px 0 0 calc(${RAIL_COLUMN} / 2 - ${FOOTER_ICON_PX / 2}px);
   }
-  ${SIDEBAR} [data-sidebar="footer"] ul[data-sidebar="menu"] {
+  ${SLIM} ${FOOTER_BODY} ul[data-sidebar="menu"] {
     flex-direction: column !important;
     align-items: flex-start !important;
     width: ${FOOTER_MEASURE_WIDTH_PX}px !important;
     max-width: none !important;
     pointer-events: none;
   }
-  ${SIDEBAR} [data-sidebar="footer"] li[data-sidebar="menu-item"] {
+  ${SLIM} ${FOOTER_BODY} li[data-sidebar="menu-item"] {
     flex: none;
-    pointer-events: none;
+    min-width: 0;
   }
-  /* Settings and Mobile render as links rather than buttons. */
-  ${SIDEBAR} [data-sidebar="footer"] :is(a, button) {
+  ${SLIM} ${FOOTER_BODY} :is(a, button) {
     pointer-events: auto;
   }
-  /* The update badges are labelled pills sized for the full sidebar. In the
-     rail they stack as icon-only circles in the footer's icon column, and the
-     tooltip still names the update. */
-  ${SIDEBAR} [data-sidebar="footer"] :has(> [data-testid^="sidebar-updates-badge"]) {
+  /* The update badges are labelled pills sized for the full sidebar; in the
+     rail they shrink to icon circles, and the tooltip still names the update. */
+  ${SLIM} ${FOOTER_BODY} :has(> [data-testid^="sidebar-updates-badge"]) {
     flex-direction: column;
     max-width: none;
   }
-  ${SIDEBAR} [data-testid^="sidebar-updates-badge"] {
+  ${SLIM} [data-testid^="sidebar-updates-badge"] {
     width: ${FOOTER_ICON_PX}px;
     height: ${FOOTER_ICON_PX}px;
     justify-content: center;
@@ -134,191 +94,106 @@ export const SLIM_SIDEBAR_CSS = `
     padding: 0;
     font-size: 0;
   }
-  ${SIDEBAR} [data-testid^="sidebar-updates-badge"] > svg {
-    width: ${FOOTER_GLYPH_PX}px;
-    height: ${FOOTER_GLYPH_PX}px;
-  }
-  /* The provider badge shows which agents need updating, or its spinner while
-     one installs. */
-  ${SIDEBAR} [data-testid="sidebar-updates-badge-providers"] > svg:not(.animate-spin),
-  ${SIDEBAR} [data-testid="sidebar-updates-badge-providers"]:has(> svg.animate-spin) > span {
+  ${SLIM} [data-testid="sidebar-updates-badge-providers"] > svg:not(.animate-spin),
+  ${SLIM} [data-testid="sidebar-updates-badge-providers"]:has(> svg.animate-spin) > span {
     display: none;
   }
-  ${SIDEBAR} [data-testid="sidebar-updates-badge-providers"] > span {
+  ${SLIM} [data-testid="sidebar-updates-badge-providers"] > span {
     flex-wrap: wrap;
     justify-content: center;
   }
-  /* bb nudges desktop header content 2px below the row's center; without it
-     the title lines up with the macOS window buttons, which sit on the row's
-     center line. */
-  ${HEADER_ROW} {
-    --bb-macos-chrome-control-y: 0px !important;
-  }
-  /* One top-bar height for every page, thread or plugin, centered on the
-     macOS window buttons (about 25px down). The root value is a plain length,
-     set from script, because bb parses it as a number to place its find bar. */
-  :root {
-    --bb-app-chrome-row-height: var(${TOP_BAR_PROPERTY}, ${TOP_BAR_HEIGHT_PX}px) !important;
-  }
-  [${FRAME_ATTRIBUTE}] {
-    height: ${unzoomed(TOP_BAR_HEIGHT_PX)} !important;
-    transform: none !important;
-  }
-  [${FRAME_ATTRIBUTE}] ${HEADER_ROW} {
-    ${UNZOOM}
-    --bb-app-chrome-row-height: ${TOP_BAR_HEIGHT_PX}px !important;
-    height: ${TOP_BAR_HEIGHT_PX}px !important;
-    transform: none !important;
-  }
-  [${CLEAR_ATTRIBUTE}] {
-    padding-left: var(${CLEAR_PROPERTY}) !important;
-  }
+}
+${RAIL} [${SLOT_ATTRIBUTE}] {
+  position: relative;
+}
+/* After bb's shortcut pill on its thread rows, but opaque and smaller so it
+   reads over an icon. */
+${RAIL}[${HELD_ATTRIBUTE}] [${SLOT_ATTRIBUTE}]::after {
+  content: attr(${SLOT_ATTRIBUTE});
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--popover);
+  color: var(--muted-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: slim-sidebar-pill 120ms ease-out;
+}
+@keyframes slim-sidebar-pill {
+  from { opacity: 0; }
 }
 `;
 
-/**
- * bb's zoom factor, read from how much wider the window is than its CSS
- * viewport since bb only reports zoom when it changes. Browsers put their own
- * chrome in that difference, so only bb's desktop app is measured.
- */
-export function pageZoom(win: Window): number {
-  if (!("bbDesktop" in win) || win.innerWidth <= 0) return 1;
-  const steps = Math.round(
-    (win.outerWidth / win.innerWidth) * ZOOM_STEPS_PER_UNIT,
-  );
-  return steps > 0 ? steps / ZOOM_STEPS_PER_UNIT : 1;
-}
-
-function applyZoom(doc: Document, zoom: number) {
-  const root = doc.documentElement.style;
-  if (zoom === 1) {
-    root.removeProperty(ZOOM_PROPERTY);
-    root.removeProperty(TOP_BAR_PROPERTY);
-    return;
+/** Numbers the rail's items for their Mod+digit shortcut and shows the numbers while the modifier is held. */
+export function labelRail(doc: Document, platform: string, held: boolean): void {
+  const items = railItems(doc);
+  for (const stale of doc.querySelectorAll<HTMLElement>(`[${SLOT_ATTRIBUTE}]`)) {
+    if (!items.includes(stale as HTMLButtonElement)) stale.removeAttribute(SLOT_ATTRIBUTE);
   }
-  root.setProperty(ZOOM_PROPERTY, String(zoom));
-  root.setProperty(TOP_BAR_PROPERTY, `${TOP_BAR_HEIGHT_PX / zoom}px`);
-}
-
-/**
- * How far a page header row must indent so its content starts past the macOS
- * window buttons that sit over the top-left corner. Rows that start right of
- * the controls, or below the top row, need nothing. Positions are in page
- * pixels; the indent is in the row's own, which zoom keeps at screen size.
- */
-export function headerClearance(
-  header: { left: number; top: number },
-  headerPaddingLeft: number,
-  controlsRight: number,
-  topRowBottom: number,
-  zoom = 1,
-): number {
-  if (header.top >= topRowBottom) return 0;
-  const contentLeft = header.left + headerPaddingLeft;
-  return Math.max(
-    0,
-    Math.ceil((controlsRight - contentLeft) * zoom + HEADER_GAP_PX),
-  );
-}
-
-function clearRow(row: HTMLElement) {
-  row.removeAttribute(CLEAR_ATTRIBUTE);
-  row.style.removeProperty(CLEAR_PROPERTY);
-}
-
-function clearHeader(header: Element) {
-  header.removeAttribute(FRAME_ATTRIBUTE);
-}
-
-const headerOf = (row: HTMLElement) => row.parentElement ?? row;
-
-/**
- * Marks the page headers in the top row as part of the frame and indents
- * those that would start under the macOS window buttons.
- */
-export function arrangeHeaders(
-  doc: Document,
-  isWide: boolean,
-  zoom = 1,
-): void {
-  const sidebar = doc.querySelector(ANY_SIDEBAR);
-  const trigger =
-    doc.querySelector(`${SIDEBAR_TRIGGER} button`) ??
-    doc.querySelector(FALLBACK_SIDEBAR_TRIGGER);
-  const headerRows = [...doc.querySelectorAll<HTMLElement>(HEADER_ROW)];
-  for (const row of headerRows) {
-    clearRow(row);
-    clearHeader(headerOf(row));
-  }
-  const expanded = sidebar?.getAttribute("data-state") === "expanded";
-  if (!isWide || !expanded) {
-    return;
-  }
-  // The hidden toggle sits just past the window buttons, so its left edge is
-  // where header content may start. It is centered in the top row, so the row
-  // ends as far below it as it starts below the window's top.
-  const triggerRect = trigger?.getBoundingClientRect() ?? null;
-  const controlsRight = triggerRect?.left ?? 0;
-  const topRowBottom =
-    triggerRect && triggerRect.bottom > 0
-      ? triggerRect.bottom + triggerRect.top
-      : TOP_BAR_HEIGHT_PX / zoom;
-  for (const row of headerRows) {
-    const header = headerOf(row);
-    const headerRect = header.getBoundingClientRect();
-    if (headerRect.top >= topRowBottom) continue;
-    header.setAttribute(FRAME_ATTRIBUTE, "");
-    const padding =
-      Number.parseFloat(getComputedStyle(header).paddingLeft) || 0;
-    const clearance = headerClearance(
-      headerRect,
-      padding,
-      controlsRight,
-      topRowBottom,
-      zoom,
-    );
-    if (clearance > 0) {
-      row.setAttribute(CLEAR_ATTRIBUTE, "");
-      row.style.setProperty(CLEAR_PROPERTY, `${clearance}px`);
-    }
+  items.forEach((item, index) => {
+    const label = railSlotLabel(index, platform);
+    if (label === null) item.removeAttribute(SLOT_ATTRIBUTE);
+    else if (item.getAttribute(SLOT_ATTRIBUTE) !== label) item.setAttribute(SLOT_ATTRIBUTE, label);
+  });
+  const rail = doc.querySelector(RAIL);
+  if (rail !== null && rail.hasAttribute(HELD_ATTRIBUTE) !== held) {
+    rail.toggleAttribute(HELD_ATTRIBUTE, held);
   }
 }
 
-/** Installs the stylesheet and keeps the page headers arranged; returns cleanup. */
+/** Installs the stylesheet and keeps the rail numbered; returns cleanup. */
 export function mountSlimSidebar(doc: Document, win: Window): () => void {
   const style = doc.createElement("style");
   style.setAttribute(STYLE_ATTRIBUTE, "");
   style.textContent = SLIM_SIDEBAR_CSS;
   doc.head.append(style);
-  const wide = win.matchMedia(WIDE_VIEWPORT);
+  const platform = win.navigator.platform;
+  const mac = isMac(platform);
+  const modifier = mac ? "Meta" : "Control";
+  let held = false;
   let frame = 0;
   const schedule = () => {
     if (frame !== 0) return;
     frame = win.requestAnimationFrame(() => {
       frame = 0;
-      const zoom = pageZoom(win);
-      applyZoom(doc, zoom);
-      arrangeHeaders(doc, wide.matches, zoom);
+      labelRail(doc, platform, held);
     });
   };
+  const hold = (next: boolean) => {
+    if (held === next) return;
+    held = next;
+    schedule();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === modifier) hold(!event.altKey && !event.shiftKey);
+    else if (!(mac ? event.metaKey : event.ctrlKey)) hold(false);
+  };
+  const onKeyUp = (event: KeyboardEvent) => {
+    if (event.key === modifier) hold(false);
+  };
+  const release = () => hold(false);
   const observer = new MutationObserver(schedule);
-  observer.observe(doc.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["data-state", "class"],
-  });
-  win.addEventListener("resize", schedule);
-  wide.addEventListener("change", schedule);
+  observer.observe(doc.body, { childList: true, subtree: true });
+  win.addEventListener("keydown", onKeyDown, true);
+  win.addEventListener("keyup", onKeyUp, true);
+  win.addEventListener("blur", release);
   schedule();
   return () => {
     observer.disconnect();
-    win.removeEventListener("resize", schedule);
-    wide.removeEventListener("change", schedule);
+    win.removeEventListener("keydown", onKeyDown, true);
+    win.removeEventListener("keyup", onKeyUp, true);
+    win.removeEventListener("blur", release);
     if (frame !== 0) win.cancelAnimationFrame(frame);
     style.remove();
-    applyZoom(doc, 1);
-    doc.querySelectorAll<HTMLElement>(`[${CLEAR_ATTRIBUTE}]`).forEach(clearRow);
-    doc.querySelectorAll(`[${FRAME_ATTRIBUTE}]`).forEach(clearHeader);
+    doc.querySelectorAll(`[${SLOT_ATTRIBUTE}]`).forEach((item) => item.removeAttribute(SLOT_ATTRIBUTE));
+    doc.querySelectorAll(`[${HELD_ATTRIBUTE}]`).forEach((rail) => rail.removeAttribute(HELD_ATTRIBUTE));
   };
 }

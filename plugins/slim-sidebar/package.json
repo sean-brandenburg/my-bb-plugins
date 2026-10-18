@@ -4,25 +4,20 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bb": ">=0.45",
-    "bbPluginSdk": ">=0.6.15"
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
   },
   "bb": {
     "name": "Slim sidebar",
-    "description": "Collapses bb's sidebar into a thin icon rail under a full-width top bar, as one seamless frame: icon-only navigation with tooltips and the footer stacked vertically. Pairs with History keys and Minimal top bar.",
+    "description": "Narrows bb's sidebar to its icon rail: no thread list beside it, the footer's icons stacked in the rail, Cmd+1 through Cmd+9 for the rail's items, and Cmd+\\ hiding the rail. Pairs with History keys and Minimal top bar.",
     "branding": {
       "icon": "PanelLeft"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
   },
-  "dependencies": {
-    "bb-motion": "file:../motion/lib"
-  },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.6.15",
-    "@testing-library/dom": "10.4.2",
-    "@testing-library/react": "16.3.3",
+    "@get-bb/plugin-sdk": "0.6.49",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -31,11 +26,6 @@
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "bb-motion": "link:../motion/lib"
-    }
   },
   "scripts": {
     "build": "bb plugin build",
