@@ -6,6 +6,7 @@ import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
 import { countSeverities } from "./reviews/findings";
+import { prSubject } from "./reviews/prompts";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
 
@@ -238,6 +239,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               ticket.id,
               await projectForTicket(ticket, options.project ?? null),
               options.full ? "full" : "incremental",
+              prSubject(ticket),
             );
             return {
               exitCode: 0,

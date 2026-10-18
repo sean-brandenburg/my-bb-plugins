@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+/**
+ * What a review covers: a pull request, fetched from GitHub, or a local commit, reviewed against its merge base with
+ * the project's default branch (a ref that resolves in the project's repository). The local commit and branch are
+ * pasted into shell commands in the prompt, so they are validated.
+ */
+export const reviewSubjectSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("pr"), repo: z.string(), number: z.number().int(), url: z.string() }),
+  z.object({
+    kind: z.literal("local"),
+    commit: z.string().regex(/^[0-9a-f]{7,40}$/iu),
+    defaultBranch: z.string().regex(/^\w[\w./-]*$/u),
+  }),
+]);
+export type ReviewSubject = z.infer<typeof reviewSubjectSchema>;
+
 export const reviewApplySchema = z.object({
   threadId: z.string(),
   startedAt: z.number(),

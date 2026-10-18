@@ -4,9 +4,9 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Review and apply prompt building and review spawning take a subject, with PR and local-commit variants.
-- [ ] Every existing PR review, re-review and apply test passes unchanged.
-- [ ] Prompt-building tests cover a local subject: a worktree checked out detached at the commit, and the range from its merge base with the default branch.
-- [ ] No user-visible change.
+- [x] Review and apply prompt building and review spawning take a subject, with PR and local-commit variants.
+- [x] Every existing PR review, re-review and apply test passes unchanged.
+- [x] Prompt-building tests cover a local subject: a worktree checked out detached at the commit, and the range from its merge base with the default branch.
+- [x] No user-visible change.
