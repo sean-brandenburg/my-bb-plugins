@@ -5,7 +5,7 @@ import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prComme
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
 import { findingEditSchema, reviewSchema } from "./shared/review";
-import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema } from "./shared/tour";
+import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
 
 export const rpcContract = defineRpcContract({
   board_get: { input: z.null(), output: boardSchema },
@@ -161,6 +161,11 @@ export const rpcContract = defineRpcContract({
   narrative_generate: {
     input: z.object({ ticketId: z.string() }).strict(),
     output: narrativeSchema,
+  },
+  /** Every narrative review of the subject with the diff it was written against, oldest first, for stepping across heads. */
+  narrative_story: {
+    input: z.object({ ticketId: z.string() }).strict(),
+    output: narrativeStorySchema,
   },
   /** Agent explanations of hunks for the diff's current head. */
   hunk_explanations_list: {

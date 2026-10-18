@@ -16,6 +16,7 @@ export function TourPanel({
   onJump,
   onOpenThread,
   files,
+  onStepThrough,
 }: {
   tour: TourState | null;
   busy: boolean;
@@ -23,6 +24,8 @@ export function TourPanel({
   onJump: (path: string) => void;
   onOpenThread: (threadId: string) => void;
   files: DiffFile[];
+  /** Opens the narrative review, when the source has one. */
+  onStepThrough: (() => void) | null;
 }) {
   const [open, setOpenState] = useState(() => readPreference(OPEN_KEY) === "true");
   const setOpen = (value: boolean) => {
@@ -34,16 +37,16 @@ export function TourPanel({
   const known = new Set(files.map((file) => file.path));
   const firstSentence = report === null ? "" : (report.summary.match(/^[\s\S]*?[.!?](?=\s|$)/u)?.[0] ?? report.summary);
   const keyCount = report?.readingOrder.filter((entry) => entry.role === "key").length ?? 0;
-  const generateLabel = narrative === null ? "Generate tour" : tour?.stale ? "Regenerate for new head" : "Regenerate";
+  const generateLabel = narrative === null ? "Write narrative" : tour?.stale ? "Write update" : "Rewrite";
   const reveal = useOpenedSinceMount(open && report !== null) ? cn(enter.rise, FAST, STAGGER) : undefined;
   return (
     <section className="border-b border-border text-xs">
       <div className="flex min-h-7 items-center gap-2 px-3">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left" onClick={() => setOpen(!open)} aria-expanded={open} data-bbm-open={open} disabled={report === null}>
           <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON, report === null && "invisible")} />
-          <span className="shrink-0 font-medium">Tour</span>
+          <span className="shrink-0 font-medium">Narrative</span>
           {narrative === null ? (
-            <span key="intro" className={cn("truncate text-muted-foreground", enter.fade)}>An agent can summarise this change and suggest a reading order.</span>
+            <span key="intro" className={cn("truncate text-muted-foreground", enter.fade)}>An agent can walk through this change step by step, with a reading order and diagrams.</span>
           ) : narrative.status === "running" ? (
             <span key="running" className={cn("truncate text-muted-foreground", enter.fade)}>Writing… this strip fills in when the thread finishes.</span>
           ) : narrative.status === "failed" ? (
@@ -54,6 +57,11 @@ export function TourPanel({
           {report !== null && !open && keyCount > 0 ? <span className="shrink-0 rounded border border-border px-1 text-[10px] text-muted-foreground">{keyCount} key</span> : null}
           {tour?.stale ? <span className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-300">stale</span> : null}
         </button>
+        {report !== null && report.steps.length > 0 && onStepThrough !== null ? (
+          <button type="button" className={cn("shrink-0 rounded border border-border px-1.5 py-0.5 text-foreground hover:bg-state-hover", PRESS)} title="Step through the narrative review (S)" onClick={onStepThrough}>
+            Step through
+          </button>
+        ) : null}
         {narrative !== null ? (
           <button type="button" className={cn("shrink-0 text-muted-foreground hover:text-foreground", PRESS)} onClick={() => onOpenThread(narrative.threadId)}>
             thread

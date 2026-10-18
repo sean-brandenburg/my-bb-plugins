@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { DiffComment, DiffFile, SemanticChange, SymbolLookup } from "../types";
-import { requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences } from "./state";
+import { readPreference, requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences, writePreference } from "./state";
 import { DEFAULT_LABELS, DiffSourceContext, type DiffSource, type DiffViewLabels } from "./source";
 import { DeltaStrip, useDelta } from "./delta-strip";
 import { FileSection } from "./file-section";
@@ -28,6 +28,9 @@ import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
 import { useTour } from "./tour/use-tour";
+import { NarrativeView } from "./narrative/narrative-view";
+import { useNarrativeStory } from "./narrative/use-narrative-story";
+import type { NarrativeRef } from "../narrative";
 import { cursorAt, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
 import { KeyHelp, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
@@ -125,6 +128,15 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const { reviews, toggleFinding, editFinding } = useReviews(source, refreshSignal);
   const { explanations, explainHunk } = useExplanations(source, refreshSignal);
   const { tour, busy: tourBusy, generate: generateTour } = useTour(source, refreshSignal);
+  const narrativeAvailable = source.tour?.story !== undefined;
+  const [chosenMode, setChosenMode] = useState<"files" | "narrative">(() => (readPreference("viewMode") === "narrative" ? "narrative" : "files"));
+  const mode = narrativeAvailable ? chosenMode : "files";
+  const setMode = (next: "files" | "narrative") => {
+    setChosenMode(next);
+    writePreference("viewMode", next);
+  };
+  // The tour reloads on every refresh signal, so the story follows it.
+  const narrative = useNarrativeStory(source, tour, mode === "narrative");
   const delta = useDelta(source, diff?.headSha ?? null);
   const preferences = useDiffPreferences();
   const { findingFilter } = preferences;
@@ -205,6 +217,46 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     if (anchor.line === null) parkCursor(path);
     else keys.set({ cursor: { path, side: anchor.side, line: anchor.line, want: anchor.side }, visual: null });
   };
+  // The files view mounts on the render after the switch, so what the narrative asked of it runs once it has.
+  const afterFilesMount = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (mode !== "files" || afterFilesMount.current === null) return;
+    const action = afterFilesMount.current;
+    afterFilesMount.current = null;
+    const frame = requestAnimationFrame(action);
+    return () => cancelAnimationFrame(frame);
+  }, [mode]);
+  const inFiles = (action: () => void) => {
+    afterFilesMount.current = action;
+    setMode("files");
+    rootRef.current?.focus({ preventScroll: true });
+  };
+  const openNarrativeRef = (ref: NarrativeRef) =>
+    inFiles(() => {
+      const path = diff?.files.find((file) => file.path === ref.path || file.previousPath === ref.path)?.path ?? ref.path;
+      if (ref.startLine === null) {
+        jumpTo(path);
+        return;
+      }
+      const side = ref.side === "old" ? "LEFT" : "RIGHT";
+      expand(path);
+      const cursor = { path, side, line: Math.min(ref.startLine, ref.endLine ?? ref.startLine), want: side } as const;
+      keys.set({ cursor, visual: null, focused: null });
+      reveal(cursor, "center");
+    });
+  const commentOnNarrativeRef = (ref: NarrativeRef) =>
+    inFiles(() => {
+      const path = diff?.files.find((file) => file.path === ref.path || file.previousPath === ref.path)?.path ?? ref.path;
+      expand(path);
+      if (ref.startLine === null) {
+        startComment(path, WHOLE_FILE);
+        return;
+      }
+      const side = ref.side === "old" ? "LEFT" : "RIGHT";
+      const start = Math.min(ref.startLine, ref.endLine ?? ref.startLine);
+      const end = Math.max(ref.startLine, ref.endLine ?? ref.startLine);
+      startComment(path, { line: end, side, startLine: start === end ? null : start, startSide: start === end ? null : side });
+    });
 
   const navFiles = (): NavFile[] => (diff?.files ?? []).map((file) => ({ path: file.path, collapsed: collapsed.has(file.path), rows: keys.models.get(file.path)?.rows ?? null }));
   const navFilesRef = useRef(navFiles);
@@ -342,6 +394,11 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const fileTreeFits = () => (rootRef.current?.clientWidth ?? 0) >= FILE_TREE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
   const returnFromFileTree = () => rootRef.current?.focus({ preventScroll: true });
   const runCommand: Parameters<typeof useReviewKeys>[3] = (command, count) => {
+    if (command.kind === "narrative") {
+      if (narrativeAvailable) setMode("narrative");
+      else notify("This view has no narrative review");
+      return;
+    }
     const env: ReviewEnv = {
       keys,
       files: navFiles(),
@@ -443,7 +500,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     };
     runReviewCommand(command, count, env);
   };
-  useReviewKeys(rootRef, keys, overlay === null, runCommand);
+  useReviewKeys(rootRef, keys, overlay === null && mode === "files", runCommand);
   const runCommandRef = useRef(runCommand);
   runCommandRef.current = runCommand;
   // Scrolling by hand (wheel, trackpad, touch, the scrollbar) drags the cursor along, so it stays on the middle line.
@@ -518,6 +575,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     onOpenThread,
   };
   const sourceContext = useMemo(() => ({ source, labels }), [source, labels]);
+  const currentPaths = useMemo(() => new Set(diff?.files.map((file) => file.path) ?? []), [diff]);
   const { localPending, githubDrafts } = comments;
 
   return (
@@ -546,6 +604,28 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
               />
             ) : null}
 
+            {mode === "narrative" ? (
+              <NarrativeView
+                rootRef={rootRef}
+                active={overlay === null}
+                instanceKey={instanceKey}
+                story={narrative.story}
+                error={narrative.error}
+                generating={tourBusy}
+                onGenerate={() => void generateTour().then(narrative.reload)}
+                onOpenThread={onOpenThread}
+                currentPaths={currentPaths}
+                viewed={viewed}
+                onMarkViewed={(path) => markViewed(path, true)}
+                onOpenRef={openNarrativeRef}
+                onCommentRef={commentOnNarrativeRef}
+                onFiles={() => {
+                  setMode("files");
+                  rootRef.current?.focus({ preventScroll: true });
+                }}
+                notify={notify}
+              />
+            ) : (
             <div className="flex min-h-0 flex-1">
               <ActiveFileTreeSidebar
                 active={active}
@@ -575,7 +655,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                   }}
                   className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   {source.tour !== undefined && diff !== null && diff.files.length > 0 ? (
-                    <TourPanel tour={tour} busy={tourBusy} onGenerate={() => void generateTour()} onJump={jumpTo} onOpenThread={onOpenThread} files={diff.files} />
+                    <TourPanel tour={tour} busy={tourBusy} onGenerate={() => void generateTour()} onJump={jumpTo} onOpenThread={onOpenThread} files={diff.files} onStepThrough={narrativeAvailable ? () => setMode("narrative") : null} />
                   ) : null}
                   {delta !== null && delta.files.length > 0 ? (
                     <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
@@ -641,6 +721,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 ) : null}
               </div>
             </div>
+            )}
           </div>
         </ReviewKeysContext.Provider>
       </DiffCommentsContext.Provider>

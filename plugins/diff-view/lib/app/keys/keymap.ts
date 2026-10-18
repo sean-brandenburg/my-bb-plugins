@@ -36,6 +36,7 @@ export type ReviewCommand =
   | { kind: "searchNext"; direction: 1 | -1 }
   | { kind: "peek" }
   | { kind: "help" }
+  | { kind: "narrative" }
   | { kind: "escape" }
   /** No key: the reader scrolled by hand, and the cursor moves to the line now in the middle. */
   | { kind: "follow" };
@@ -98,6 +99,7 @@ export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   n: { kind: "searchNext", direction: 1 },
   N: { kind: "searchNext", direction: -1 },
   gd: { kind: "peek" },
+  S: { kind: "narrative" },
   "?": { kind: "help" },
   "<Esc>": { kind: "escape" },
 };
@@ -163,6 +165,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
       { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },
+      { keys: ["S"], action: "Step through the narrative review (S or Esc there comes back)" },
       { keys: ["R"], action: "Refresh the diff" },
       { keys: ["Esc"], action: "Leave line selection" },
       { keys: ["?"], action: "This sheet" },

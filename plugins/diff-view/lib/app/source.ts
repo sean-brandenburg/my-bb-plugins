@@ -10,6 +10,7 @@ import type {
   HunkExplanation,
   LineRange,
   Narrative,
+  NarrativeStory,
   Review,
   StructuralDiff,
   SymbolLookup,
@@ -45,7 +46,8 @@ export interface DiffSource {
   };
   /** What changed since the head the reviewer last looked at. */
   delta?(): Promise<DiffDelta | null>;
-  tour?: { get(): Promise<TourState>; generate(): Promise<Narrative> };
+  /** `story` lights up the narrative review: every narrative with the diff it was written against, for stepping through. */
+  tour?: { get(): Promise<TourState>; generate(): Promise<Narrative>; story?(): Promise<NarrativeStory> };
   explanations?: {
     list(): Promise<HunkExplanation[]>;
     explain(path: string, side: "old" | "new", startLine: number, endLine: number): Promise<HunkExplanation>;

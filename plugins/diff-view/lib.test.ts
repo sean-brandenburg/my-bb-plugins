@@ -17,6 +17,10 @@ import { anchorsAtCursor, hunkSpanAt, moveChange, moveFile, moveHunk, moveLines,
 import { rankFiles } from "./lib/app/keys/rank-files";
 import { runReviewCommand, type ReviewEnv } from "./lib/app/keys/review-commands";
 import { checkedLineRange, locationLabel, longLineLabel, shortLineLabel } from "./lib/line-range";
+import { changedLines, excerptPatch, narrativeCoverage, refsForUncovered, uncoveredText } from "./lib/narrative";
+import { UNCOVERED_STEP_ID, affectedAddress, buildChapters, initialAddress, moveChapter, movePage, narratedFiles } from "./lib/app/narrative/chapters";
+import { NARRATIVE_KEYMAP } from "./lib/app/narrative/narrative-keymap";
+import type { NarrativeRevision, NarrativeStep, NarrativeStory } from "./lib/types";
 import { splitUnifiedDiff } from "./lib/server";
 import type { DiffComment, DiffFile, Finding, GithubComment, Review, StructuralDiff } from "./lib/types";
 
@@ -286,7 +290,7 @@ describe("riskByPath", () => {
     const findings = inlineFindingsByPath([review("r", 1, [finding("A", [{ file: "a.ts", startLine: 1, endLine: 1 }], "critical"), finding("B", [{ file: "b.ts", startLine: 1, endLine: 1 }], "important"), finding("C", [{ file: "b.ts", startLine: 2, endLine: 2 }])])], null);
     const tour = {
       stale: false,
-      narrative: { threadId: "t", status: "completed" as const, report: { summary: "", watchOut: [], readingOrder: [{ path: "a.ts", role: "key" as const, note: "", lines: [], risk: 2, changes: [] }] } },
+      narrative: { id: "n", threadId: "t", status: "completed" as const, createdAt: 0, report: { summary: "", watchOut: [], readingOrder: [{ path: "a.ts", role: "key" as const, note: "", lines: [], risk: 2, changes: [] }], steps: [], revision: null } },
     };
     expect(Object.fromEntries(riskByPath(tour, findings))).toEqual({ "a.ts": 2, "b.ts": 4 });
     expect(Object.fromEntries(riskByPath({ ...tour, stale: true }, findings))).toEqual({ "a.ts": 5, "b.ts": 4 });
@@ -718,5 +722,126 @@ describe("fetchChangeTotals", () => {
 
   it("knows nothing about a thread no button has fetched", () => {
     expect(knownChangeTotals("thr_unseen")).toBeNull();
+  });
+});
+
+describe("narrative coverage", () => {
+  // old 10..14 → new 10..15: line 11 replaced by two lines, line 13 deleted.
+  const patch = ["@@ -10,5 +10,5 @@ func run() {", " a", "-b", "+b1", "+b2", " c", "-d", " e"].join("\n");
+  const file = { path: "x.go", previousPath: null, patch };
+
+  it("lists deleted lines by old number and added lines by new number", () => {
+    expect(changedLines(patch)).toEqual({ old: [11, 13], new: [11, 12] });
+  });
+
+  it("reports what no ref covers, per side, and paths outside the diff", () => {
+    const coverage = narrativeCoverage([file], [
+      { path: "x.go", side: "new", startLine: 11, endLine: 12 },
+      { path: "nope.go", side: "new", startLine: 1, endLine: 1 },
+    ]);
+    expect(coverage.uncovered).toEqual([{ path: "x.go", wholeFile: false, old: [[11, 11], [13, 13]], new: [] }]);
+    expect(coverage.unknownPaths).toEqual(["nope.go"]);
+    expect(coverage).toMatchObject({ changedLines: 4, coveredLines: 2 });
+    expect(uncoveredText(patch, [[11, 13]], [])).toEqual(["-11 b", "-13 d"]);
+  });
+
+  it("counts a whole-file ref for both sides, and needs one for a file with no patch", () => {
+    expect(narrativeCoverage([file], [{ path: "x.go", side: "new", startLine: null, endLine: null }]).uncovered).toEqual([]);
+    const binary = { path: "logo.png", previousPath: null, patch: null };
+    expect(narrativeCoverage([binary], []).uncovered).toEqual([{ path: "logo.png", wholeFile: true, old: [], new: [] }]);
+    expect(refsForUncovered(narrativeCoverage([file, binary], []).uncovered)).toEqual([
+      { path: "x.go", side: "old", startLine: 11, endLine: 11 },
+      { path: "x.go", side: "old", startLine: 13, endLine: 13 },
+      { path: "x.go", side: "new", startLine: 11, endLine: 12 },
+      { path: "logo.png", side: "new", startLine: null, endLine: null },
+    ]);
+  });
+
+  it("matches a renamed file's refs under either name", () => {
+    expect(narrativeCoverage([{ ...file, path: "y.go", previousPath: "x.go" }], [{ path: "x.go", side: "new", startLine: null, endLine: null }]).uncovered).toEqual([]);
+  });
+
+  it("cuts an excerpt of the referenced rows with recounted headers, leaving unreferenced changes out", () => {
+    expect(excerptPatch(patch, [{ path: "x.go", side: "old", startLine: 13, endLine: 13 }], 1)).toBe(["@@ -12,3 +13,2 @@", " c", "-d", " e"].join("\n"));
+    // The replaced line's two sides, with one line of context; the deletion further down is another step's.
+    expect(excerptPatch(patch, [{ path: "x.go", side: "old", startLine: 11, endLine: 11 }, { path: "x.go", side: "new", startLine: 11, endLine: 12 }], 1)).toBe(
+      ["@@ -10,3 +10,4 @@", " a", "-b", "+b1", "+b2", " c"].join("\n"),
+    );
+    expect(excerptPatch(patch, [{ path: "x.go", side: "new", startLine: 40, endLine: 41 }])).toBeNull();
+    expect(excerptPatch(patch, [{ path: "x.go", side: "new", startLine: null, endLine: null }])).toBe(patch);
+  });
+
+  it("gives a pure insertion an old count of zero after the line it follows", () => {
+    const insertion = ["@@ -3,2 +3,4 @@", " x", "+y", "+z", " w"].join("\n");
+    expect(excerptPatch(insertion, [{ path: "a", side: "new", startLine: 4, endLine: 5 }], 0)).toBe(["@@ -3,0 +4,2 @@", "+y", "+z"].join("\n"));
+  });
+});
+
+describe("narrative chapters", () => {
+  const patch = ["@@ -1,2 +1,2 @@", "-a", "+b", " c"].join("\n");
+  const step = (id: string, refs: NarrativeStep["refs"], affects: string[] = []): NarrativeStep => ({ id, title: id, body: "", refs, affects });
+  const revision = (id: string, head: string, steps: NarrativeStep[], extra: Partial<NarrativeRevision> = {}, chapter: { summary: string; steps: NarrativeStep[] } | null = null): NarrativeRevision => ({
+    narrative: { id, threadId: `t-${id}`, status: "completed", createdAt: 0, report: { summary: `summary ${id}`, readingOrder: [], watchOut: [], steps, revision: chapter } },
+    head,
+    dirty: false,
+    previousId: null,
+    files: [{ path: "x.ts", previousPath: null, patch }],
+    delta: null,
+    ...extra,
+  });
+  const both = [step("swap", [{ path: "x.ts", side: "old", startLine: 1, endLine: 1 }, { path: "x.ts", side: "new", startLine: 1, endLine: 1 }])];
+  const story: NarrativeStory = {
+    revisions: [
+      revision("n1", "1111111aaa", [step("swap-new", [{ path: "x.ts", side: "new", startLine: 1, endLine: 1 }])]),
+      revision("n2", "2222222bbb", both, { previousId: "n1", delta: { fromHead: "1111111aaa", toHead: "2222222bbb", files: [{ path: "x.ts", previousPath: null, patch }], note: null } }, { summary: "why", steps: [step("fix", [{ path: "x.ts", side: "old", startLine: 1, endLine: 1 }], ["swap"])] }),
+    ],
+    running: null,
+    stale: false,
+  };
+  const chapters = buildChapters(story);
+
+  it("orders an earlier narrative, the revision that follows it, then the current one", () => {
+    expect(chapters.map((chapter) => [chapter.kind, chapter.current, chapter.title])).toEqual([
+      ["narrative", false, "Earlier narrative at 1111111"],
+      ["revision", false, "What changed: 1111111 → 2222222"],
+      ["narrative", true, "Narrative at 2222222"],
+    ]);
+  });
+
+  it("adds a not-narrated step for lines the agent skipped, in narratives and revisions alike", () => {
+    expect(chapters[0]!.steps.map((entry) => entry.id)).toEqual(["swap-new", UNCOVERED_STEP_ID]);
+    expect(chapters[0]!.steps[1]!.refs).toEqual([{ path: "x.ts", side: "old", startLine: 1, endLine: 1 }]);
+    expect(chapters[1]!.steps.map((entry) => entry.id)).toEqual(["fix", UNCOVERED_STEP_ID]);
+    expect(chapters[2]!.steps.map((entry) => entry.id)).toEqual(["swap"]);
+    expect(chapters[2]!.coverage).toMatchObject({ changedLines: 2, coveredLines: 2 });
+  });
+
+  it("opens on the newest revision, or where the reader left off", () => {
+    expect(initialAddress(chapters, null)).toEqual({ chapter: 1, step: -1 });
+    expect(initialAddress(chapters, { chapterKey: "n1:narrative", stepId: "swap-new" })).toEqual({ chapter: 0, step: 0 });
+    expect(initialAddress(chapters, { chapterKey: "gone:narrative", stepId: null })).toEqual({ chapter: 1, step: -1 });
+    expect(initialAddress(buildChapters({ ...story, revisions: [story.revisions[0]!] }), null)).toEqual({ chapter: 0, step: -1 });
+  });
+
+  it("steps across chapter boundaries through each chapter's summary page", () => {
+    expect(movePage(chapters, { chapter: 0, step: 1 }, 1)).toEqual({ chapter: 1, step: -1 });
+    expect(movePage(chapters, { chapter: 1, step: -1 }, -1)).toEqual({ chapter: 0, step: 1 });
+    expect(movePage(chapters, { chapter: 2, step: 0 }, 5)).toEqual({ chapter: 2, step: 0 });
+    expect(moveChapter(chapters, { chapter: 2, step: 0 }, -1)).toEqual({ chapter: 2, step: -1 });
+    expect(moveChapter(chapters, { chapter: 2, step: -1 }, -1)).toEqual({ chapter: 1, step: -1 });
+  });
+
+  it("follows a revision step into the narrative it led to", () => {
+    expect(affectedAddress(chapters, { chapter: 1, step: 0 }, "swap")).toEqual({ chapter: 2, step: 0 });
+    expect(affectedAddress(chapters, { chapter: 1, step: 0 }, "nope")).toBeNull();
+  });
+
+  it("names the files whose every step has been read", () => {
+    expect(narratedFiles(chapters[2]!, new Set())).toEqual([]);
+    expect(narratedFiles(chapters[2]!, new Set(["swap"]))).toEqual(["x.ts"]);
+  });
+
+  it("has no keys that shadow each other", () => {
+    expect(keymapConflicts(NARRATIVE_KEYMAP)).toEqual([]);
   });
 });

@@ -67,7 +67,13 @@ plugins embed.
   Escape twice). `v` marks a file viewed and moves on,
   `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
   `zr` shows more unchanged lines, `F` cycles which review findings show,
-  `K` asks for an explanation of the hunk,
+  `K` asks for an explanation of the hunk, `S` steps through the narrative
+  review where the host has one (its own keys: `h`/`l` steps, `]]`/`[[`
+  chapters, `j`/`k` and Ctrl-D/U scroll, `]f`/`[f` excerpts, `gf` opens
+  one in the files view, `i` comments on it, `ga` follows a revision step to
+  the step it led to, `v` marks fully narrated files viewed, `t` the outline,
+  `/` and `n`/`N` search steps, `U` writes or updates the narrative, `S` or
+  Escape returns),
   `gd` peeks at a symbol on the line, `gl` switches line-diff files between
   split and unified, `R` refreshes, and
   `?` lists every key.
@@ -94,7 +100,11 @@ dependency:
   `DiffSource` with the core methods (diff, structural diff, symbols, file
   slices, viewed marks, comments) and any optional groups (GitHub comments and
   drafts, review findings, the delta since the last look, a tour, hunk
-  explanations); each optional group turns on its part of the UI.
+  explanations); each optional group turns on its part of the UI. A tour
+  group with `story()` adds the narrative review view (`S`).
+- `bb-diff-view/narrative`: changed-line coverage of a narrative's steps and
+  the excerpt patch for a step's lines, shared by servers that check an
+  agent's narrative and the view that renders it.
 - `bb-diff-view/app/icons`: call `registerDiffViewIcons(app)` in
   `definePluginApp`.
 - `bb-diff-view/server`: unified-diff parsing, an environment's diff and file

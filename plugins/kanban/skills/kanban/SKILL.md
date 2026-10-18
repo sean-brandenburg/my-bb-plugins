@@ -24,6 +24,8 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban review [--ticket <id>] [--project <id>]` | Start a code-review thread for the card's PR: a fresh worktree checks the PR out detached and runs the `code-review` skill. Inside a thread, defaults to that thread's card. |
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the PR out: records which commit the review covers. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
+| `bb kanban narrative-check --report-stdin < draft.json` | Run from a narrative thread: checks a draft kanban-narrative report parses and that its steps (and revision steps) cover every changed line; lists what they miss. |
+| `bb kanban narrative-context` | Run from a narrative thread: prints the earlier narrative's steps and the delta a revision chapter must explain. |
 | `bb kanban apply-review [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-review` skill on the selected findings, applying all of them without confirmation, commits, and (unless `--no-push`) pushes to the PR branch. |
 | `bb kanban review-applied --commit <sha> [--pushed] [--skipped F2,F5]` | Run from an apply thread after committing: records the commit (`--pushed` when it was pushed) and marks every finding it was handed applied, except the `--skipped` ones it could not apply. |
 | `bb kanban comments [--ticket <id>]` | List the PR's synced comments with their selection state. |

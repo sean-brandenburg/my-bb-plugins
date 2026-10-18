@@ -454,6 +454,9 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     case "help":
       env.openOverlay("help");
       return;
+    // The view switches modes before a command reaches here.
+    case "narrative":
+      return;
     case "escape":
       if (env.leaveSendBar()) return;
       if (state.visual !== null) env.keys.set({ visual: null });

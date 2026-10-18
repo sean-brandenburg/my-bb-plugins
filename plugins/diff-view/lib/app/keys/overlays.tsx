@@ -9,7 +9,7 @@ import { rankFiles } from "./rank-files";
 const PANEL = "absolute inset-x-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg";
 
 /** The `?` sheet. Escape, `?` or `q` closes it. */
-export function KeyHelp({ onClose }: { onClose: () => void }) {
+export function KeyHelp({ onClose, sections = KEY_HELP }: { onClose: () => void; sections?: typeof KEY_HELP }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => ref.current?.focus({ preventScroll: true }), []);
   return (
@@ -35,7 +35,7 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
         <span className="ml-auto text-right text-xs font-normal text-muted-foreground">Esc to close · keys work anywhere in the diff outside a text box</span>
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-4 overflow-y-auto p-3 text-xs">
-        {KEY_HELP.map(({ group, keys }) => (
+        {sections.map(({ group, keys }) => (
           <section key={group} className="flex min-w-0 flex-col gap-1.5">
             <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{group}</h3>
             <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1">

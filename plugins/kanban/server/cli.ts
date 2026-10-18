@@ -340,6 +340,33 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             };
           },
         }),
+        "narrative-context": cliCommand({
+          summary: "Print the earlier narrative and the delta a narrative revision must explain (run by the narrative thread itself)",
+          options: { narrative: { type: "string", description: "Narrative id; defaults to the one the current thread is writing" } },
+          async run({ options }, ctx) {
+            try {
+              return { exitCode: 0, stdout: services.tour.narrativeContext(options.narrative, ctx.threadId) };
+            } catch (error) {
+              throw new PluginCliError(String(error instanceof Error ? error.message : error), { code: "no_narrative", hint: "Run this from the narrative thread, or pass --narrative <id>." });
+            }
+          },
+        }),
+        "narrative-check": cliCommand({
+          summary: "Check a draft kanban-narrative report: it parses, and its steps cover every changed line (run by the narrative thread itself)",
+          options: {
+            report: { type: "string", required: true, stdin: true, description: "The report JSON (the body of the kanban-narrative block); --report-stdin reads it from stdin" },
+            narrative: { type: "string", description: "Narrative id; defaults to the one the current thread is writing" },
+          },
+          async run({ options }, ctx) {
+            let result: { ok: boolean; text: string };
+            try {
+              result = services.tour.checkNarrative(options.narrative, ctx.threadId, options.report);
+            } catch (error) {
+              throw new PluginCliError(String(error instanceof Error ? error.message : error), { code: "no_narrative", hint: "Run this from the narrative thread, or pass --narrative <id>." });
+            }
+            return { exitCode: result.ok ? 0 : 1, stdout: result.text };
+          },
+        }),
         "apply-review": cliCommand({
           summary: "Start a thread that applies the latest persisted review to the PR branch and pushes it",
           options: {

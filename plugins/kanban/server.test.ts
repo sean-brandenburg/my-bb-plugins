@@ -8,7 +8,7 @@ import {
   makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
+import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
 
 type Host = ReturnType<typeof createFakePluginHost>;
 
@@ -2166,6 +2166,152 @@ describe("change tour", () => {
     expect(got.narrative).toMatchObject({ status: "completed", headSha: "9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c" });
     expect(got.narrative!.report).toMatchObject({ summary: "Adds `add`.", readingOrder: [{ path: "a.go", role: "key", lines: [2] }], watchOut: ["No tests."] });
     expect(parseNarrative("no block here")).toBeNull();
+  });
+});
+
+describe("narrative review", () => {
+  it("snapshots the diff, checks coverage from the CLI, and writes a revision chapter over the delta once the head moves", async () => {
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    let head = "9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c";
+    let files: unknown[] = [{ filename: "a.go", status: "modified", additions: 2, deletions: 1, patch: "@@ -1,2 +1,3 @@\n line\n-old\n+new\n+more" }];
+    const compares: string[] = [];
+    const base = stubGithub({ authored: [searchItem("acme-co/widgets", 7, { user: { login: "sean" } })] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/compare/")) {
+          compares.push(url.slice(url.indexOf("/compare/") + "/compare/".length));
+          return json({ files: [
+            { filename: "a.go", status: "modified", patch: "@@ -2,2 +2,2 @@\n-new\n+newer\n more" },
+            { filename: "base-only.go", status: "modified", patch: "@@ -1 +1 @@\n-x\n+y" },
+          ] });
+        }
+        if (/\/pulls\/7\/files/u.test(url)) return json(files);
+        if (/\/pulls\/7$/u.test(url)) {
+          const pull = (await (await base(input, init)).json()) as Record<string, unknown>;
+          return json({ ...pull, head: { sha: head } });
+        }
+        return base(input, init);
+      }),
+    );
+    let clock = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => (clock += 1));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const card = (await board()).tickets[0]!;
+    const cli = (args: string[], threadId: string) => current().harness.behavior.runCli(args, { threadId, signal: new AbortController().signal });
+
+    const first = (await current().harness.behavior.callRpc("narrative_generate", { ticketId: card.id })) as Narrative;
+    const firstPrompt = String(spawned.at(-1)!.prompt);
+    expect(firstPrompt).toContain("narrative-review skill");
+    expect(firstPrompt).toContain("narrative-check");
+    expect(firstPrompt).not.toContain("revision");
+
+    const partial = { version: 2, summary: "Adds `more`.", steps: [{ id: "more", title: "Adds more", body: "```mermaid\nflowchart LR\n  a --> b\n```", refs: [{ path: "a.go", side: "new", startLine: 2, endLine: 3 }] }] };
+    const gaps = await cli(["narrative-check", "--report", JSON.stringify(partial)], first.threadId);
+    expect(gaps.exitCode).toBe(1);
+    expect(gaps.stdout).toContain("a.go: old 2–2");
+    expect(gaps.stdout).toContain("-2 old");
+    const complete = { ...partial, steps: [...partial.steps, { id: "old-gone", title: "Drops old", refs: [{ path: "a.go", side: "old", startLine: 2, endLine: 2 }] }] };
+    const passed = await cli(["narrative-check", "--report", JSON.stringify(complete)], first.threadId);
+    expect(passed).toMatchObject({ exitCode: 0 });
+    expect(passed.stdout).toContain("Every changed line is covered.");
+
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: first.threadId, projectId: "proj_acme" }),
+      lastAssistantText: ["Done.", "```json kanban-narrative", JSON.stringify(complete), "```"].join("\n"),
+    });
+    let story = (await current().harness.behavior.callRpc("narrative_story", { ticketId: card.id })) as NarrativeStory;
+    expect(story.stale).toBe(false);
+    expect(story.revisions).toHaveLength(1);
+    expect(story.revisions[0]).toMatchObject({ head, previousId: null, delta: null, files: [{ path: "a.go" }] });
+    expect(story.revisions[0]!.narrative.report!.steps.map((step) => step.id)).toEqual(["more", "old-gone"]);
+    // The first narrative has nothing earlier to revise.
+    expect(String((await cli(["narrative-context"], first.threadId)).stdout)).toContain("no earlier narrative");
+
+    head = "2222222222222222222222222222222222222222";
+    files = [{ filename: "a.go", status: "modified", additions: 2, deletions: 1, patch: "@@ -1,2 +1,3 @@\n line\n-old\n+newer\n+more" }];
+    await current().harness.behavior.callRpc("diff_get", { ticketId: card.id, refresh: true });
+    story = (await current().harness.behavior.callRpc("narrative_story", { ticketId: card.id })) as NarrativeStory;
+    expect(story.stale).toBe(true);
+
+    const second = (await current().harness.behavior.callRpc("narrative_generate", { ticketId: card.id })) as Narrative;
+    expect(compares).toEqual([`9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c...${head}`]);
+    const secondPrompt = String(spawned.at(-1)!.prompt);
+    expect(secondPrompt).toContain("`revision` chapter");
+    expect(secondPrompt).toContain("git fetch origin 9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c");
+    const context = String((await cli(["narrative-context"], second.threadId)).stdout);
+    expect(context).toContain('"id": "more"');
+    expect(context).toContain("+newer");
+    // Only files the change itself touches; the base branch's edits stay out.
+    expect(context).not.toContain("base-only.go");
+
+    const noRevision = await cli(["narrative-check", "--report", JSON.stringify(complete)], second.threadId);
+    expect(noRevision.exitCode).toBe(1);
+    expect(noRevision.stdout).toContain("add the `revision` chapter");
+    const revised = {
+      ...complete,
+      revision: { summary: "Renames new to newer.", steps: [{ id: "rename", title: "new becomes newer", refs: [{ path: "a.go", side: "old", startLine: 2, endLine: 2 }, { path: "a.go", side: "new", startLine: 2, endLine: 2 }], affects: ["more", "ghost"] }] },
+    };
+    const revisedCheck = await cli(["narrative-check", "--report", JSON.stringify(revised)], second.threadId);
+    expect(revisedCheck.exitCode).toBe(0);
+    expect(revisedCheck.stdout).toContain("Delta: 2/2 changed lines covered.");
+    expect(revisedCheck.stdout).toContain("unknown step id ghost");
+
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: second.threadId, projectId: "proj_acme" }),
+      lastAssistantText: ["```json kanban-narrative", JSON.stringify(revised), "```"].join("\n"),
+    });
+    story = (await current().harness.behavior.callRpc("narrative_story", { ticketId: card.id })) as NarrativeStory;
+    expect(story.stale).toBe(false);
+    expect(story.revisions.map((revision) => revision.narrative.id)).toEqual([first.id, second.id]);
+    expect(story.revisions[1]).toMatchObject({ head, previousId: first.id, delta: { fromHead: "9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c", toHead: head, files: [{ path: "a.go" }] } });
+    expect(story.revisions[1]!.narrative.report!.revision!.summary).toBe("Renames new to newer.");
+  });
+});
+
+describe("narrative review of a local card", () => {
+  it("keys narratives to the checkout's HEAD and measures the delta from it, uncommitted and untracked files included", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "kanban-narrative-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    git("config", "commit.gpgsign", "false");
+    await writeFile(join(repo, "a.go"), "package a\n\nfunc one() {}\n");
+    git("add", ".");
+    git("commit", "-qm", "one");
+    const firstHead = git("rev-parse", "HEAD");
+    let patch = "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,3 +1,3 @@\n package a\n \n-func one() {}\n+func one() {}\n";
+    await load({ autoStartThreads: false });
+    current().harness.sdk.stub("system.config", async () => ({ primaryHostId: "host_1" }));
+    current().harness.sdk.stub("environments.get", async () => ({ id: "env_thr_1", path: repo, hostId: "host_1", mergeBaseBranch: null }));
+    current().harness.sdk.stub("environments.diff", async () => ({ outcome: "available", diff: { diff: patch, mergeBaseRef: null, truncated: false } }));
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "Local work", projectId: "proj_acme", startThread: true })) as Ticket;
+    const first = (await current().harness.behavior.callRpc("narrative_generate", { ticketId: ticket.id })) as Narrative;
+    const report = { version: 2, summary: "s", steps: [{ id: "one", title: "one", refs: [{ path: "a.go", side: "new", startLine: null }] }] };
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: first.threadId, projectId: "proj_acme" }),
+      lastAssistantText: ["```json kanban-narrative", JSON.stringify(report), "```"].join("\n"),
+    });
+
+    await writeFile(join(repo, "a.go"), "package a\n\nfunc two() {}\n");
+    await writeFile(join(repo, "new.go"), "package a\n");
+    patch += "diff --git a/new.go b/new.go\nnew file mode 100644\n--- /dev/null\n+++ b/new.go\n@@ -0,0 +1 @@\n+package a\n";
+    const second = (await current().harness.behavior.callRpc("narrative_generate", { ticketId: ticket.id })) as Narrative;
+    expect(String(spawned.at(-1)!.prompt)).toContain(`git log ${firstHead}..HEAD`);
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: second.threadId, projectId: "proj_acme" }),
+      lastAssistantText: ["```json kanban-narrative", JSON.stringify({ ...report, revision: { summary: "r", steps: [] } }), "```"].join("\n"),
+    });
+    const story = (await current().harness.behavior.callRpc("narrative_story", { ticketId: ticket.id })) as NarrativeStory;
+    expect(story.revisions.map((revision) => [revision.head, revision.dirty])).toEqual([[firstHead, false], [firstHead, true]]);
+    const delta = story.revisions[1]!.delta!;
+    expect(delta.fromHead).toBe(firstHead);
+    expect(delta.files.map((file) => file.path)).toEqual(["a.go", "new.go"]);
+    expect(delta.files[0]!.patch).toContain("+func two() {}");
+    await rm(repo, { recursive: true, force: true });
   });
 });
 

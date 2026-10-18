@@ -1,5 +1,6 @@
 // Data the diff view renders. Plain TypeScript rather than zod schemas so every plugin that bundles this library keeps
 // its own zod copy; each plugin's RPC schemas must produce values assignable to these.
+import type { NarrativePatchFile, NarrativeRef } from "./narrative";
 
 export type DiffSide = "LEFT" | "RIGHT";
 
@@ -199,14 +200,48 @@ export interface SemanticChange {
   newLines: [number, number] | null;
 }
 
+/** One stop of a narrative review: an explanation (Markdown, mermaid fences allowed) of the lines its refs point at. */
+export interface NarrativeStep {
+  id: string;
+  title: string;
+  body: string;
+  refs: NarrativeRef[];
+  /** In a revision chapter: ids of the new narrative's steps the change shows up in. */
+  affects: string[];
+}
+
 export interface Narrative {
+  id: string;
   threadId: string;
   status: "running" | "completed" | "failed";
+  createdAt: number;
   report: {
     summary: string;
     readingOrder: Array<{ path: string; role: "key" | "supporting" | "mechanical"; note: string; lines: number[]; risk: number | null; changes: SemanticChange[] }>;
     watchOut: string[];
+    steps: NarrativeStep[];
+    /** Walks from the previous narrative to this one; its refs point into `NarrativeRevision.delta`. */
+    revision: { summary: string; steps: NarrativeStep[] } | null;
   } | null;
+}
+
+/** A narrative with the diff it was written against, so it still reads after the head moves. */
+export interface NarrativeRevision {
+  narrative: Narrative;
+  head: string | null;
+  /** Written over uncommitted changes. */
+  dirty: boolean;
+  previousId: string | null;
+  files: NarrativePatchFile[];
+  /** What changed since the previous narrative's head, in the files the change touches. */
+  delta: { fromHead: string | null; toHead: string | null; files: NarrativePatchFile[]; note: string | null } | null;
+}
+
+/** Every narrative of the subject, oldest first, and whether the code moved past the newest. */
+export interface NarrativeStory {
+  revisions: NarrativeRevision[];
+  running: Narrative | null;
+  stale: boolean;
 }
 
 export interface TourState {

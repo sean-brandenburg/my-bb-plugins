@@ -29,8 +29,11 @@ A kanban board where every card is a BB thread.
   findings worth fixing and apply them with `apply-review`; synced PR comments
   (and your local ones) go to an `apply-pr-comments` thread. Findings and PR
   comment threads render inline in the diff.
-- An agent-written **tour** of the change (reading order, risk, watch-outs)
-  and on-demand **explanations** of single hunks.
+- An agent-written **narrative review** of the change: reading order, risk
+  and watch-outs, plus a step-by-step walk that covers every changed line,
+  with mermaid diagrams. When the code moves, the narrative is updated with a
+  chapter that explains the delta and why it was made. Also on-demand
+  **explanations** of single hunks.
 - PR repositories with no matching project are cloned and registered as
   projects automatically.
 - Each card shows its thread's live status; cards in Backlog or To Do move to

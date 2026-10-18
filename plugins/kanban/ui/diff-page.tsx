@@ -74,6 +74,7 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: 
       tour: {
         get: () => rpc.call("narrative_get", { ticketId: subjectId }),
         generate: () => rpc.call("narrative_generate", { ticketId: subjectId }),
+        story: () => rpc.call("narrative_story", { ticketId: subjectId }),
       },
       explanations: {
         list: async () => (await rpc.call("hunk_explanations_list", { ticketId: subjectId })).explanations,

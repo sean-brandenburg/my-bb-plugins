@@ -198,5 +198,13 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE tickets ADD COLUMN left_source INTEGER NOT NULL DEFAULT 0`,
     // An open PR already in Done most likely got there by leaving its source, so a returning review request reopens it.
     `UPDATE tickets SET left_source = 1 WHERE kind = 'pr' AND pr_state IN ('open', 'draft') AND column_id = 'done'`,
+    `CREATE TABLE IF NOT EXISTS narrative_snapshots (
+      narrative_id TEXT PRIMARY KEY,
+      previous_id TEXT,
+      head TEXT,
+      dirty INTEGER NOT NULL DEFAULT 0,
+      files TEXT NOT NULL,
+      delta TEXT
+    )`,
   ]);
 }

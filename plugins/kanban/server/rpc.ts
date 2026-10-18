@@ -115,6 +115,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     diff_comments_list: ({ ticketId }) => diffComments.listDiffComments(ticketId),
     narrative_get: async ({ ticketId }) => tour.latestNarrative(await resolveDiffSubject(ticketId)),
     narrative_generate: async ({ ticketId }) => tour.spawnNarrative(await resolveDiffSubject(ticketId)),
+    narrative_story: async ({ ticketId }) => tour.narrativeStory(await resolveDiffSubject(ticketId)),
     hunk_explanations_list: async ({ ticketId }) => tour.listExplanations(await resolveDiffSubject(ticketId)),
     code_review_threads: async ({ ticketId }) => ({ threads: codeReviewThreads.codeReviewThreads((await resolveDiffSubject(ticketId)).id) }),
     hunk_explain: async ({ ticketId, path, side, startLine, endLine }) => tour.explainHunk(await resolveDiffSubject(ticketId), path, side, Math.min(startLine, endLine), Math.max(startLine, endLine)),

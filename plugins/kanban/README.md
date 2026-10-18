@@ -186,12 +186,38 @@ its PR is reviewed and its review findings and comments are handed to agents.
   takes vim keys: j/k move, gg/G jump to the ends, Ctrl-D/Ctrl-U move half a
   list, Enter picks, / or i filters (Escape leaves the filter box), and
   Escape closes it.
-- **Tour**: "Generate tour" at the top of the changes view spawns one agent
-  thread that reads the diff and ends with a ```json kanban-narrative block:
-  a summary, every file in reading order tagged key / supporting /
-  mechanical with a note and the lines to look at, and a watch-out list. The
-  panel renders it, file names jump to the file, and it is marked stale when
-  the PR head moves.
+- **Narrative review**: "Write narrative" at the top of the changes view
+  spawns one agent thread. It follows the bundled `narrative-review` skill and
+  ends with a ```json kanban-narrative block. The block holds:
+  - a summary;
+  - every file in reading order, tagged key / supporting / mechanical, with a
+    note and the lines to look at;
+  - a watch-out list;
+  - the **steps**: an ordered walk through the change, each step a Markdown
+    explanation (with mermaid diagrams where they help) of the lines it
+    references. Every changed line is in at least one step, and lines can
+    appear in several.
+
+  Before finishing, the agent runs `bb kanban narrative-check` on its draft,
+  which lists any line its steps skip. The strip above the diff shows the
+  summary and reading order. "Step through" (or `S`) opens the narrative view:
+  - one step at a time, the explanation over just its lines;
+  - an outline beside it in wide views;
+  - `h`/`l` to step and `]]`/`[[` for chapters;
+  - `gf` or `i` to open or comment on an excerpt in the files view;
+  - `v` to mark files viewed once every step that touches them has been read.
+
+  Lines no step covers show up in a final "Not narrated" step, so stepping
+  through always shows every line. The board keeps the diff each narrative was
+  written against, so older narratives still render after the code moves.
+  When the code has changed since the last narrative, "Write update" asks for
+  a revision. Its chapter covers every line of the delta between the two heads:
+  for PRs a GitHub compare, for local cards a git diff from the earlier
+  narrative's HEAD that includes uncommitted and untracked files. It explains
+  why each line changed, using the commits in between and the findings and
+  comments the board recorded as addressed, and links each step to the new
+  narrative's steps. The reader steps from the earlier narrative, through
+  "What changed", into the current one.
 - **Hunk headers**: every hunk in the structural view starts with a GitHub-style
   `@@` row naming the line span and enclosing function. Its "Explain" button
   spawns one short agent thread (reusing the review, tour or card thread's
@@ -208,7 +234,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   "changed" chip in the tree. Findings from the latest review are shown,
   tagged "new", "carried" or "touched" (re-reviews made before carry-over
   stack on the latest full review instead).
-- **Risk heat**: the tour scores each file 1–5 for review attention; the file
+- **Risk heat**: the narrative scores each file 1–5 for review attention; the file
   tree tints rows from green to red accordingly (viewed files lose the tint),
   falling back to the worst finding severity in the file when there is no tour.
 - **Findings in the diff**: the latest completed review's open findings (not the applied ones) render

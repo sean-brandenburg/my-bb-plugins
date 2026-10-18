@@ -26,7 +26,7 @@ export function createCodeReviewThreads(ctx: KanbanContext) {
       threads.push({ threadId: row.thread_id, kind: "apply-comments", label: "Address comments", status: row.completed_at === null ? "running" : "completed", startedAt: row.started_at });
     }
     for (const row of stmts.narrativesForTicket.all(subjectId)) {
-      threads.push({ threadId: row.thread_id, kind: "narrative", label: "Tour", status: row.status, startedAt: row.created_at });
+      threads.push({ threadId: row.thread_id, kind: "narrative", label: "Narrative", status: row.status, startedAt: row.created_at });
     }
     for (const row of stmts.explanationsForTicket.all(subjectId)) {
       threads.push({ threadId: row.thread_id, kind: "explain", label: `Explain ${row.path.split("/").pop()}:${row.start_line}`, status: row.status, startedAt: row.created_at });
