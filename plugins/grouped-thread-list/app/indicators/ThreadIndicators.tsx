@@ -51,7 +51,7 @@ const PINNED_START: PickerStart = { entry: "pinned", inThreads: true };
 
 // bb's rail markup has no plugin contract; if a bb update renames it, the
 // indicators fall back to the thread-list slot.
-const RAIL = '[data-testid="app-nav-rail"]';
+const RAIL_ITEMS = '[data-testid="app-nav-rail"] nav > div';
 
 /**
  * bb scopes a plugin's styles to its root, so a host outside the slot wears
@@ -83,9 +83,8 @@ function usePluginPortalHost(active: boolean): HTMLElement | null {
 
 /**
  * Since bb 0.46 the thread-list slot sits in a column beside bb's icon rail,
- * which Slim sidebar hides, so the indicators join the rail itself. It goes
- * after the rail's nav, where Slim sidebar doesn't number buttons for its
- * Cmd+digit keys. bb can mount the rail after this slot, or remount it.
+ * which Slim sidebar hides, so the indicators join the rail itself, right
+ * under its items. bb can mount the rail after this slot, or remount it.
  */
 function useRailHost(): HTMLElement | null {
   const pluginId = experimental_usePluginId();
@@ -94,9 +93,9 @@ function useRailHost(): HTMLElement | null {
     const element = createPluginHost(pluginId);
     const attach = () => {
       if (element.isConnected) return;
-      const rail = document.querySelector(RAIL);
-      rail?.append(element);
-      setHost(rail === null ? null : element);
+      const items = document.querySelector(RAIL_ITEMS);
+      items?.append(element);
+      setHost(items === null ? null : element);
     };
     attach();
     const observer = new MutationObserver(attach);
@@ -388,7 +387,7 @@ export function ThreadIndicators() {
       className={
         railHost === null
           ? "flex flex-wrap items-start justify-center gap-2 px-2 pb-2"
-          : "flex flex-col items-center gap-2 pb-2"
+          : "flex flex-col items-center gap-2.5"
       }
     >
       <span

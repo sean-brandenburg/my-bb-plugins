@@ -16,13 +16,14 @@ function renderRail() {
         <span data-nav-rail-item="__bb__/automations"><button id="automations" disabled></button></span>
         <span data-nav-rail-item="__bb__/extensions"><button id="plugins"></button></span>
         <button id="more"><svg data-icon="MoreHorizontal"></svg></button>
+        <div data-bb-plugin-root data-bb-plugin="grouped-thread-list"><button id="inbox"></button></div>
       </nav>
     </div>
     <div data-sidebar="footer"><button id="settings"></button></div>`;
 }
 
 describe("rail slots", () => {
-  it("numbers Home and the visible items, leaving out More and the footer", () => {
+  it("numbers Home and the visible items, leaving out More, plugin buttons, and the footer", () => {
     renderRail();
     expect(railItems(document).map((button) => button.id)).toEqual([
       "home",

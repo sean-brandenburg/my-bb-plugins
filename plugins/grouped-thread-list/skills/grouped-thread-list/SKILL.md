@@ -6,8 +6,8 @@ description: "Inspect or change the Project switcher plugin: its double-Shift pr
 # Project switcher
 
 The Project switcher plugin (id `grouped-thread-list`) owns bb's sidebar
-thread-list slot. Instead of a thread list it shows two indicators at the
-bottom of bb's icon rail: an inbox icon with corner badges for the threads that
+thread-list slot. Instead of a thread list it shows two indicators under the
+navigation in bb's icon rail: an inbox icon with corner badges for the threads that
 need you (the picker's Unread "Needs you" group, top, filled) and the threads
 running (its "Running" group, bottom), and a pin icon with a badge for the
 pinned threads (Pinned's roots). Zero counts are hidden. Hovering a button lists up to

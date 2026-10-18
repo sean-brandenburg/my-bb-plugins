@@ -5,16 +5,20 @@ export const RAIL_SLOT_COUNT = 9;
 // leaves the commands with nothing to press.
 export const RAIL = '[data-testid="app-nav-rail"]';
 const MORE_ICON = 'svg[data-icon="MoreHorizontal"]';
+// Plugins that portal their own buttons into the rail, such as the Project
+// switcher's thread indicators, aren't navigation items.
+const PLUGIN_ROOT = "[data-bb-plugin-root]";
 
 /**
  * The rail's item buttons in order: Home and the visible navigation items,
- * without the More menu. Hidden items live in More, so they get no number.
+ * without the More menu or plugin buttons. Hidden items live in More, so they
+ * get no number.
  */
 export function railItems(doc: Document): HTMLButtonElement[] {
   const rail = doc.querySelector(RAIL);
   if (rail === null) return [];
   return [...rail.querySelectorAll<HTMLButtonElement>("nav button")].filter(
-    (button) => button.querySelector(MORE_ICON) === null,
+    (button) => button.querySelector(MORE_ICON) === null && button.closest(PLUGIN_ROOT) === null,
   );
 }
 

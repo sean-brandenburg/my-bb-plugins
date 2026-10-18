@@ -265,13 +265,16 @@ describe("sidebar thread indicators", () => {
     ).toBe("1");
   });
 
-  it("moves into bb's rail, after its nav, when the rail mounts", async () => {
+  it("moves into bb's rail, under its items, when the rail mounts", async () => {
     setPreferencesMirrorStorageForTest(null);
     renderIndicators();
     await screen.findByRole("button", { name: /need/ });
     const rail = document.createElement("div");
     rail.setAttribute("data-testid", "app-nav-rail");
-    rail.append(document.createElement("nav"));
+    const nav = document.createElement("nav");
+    const items = document.createElement("div");
+    nav.append(items);
+    rail.append(nav);
     document.body.append(rail);
     try {
       await waitFor(() =>
@@ -280,8 +283,7 @@ describe("sidebar thread indicators", () => {
         ).not.toBeNull(),
       );
       const inbox = screen.getByRole("button", { name: /need/ });
-      expect(rail.contains(inbox)).toBe(true);
-      expect(rail.querySelector("nav")?.contains(inbox)).toBe(false);
+      expect(items.contains(inbox)).toBe(true);
       expect(document.querySelectorAll("[data-thread-indicators]")).toHaveLength(1);
     } finally {
       rail.remove();
