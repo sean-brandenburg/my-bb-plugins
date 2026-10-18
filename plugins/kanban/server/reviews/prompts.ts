@@ -1,31 +1,25 @@
 import type { Ticket } from "../../shared/board";
-import { reviewSubjectSchema, type Review, type ReviewSubject } from "../../shared/review";
+import type { Review, ReviewSubject } from "../../shared/review";
 import { finishSteps } from "../apply-steps";
-import { prShortName } from "../github";
 import { earlierFindings } from "./findings";
 
-/** A PR card's subject is its pull request; other cards have none until their committed work is resolved. */
-export function prSubject(ticket: Ticket): ReviewSubject {
-  if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
-  const { repo, number, url } = ticket.pr;
-  return { kind: "pr", repo, number, url };
+/** How a review prompt names its subject, gets the subject's code into the worktree, and what a full review covers. */
+interface ReviewSetup {
+  /** Completes "Run a full code review of …" and "Re-review …". */
+  description: string;
+  preamble: string;
+  /** Unnumbered; the prompt numbers them, and a re-review's steps continue the count. */
+  steps: string[];
+  fullRange: string;
+  /** Completes "so it reviews exactly …". */
+  changesPhrase: string;
 }
 
-export function localSubject(commit: string, defaultBranch: string): ReviewSubject {
-  return reviewSubjectSchema.parse({ kind: "local", commit, defaultBranch });
-}
-
-/** How thread titles name the subject: `widgets#7`, or the commit's short sha. */
-export function subjectLabel(subject: ReviewSubject): string {
-  return subject.kind === "pr" ? prShortName(subject) : subject.commit.slice(0, 7);
-}
-
-/** What the review prompt calls the subject, how its worktree gets the code, and the range a full review covers. */
-function reviewSetup(subject: ReviewSubject, ticket: Ticket): { name: string; preamble: string; steps: string[]; fullRange: string; changes: string } {
+function reviewSetup(subject: ReviewSubject, ticket: Ticket): ReviewSetup {
   if (subject.kind === "pr") {
     const { repo, number, url } = subject;
     return {
-      name: `pull request ${repo}#${number}: "${ticket.title}" (${url})`,
+      description: `pull request ${repo}#${number}: "${ticket.title}" (${url})`,
       preamble:
         "Setup (this worktree is disposable; do not touch any other checkout). The `gh` and `git fetch` steps need your GitHub credentials, which the sandbox hides; running them with the sandbox disabled is expected and authorized here, so do that rather than stopping to ask.",
       steps: [
@@ -35,12 +29,12 @@ function reviewSetup(subject: ReviewSubject, ticket: Ticket): { name: string; pr
         '`bb kanban review-record --commit "$(git rev-parse HEAD)" --base "$BASE" --head "$HEAD_REF"` so the board knows which commit this review covers.',
       ],
       fullRange: "origin/$BASE...HEAD",
-      changes: "the PR's changes",
+      changesPhrase: "the PR's changes",
     };
   }
   const { commit, defaultBranch } = subject;
   return {
-    name: `the local work on "${ticket.title}" at commit ${commit}`,
+    description: `the local work on "${ticket.title}" at commit ${commit}`,
     preamble:
       "Setup (this worktree is disposable; do not touch any other checkout). Worktrees of this project share one repository, so the commit is already here and nothing needs fetching.",
     steps: [
@@ -48,7 +42,7 @@ function reviewSetup(subject: ReviewSubject, ticket: Ticket): { name: string; pr
       `\`bb kanban review-record --commit "$(git rev-parse HEAD)" --base "${defaultBranch}"\` so the board knows which commit this review covers.`,
     ],
     fullRange: `${defaultBranch}...HEAD`,
-    changes: `the commits since its merge base with \`${defaultBranch}\``,
+    changesPhrase: `the commits since its merge base with \`${defaultBranch}\``,
   };
 }
 
@@ -63,15 +57,15 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
   const range = sinceSha === null ? setup.fullRange : `${sinceSha}..HEAD`;
   return [
     sinceSha === null
-      ? `Run a full code review of ${setup.name}.`
-      : `Re-review ${setup.name}. The previous review covered commit ${sinceSha}. Review what changed since then, and re-check the earlier findings listed at the end of this prompt so every one still unaddressed carries forward into this review.`,
+      ? `Run a full code review of ${setup.description}.`
+      : `Re-review ${setup.description}. The previous review covered commit ${sinceSha}. Review what changed since then, and re-check the earlier findings listed at the end of this prompt so every one still unaddressed carries forward into this review.`,
     "",
     setup.preamble,
     ...setup.steps.map((step, index) => `${index + 1}. ${step}`),
     "",
     ...(sinceSha === null
       ? [
-          `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) so it reviews exactly ${setup.changes}. Let it spawn every applicable reviewer in parallel and compile the findings in its standard format.`,
+          `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) so it reviews exactly ${setup.changesPhrase}. Let it spawn every applicable reviewer in parallel and compile the findings in its standard format.`,
           "",
           "Your final message must be the code-review skill's compiled report verbatim, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card and rendered from that JSON.",
         ]
@@ -121,8 +115,8 @@ const SKIPPED_NOTE =
   "The board crosses off every finding handed to this round once it is recorded. If you could not apply some, add `--skipped <ids>` (comma-separated finding ids, e.g. `--skipped F2,F5`) to that command so they stay open.";
 
 /**
- * A PR review is applied by a fresh thread that fetches the PR head; a local review is applied by the card's own
- * thread, in the environment that holds the work, so it has nothing to set up and records the round by review id.
+ * A PR review is applied by a fresh thread that fetches the PR head. A local review's apply prompt sets nothing up,
+ * since its thread already has the commit checked out, and records the round by review id rather than by thread.
  */
 export function applyPrompt(subject: ReviewSubject, ticket: Ticket, review: Review, push: boolean, findingsBody: string): string {
   const drift =

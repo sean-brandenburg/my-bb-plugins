@@ -2,7 +2,7 @@ import { rpcContract } from "../contract";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToDump } from "./db/rows";
-import { prSubject } from "./reviews/prompts";
+import { prSubject } from "./reviews/subject";
 import type { Services } from "./services";
 
 /** The board's RPC surface; each handler hands off to the feature that owns it. */

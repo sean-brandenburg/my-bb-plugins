@@ -8,7 +8,8 @@ import type { KanbanContext } from "../context";
 import { rowToReview, type ReviewRow } from "../db/rows";
 import type { Projects } from "../projects";
 import { parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
-import { applyPrompt, prSubject, reviewPrompt, subjectLabel } from "./prompts";
+import { applyPrompt, reviewPrompt } from "./prompts";
+import { prSubject, subjectLabel } from "./subject";
 import { parseStringArray, shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";

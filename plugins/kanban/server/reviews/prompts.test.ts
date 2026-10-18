@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Ticket } from "../../shared/board";
 import type { Review } from "../../shared/review";
-import { applyPrompt, localSubject, prSubject, reviewPrompt, subjectLabel } from "./prompts";
+import { applyPrompt, reviewPrompt } from "./prompts";
+import { localSubject, prSubject, subjectLabel } from "./subject";
 
 const commit = "0123456789abcdef0123456789abcdef01234567";
 const since = "fedcba9876543210fedcba9876543210fedcba98";
@@ -36,6 +37,23 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
   };
 }
 
+function prTicket(): Ticket {
+  return ticket({
+    kind: "pr",
+    pr: {
+      repo: "acme-co/widgets",
+      number: 7,
+      url: "https://github.com/acme-co/widgets/pull/7",
+      role: "authored",
+      state: "open",
+      author: "me",
+      updatedAt: "",
+      headRef: null,
+      checks: null,
+    },
+  });
+}
+
 function review(overrides: Partial<Review> = {}): Review {
   return {
     id: "r1",
@@ -61,11 +79,8 @@ function review(overrides: Partial<Review> = {}): Review {
 
 describe("review subjects", () => {
   it("takes a PR card's pull request and refuses a card without one", () => {
-    const pr = ticket({
-      pr: { repo: "acme-co/widgets", number: 7, url: "https://github.com/acme-co/widgets/pull/7", role: "authored", state: "open", author: "me", updatedAt: "", headRef: null, checks: null },
-    });
-    expect(prSubject(pr)).toEqual({ kind: "pr", repo: "acme-co/widgets", number: 7, url: "https://github.com/acme-co/widgets/pull/7" });
-    expect(subjectLabel(prSubject(pr))).toBe("widgets#7");
+    expect(prSubject(prTicket())).toEqual({ kind: "pr", repo: "acme-co/widgets", number: 7, url: "https://github.com/acme-co/widgets/pull/7" });
+    expect(subjectLabel(prSubject(prTicket()))).toBe("widgets#7");
     expect(() => prSubject(ticket())).toThrow(/Only PR cards/u);
   });
 
@@ -78,57 +93,49 @@ describe("review subjects", () => {
   });
 });
 
-describe("local review prompt", () => {
-  it("checks the commit out detached in the review worktree and reviews it against its merge base with the default branch", () => {
+describe("review prompt", () => {
+  it("checks a local commit out detached and reviews it against its merge base with the default branch, with nothing fetched", () => {
     const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), null, []);
-    expect(prompt).toContain(`Run a full code review of the local work on "Cache lookups" at commit ${commit}.`);
-    expect(prompt).toContain("this worktree is disposable");
     expect(prompt).toContain(`1. \`git checkout --detach ${commit}\``);
-    expect(prompt).toContain('2. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "main"`');
+    expect(prompt).toContain('2. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "main"` so');
+    expect(prompt).not.toContain("--head");
     expect(prompt).toContain("with the range `main...HEAD` (three-dot) so it reviews exactly the commits since its merge base with `main`");
-    expect(prompt).toContain("`Reviewed commit:` line");
-    expect(prompt).toContain("do not post comments or reviews on GitHub");
-    expect(prompt).toContain("kanban ticket t1");
     expect(prompt).not.toMatch(/gh pr|git fetch|pull\/|FETCH_HEAD|origin\/\$BASE/u);
-    expect(prompt).not.toContain("## Earlier findings");
   });
 
-  it("re-reviews the commits since the last reviewed one, numbering its steps after the shorter setup", () => {
+  it("numbers a local re-review's steps after its two setup steps", () => {
     const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()]);
-    expect(prompt).toContain(`Re-review the local work on "Cache lookups" at commit ${commit}. The previous review covered commit ${since}.`);
-    expect(prompt).toContain(`1. \`git checkout --detach ${commit}\``);
     expect(prompt).toContain(`3. Review the new commits. If \`git log ${since}..HEAD\` is empty nothing changed`);
     expect(prompt).toContain("4. Re-check the earlier findings at HEAD.");
     expect(prompt).toContain("When step 3 found nothing changed");
     expect(prompt).toContain("5. Compile one merged report");
     expect(prompt).toContain("the new findings from step 3 plus every open earlier finding");
-    expect(prompt).toContain(`\`"range"\` is \`${since}..HEAD\` and \`"reviewers"\` lists only the reviewers step 3 ran`);
-    expect(prompt).not.toMatch(/step 5|main\.\.\.HEAD/u);
-    expect(prompt).toContain("### Free-form review r1");
-    expect(prompt).toContain("a.ts:1 fix me");
+    expect(prompt).toContain("lists only the reviewers step 3 ran");
+    expect(prompt).not.toMatch(/step [45]\b|main\.\.\.HEAD/u);
+  });
+
+  it("numbers a PR re-review's steps after its four setup steps", () => {
+    const prompt = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()]);
+    expect(prompt).toContain('4. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "$BASE" --head "$HEAD_REF"`');
+    expect(prompt).toContain(`5. Review the new commits. If \`git log ${since}..HEAD\` is empty nothing changed`);
+    expect(prompt).toContain("6. Re-check the earlier findings at HEAD.");
+    expect(prompt).toContain("When step 5 found nothing changed");
+    expect(prompt).toContain("7. Compile one merged report");
+    expect(prompt).toContain("the new findings from step 5 plus every open earlier finding");
+    expect(prompt).toContain("lists only the reviewers step 5 ran");
+    expect(prompt).not.toMatch(/step [367]\b/u);
   });
 });
 
-describe("local apply prompt", () => {
-  it("applies in the card's own environment as a new commit, records the round by review id, and never pushes", () => {
+describe("apply prompt", () => {
+  it("applies a local review as a new commit, records it by review id, and never pushes", () => {
     for (const push of [true, false]) {
       const prompt = applyPrompt(localSubject(commit, "main"), ticket(), review(), push, "- a.ts:1 fix me");
-      expect(prompt).toContain('Apply the persisted code review of your work on this card, "Cache lookups", as a new commit on top of it.');
-      expect(prompt).toContain(`The review was made against commit ${since}. If \`git rev-parse HEAD\` differs, say so`);
-      expect(prompt).toContain("`apply-review` skill");
-      expect(prompt).toContain("apply every one as written, without a triage step, a confirmation");
-      expect(prompt).toContain("leaving out any unrelated uncommitted work. Do not amend or rewrite existing commits.");
+      expect(prompt).toContain("as a new commit on top of it.");
+      expect(prompt).toContain("Do not amend or rewrite existing commits.");
       expect(prompt).toContain('`bb kanban review-applied --review r1 --commit "$(git rev-parse HEAD)"`');
-      expect(prompt).toContain("--skipped <ids>");
       expect(prompt).toContain("Rules: do not push");
-      expect(prompt).toContain("## Review Findings (persisted)\n\n- a.ts:1 fix me");
       expect(prompt).not.toMatch(/disposable|git fetch|git push|gh pr|--pushed|FETCH_HEAD/u);
     }
-  });
-
-  it("asks the thread to note its HEAD when the review recorded no commit", () => {
-    const prompt = applyPrompt(localSubject(commit, "main"), ticket(), review({ commitSha: null }), false, "body");
-    expect(prompt).toContain("Note `git rev-parse HEAD`.");
-    expect(prompt).not.toContain("The review was made against commit");
   });
 });

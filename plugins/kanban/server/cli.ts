@@ -6,7 +6,7 @@ import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
 import { countSeverities } from "./reviews/findings";
-import { prSubject } from "./reviews/prompts";
+import { prSubject } from "./reviews/subject";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
 
