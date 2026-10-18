@@ -1,17 +1,12 @@
-import { type KeyToken, keyToken } from "./keys.ts";
-import { createKeyReader, type Keymap, SEQUENCE_TIMEOUT_MS } from "./reader.ts";
-import { inWidgetWithin, isShown, isTextEntry, OPEN_DIALOG, OWN_KEYS, overlayOver, PRESSABLE } from "./targets.ts";
+import { createKeyHandler, type KeyContext } from "./handler.ts";
+import type { KeyToken } from "./keys.ts";
+import type { Keymap } from "./reader.ts";
+import { inWidgetWithin, isShown, isTextEntry, OPEN_DIALOG, OWN_KEYS, overlayOver } from "./targets.ts";
 
-export interface KeyContext {
-  event: KeyboardEvent;
-  /** Where the key came from; null when focus was on the page itself. */
-  target: Element | null;
-  keys: string;
-  count: number | null;
-}
+export type { KeyContext } from "./handler.ts";
 
 export interface KeyScopeOptions<C> {
-  keymap: Keymap<C>;
+  keymap: Keymap<C> | (() => Keymap<C>);
   /** Runs a command; false leaves the key to the page, as if unbound. */
   onCommand: (command: C, context: KeyContext) => boolean | void;
   /**
@@ -35,6 +30,12 @@ export interface KeyScopeOptions<C> {
   timeoutMs?: number;
   /** Listens before bb and vim-mode, and keeps a key the scope takes from reaching them. */
   capture?: boolean;
+  /**
+   * Listens on the root itself rather than the window, so the scope hears its keys before any
+   * window scope does: a list nested in a bigger surface (a file tree in a diff) takes j and k,
+   * and the keys it doesn't bind go on to the surface. Keys from the page body never reach it.
+   */
+  listenOn?: "window" | "root";
   /**
    * Moves focus onto the root as the scope starts if it is on the page body or something unrelated
    * (bb's sidebar link that opened the page), where the keys would be ignored.
@@ -94,26 +95,24 @@ export function bindKeyScope<C>(root: HTMLElement, options: KeyScopeOptions<C>):
   const group = groupOf(name);
   const member: Member = { root, primary: options.primary === true, alsoWithin: options.alsoWithin };
   group.members.push(member);
-  const timeout = options.timeoutMs ?? SEQUENCE_TIMEOUT_MS;
-  const reader = createKeyReader(options.keymap, { timeoutMs: timeout, counts: options.counts });
   const blockedBy = options.blockedBy ?? OPEN_DIALOG;
   const view = root.ownerDocument.defaultView ?? window;
-  let shownPending = "";
-  let expiry = 0;
+  const capture = options.capture === true;
 
-  const publish = () => {
-    view.clearTimeout(expiry);
-    // The reader drops a stale sequence only on the next key; a mode label shouldn't wait for one.
-    if (reader.pending !== "" && Number.isFinite(timeout)) {
-      expiry = view.setTimeout(() => {
-        reader.reset();
-        publish();
-      }, timeout);
-    }
-    if (reader.pending === shownPending) return;
-    shownPending = reader.pending;
-    options.onPending?.(shownPending);
-  };
+  const handler = createKeyHandler<C>({
+    keymap: options.keymap,
+    onCommand: options.onCommand,
+    onTextEscape: options.onTextEscape,
+    intercept: options.intercept,
+    onPending: options.onPending,
+    counts: options.counts,
+    timeoutMs: options.timeoutMs,
+    stopImmediate: capture,
+    self: root,
+    active: () => isShown(root),
+    accepts: (target) => (target === null ? owner(group) === root : withinMember(member, target)) && (target === null || !inWidgetWithin(target, root)),
+    blocked: () => overlayOver(root, blockedBy),
+  });
 
   const claim = () => {
     group.last = root;
@@ -131,53 +130,20 @@ export function bindKeyScope<C>(root: HTMLElement, options: KeyScopeOptions<C>):
     if (unrelated) root.focus({ preventScroll: true });
   }
 
-  const take = (event: KeyboardEvent) => {
-    event.preventDefault();
-    if (options.capture === true) event.stopImmediatePropagation();
-  };
-
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return;
-    const token = keyToken(event);
-    if (token === null || !isShown(root)) return;
-    // Before the target checks: a portaled menu the plugin steps through sits outside the root.
-    if (options.intercept?.(event, token) === true) {
-      reader.reset();
-      publish();
-      take(event);
-      return;
-    }
-    const raw = event.target instanceof Element ? event.target : null;
-    const target = raw === null || raw === root.ownerDocument.body || raw === root.ownerDocument.documentElement ? null : raw;
-    if (target === null ? owner(group) !== root : !withinMember(member, target)) return;
-    if ((target !== null && inWidgetWithin(target, root)) || overlayOver(root, blockedBy)) return;
-    if (target !== null && isTextEntry(target)) {
-      if (token !== "<Esc>" || options.onTextEscape === undefined) return;
-      const field = target instanceof HTMLElement ? target : (target.closest<HTMLElement>("[contenteditable]") ?? root);
-      if (options.onTextEscape(field, event) !== false) take(event);
-      return;
-    }
-    if ((token === "<CR>" || token === "<Space>") && target !== null && target !== root && target.closest(PRESSABLE) !== null) return;
-    const read = reader.read(token, event.timeStamp);
-    publish();
-    if (read.kind === "none") return;
-    if (read.kind === "pending") {
-      take(event);
-      return;
-    }
-    if (options.onCommand(read.command, { event, target, keys: read.keys, count: read.count }) !== false) take(event);
-  };
-
-  const capture = options.capture === true;
-  view.addEventListener("keydown", onKeyDown, capture);
+  const listener: EventTarget = options.listenOn === "root" ? root : view;
+  const onKeyDown = (event: Event) => void handler.handle(event as KeyboardEvent);
+  // A click between the keys of a sequence ends it, as moving the cursor does in vim.
+  const forget = () => handler.reset();
+  listener.addEventListener("keydown", onKeyDown, capture);
+  view.addEventListener("pointerdown", forget, true);
   return () => {
-    view.removeEventListener("keydown", onKeyDown, capture);
-    view.clearTimeout(expiry);
+    listener.removeEventListener("keydown", onKeyDown, capture);
+    view.removeEventListener("pointerdown", forget, true);
+    handler.dispose();
     root.removeEventListener("focusin", claim);
     root.removeEventListener("pointerdown", claim);
     group.members.splice(group.members.indexOf(member), 1);
     if (group.last === root) group.last = null;
     if (group.members.length === 0) groups.delete(name);
-    if (shownPending !== "") options.onPending?.("");
   };
 }

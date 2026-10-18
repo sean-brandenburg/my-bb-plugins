@@ -101,10 +101,12 @@ export interface KeyHelpSection {
 }
 
 /**
- * Keys a shortcuts list shows that the keymap doesn't bind, leaving out `elsewhere`: keys bb, the
- * browser, or a focused control handles.
+ * Keys a shortcuts list shows that none of the keymaps bind, leaving out `elsewhere`: keys bb, the
+ * browser, or a focused control handles. Write the list's keys as `displaySequence` does
+ * (`gg`, `Ctrl-d`, `Enter`) so they can be checked.
  */
-export function unboundHelpKeys(sections: readonly KeyHelpSection[], keymap: Keymap<unknown>, elsewhere: Iterable<string> = []): string[] {
-  const bound = new Set([...Object.keys(keymap).map(displaySequence), ...elsewhere]);
+export function unboundHelpKeys(sections: readonly KeyHelpSection[], keymap: Keymap<unknown> | readonly Keymap<unknown>[], elsewhere: Iterable<string> = []): string[] {
+  const keymaps: readonly Keymap<unknown>[] = Array.isArray(keymap) ? keymap : [keymap as Keymap<unknown>];
+  const bound = new Set([...keymaps.flatMap((map) => Object.keys(map).map(displaySequence)), ...elsewhere]);
   return sections.flatMap((section) => section.keys.flatMap(({ keys }) => keys.filter((key) => !bound.has(key))));
 }

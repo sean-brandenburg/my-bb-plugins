@@ -11,6 +11,22 @@ export const NAV_GROUP = "[data-nav-group]";
 
 export type ListMotion = "up" | "down" | "top" | "bottom" | "left" | "right" | "open";
 
+/** vim's keys for `runListMotion`: j/k/gg/G, h/l across tree levels and toolbars, o and Enter to open. */
+export const ROW_KEYS: Readonly<Record<string, ListMotion>> = {
+  j: "down",
+  k: "up",
+  "<Down>": "down",
+  "<Up>": "up",
+  gg: "top",
+  G: "bottom",
+  h: "left",
+  l: "right",
+  "<Left>": "left",
+  "<Right>": "right",
+  o: "open",
+  "<CR>": "open",
+};
+
 /**
  * A row in display order; `parent` is the index of the group it sits in. A `fixed` group is
  * always open (a message in a list), so h leaves it rather than closing it.
@@ -22,21 +38,24 @@ export type ListAction = { kind: "focus"; index: number } | { kind: "activate"; 
 /**
  * What a motion does from row `current`: move the cursor, or activate a row (open a note, toggle
  * a folder). h and l walk the tree the way file trees do. With no cursor yet, any motion lands on
- * `start`. Null when there's nowhere to go, so the surface may use the key itself.
+ * `start`. A count moves j and k that many rows, and sends gg and G to that row, as in vim's `5G`.
+ * Null when there's nowhere to go, so the surface may use the key itself.
  */
-export function listAction(rows: readonly NavRow[], current: number | null, motion: ListMotion, start: number): ListAction | null {
+export function listAction(rows: readonly NavRow[], current: number | null, motion: ListMotion, start: number, count: number | null = null): ListAction | null {
   if (rows.length === 0) return null;
-  if (current === null || current < 0 || current >= rows.length) return { kind: "focus", index: Math.min(Math.max(start, 0), rows.length - 1) };
+  const last = rows.length - 1;
+  const clamp = (index: number) => Math.min(Math.max(index, 0), last);
+  if (current === null || current < 0 || current >= rows.length) return { kind: "focus", index: clamp(start) };
   const row = rows[current]!;
   switch (motion) {
     case "up":
-      return { kind: "focus", index: Math.max(current - 1, 0) };
+      return { kind: "focus", index: clamp(current - (count ?? 1)) };
     case "down":
-      return { kind: "focus", index: Math.min(current + 1, rows.length - 1) };
+      return { kind: "focus", index: clamp(current + (count ?? 1)) };
     case "top":
-      return { kind: "focus", index: 0 };
+      return { kind: "focus", index: count === null ? 0 : clamp(count - 1) };
     case "bottom":
-      return { kind: "focus", index: rows.length - 1 };
+      return { kind: "focus", index: count === null ? last : clamp(count - 1) };
     case "open":
       if (row.kind === "group" && row.fixed) return rows[current + 1]?.parent === current ? { kind: "focus", index: current + 1 } : null;
       return { kind: "activate", index: current };
@@ -88,7 +107,7 @@ export function readRows(container: Element): { elements: HTMLElement[]; rows: N
 
 /** The row holding focus, if focus is on or in one of `elements`. */
 export function cursorIndex(elements: readonly HTMLElement[]): number | null {
-  const active = document.activeElement;
+  const active = elements[0]?.ownerDocument.activeElement ?? null;
   const index = elements.findIndex((element) => element === active || (active !== null && element.contains(active)));
   return index === -1 ? null : index;
 }
@@ -108,7 +127,7 @@ export function toolbarButtons(row: HTMLElement): HTMLButtonElement[] {
 export function focusRow(element: HTMLElement): void {
   const toolbar = isToolbar(element);
   const buttons = toolbar ? toolbarButtons(element) : [];
-  const target = toolbar ? (buttons.find((button) => button === document.activeElement) ?? buttons[0] ?? element) : element;
+  const target = toolbar ? (buttons.find((button) => button === element.ownerDocument.activeElement) ?? buttons[0] ?? element) : element;
   target.focus({ preventScroll: true });
   target.scrollIntoView({ block: "nearest" });
 }
@@ -133,6 +152,17 @@ export function fieldInput(row: HTMLElement): HTMLElement | null {
   return row.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled)");
 }
 
+/**
+ * Escape out of a text box onto the keys: focus goes to the row holding the box (any
+ * `[data-nav-row]`), else `fallback`. False when there was nowhere to go.
+ */
+export function returnToRow(field: Element, fallback?: HTMLElement | null): boolean {
+  const row = field.parentElement?.closest<HTMLElement>(NAV_ROW) ?? fallback ?? null;
+  if (row === null) return false;
+  focusRow(row);
+  return true;
+}
+
 /** The field row around a text box, so Escape from typing leaves the cursor on it. */
 export function fieldRowOf(element: Element | null): HTMLElement | null {
   return element?.closest<HTMLElement>('[data-nav-row="field"]') ?? null;
@@ -145,7 +175,7 @@ export function fieldRowOf(element: Element | null): HTMLElement | null {
 export function pageCursor(rows: readonly HTMLElement[], current: HTMLElement, step: 1 | -1, share: number): void {
   const pane = scrollParent(current);
   const from = current.getBoundingClientRect().top;
-  const target = from + step * share * (pane?.clientHeight ?? window.innerHeight);
+  const target = from + step * share * (pane?.clientHeight ?? current.ownerDocument.defaultView?.innerHeight ?? 0);
   let best = current;
   for (const row of rows) {
     if (Math.abs(row.getBoundingClientRect().top - target) < Math.abs(best.getBoundingClientRect().top - target)) best = row;
@@ -161,7 +191,8 @@ export function pageCursor(rows: readonly HTMLElement[], current: HTMLElement, s
  */
 export function scrollKeepingCursor(scroller: HTMLElement, items: readonly HTMLElement[], current: HTMLElement | null, step: 1 | -1, share = 0.5): HTMLElement | null {
   scroller.scrollBy({ top: step * scroller.clientHeight * share, behavior: "instant" });
-  const view = scroller === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
+  const doc = scroller.ownerDocument;
+  const view = scroller === doc.scrollingElement ? { top: 0, bottom: doc.defaultView?.innerHeight ?? 0 } : scroller.getBoundingClientRect();
   const inView = items.filter((item) => {
     const rect = item.getBoundingClientRect();
     return rect.top >= view.top && rect.bottom <= view.bottom;
@@ -175,6 +206,8 @@ export interface ListCommandOptions {
   start?: (elements: HTMLElement[]) => number;
   /** Takes over activating a row (a tree row toggling or opening); the row is clicked otherwise. */
   onActivate?: (row: HTMLElement, motion: "open" | "right" | "left") => void;
+  /** The command's count, from `KeyContext.count`. */
+  count?: number | null;
 }
 
 /**
@@ -191,7 +224,7 @@ export function runListMotion(container: Element, motion: ListMotion, options: L
   const row = current === null ? null : elements[current]!;
   if (row !== null && isToolbar(row) && motion !== "up" && motion !== "down" && motion !== "top" && motion !== "bottom") {
     const buttons = toolbarButtons(row);
-    const at = buttons.findIndex((button) => button === document.activeElement);
+    const at = buttons.findIndex((button) => button === row.ownerDocument.activeElement);
     if (motion === "open") {
       (buttons[at] ?? buttons[0])?.click();
       return true;
@@ -208,7 +241,7 @@ export function runListMotion(container: Element, motion: ListMotion, options: L
     editField(input, "end");
     return true;
   }
-  const action = listAction(rows, current, motion, options.start?.(elements) ?? 0);
+  const action = listAction(rows, current, motion, options.start?.(elements) ?? 0, options.count ?? null);
   if (action === null) return false;
   const element = elements[action.index]!;
   if (action.kind === "focus") {

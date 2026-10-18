@@ -36,7 +36,7 @@ export function overlayOver(root: Element, selector: string = OPEN_DIALOG): bool
 
 export function scrollParent(element: Element): HTMLElement | null {
   for (let node = element.parentElement; node !== null; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node);
+    const { overflowY } = (node.ownerDocument.defaultView ?? window).getComputedStyle(node);
     if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return node;
   }
   return null;

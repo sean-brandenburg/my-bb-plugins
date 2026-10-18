@@ -18,11 +18,21 @@ export {
   type NavRow,
   pageCursor,
   readRows,
+  returnToRow,
+  ROW_KEYS,
   runListMotion,
   runListScroll,
   scrollKeepingCursor,
   stepWrapping,
   toolbarButtons,
 } from "./rows.ts";
-export { bindKeyScope, type KeyContext, type KeyScopeOptions } from "./scope.ts";
+export { bindKeys, type BindKeysOptions, createKeyHandler, type KeyContext, type KeyHandler, type KeyHandlerOptions } from "./handler.ts";
+export { renderKeyHelp } from "./help-dom.ts";
+export { createMenuKeys, MENU_ITEM, stepMenu } from "./menu.ts";
+export { focusWhenShown } from "./focus.ts";
+export { mapKeymap, type Motion, MOTION_KEYS, type PaneScrollOptions, scrollPane, type StepOptions, stepIndex, TEXT_BOX_MOTION_KEYS, visibleRowCount } from "./motion.ts";
+export { createPickerKeys, type PickerKeys, type PickerKeysOptions } from "./picker.ts";
+export { bindKeyScope, type KeyScopeOptions } from "./scope.ts";
+export { compileSearch, createSearchBoxKeys, createSearchHighlights, matchOffsets, revealRange, type SearchBoxKeysOptions, type SearchHighlights, textRanges } from "./search.ts";
+export { type Box, type Direction, spatialStep } from "./spatial.ts";
 export { ANY_OVERLAY, inWidgetWithin, isShown, isTextEntry, OPEN_DIALOG, overlayOver, OWN_KEYS, PRESSABLE, scrollParent } from "./targets.ts";
