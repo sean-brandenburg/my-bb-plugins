@@ -49,19 +49,28 @@ const BUTTON_CLASS = cn(
 const UNREAD_START: PickerStart = { entry: "unread", inThreads: true };
 const PINNED_START: PickerStart = { entry: "pinned", inThreads: true };
 
+// bb's rail markup has no plugin contract; if a bb update renames it, the
+// indicators fall back to the thread-list slot.
+const RAIL = '[data-testid="app-nav-rail"]';
+
 /**
- * A body-level host for the flyout, so the sidebar's overflow can't clip it.
- * bb scopes a plugin's styles to its root, so the host wears the root's
- * attributes or the flyout's own utilities wouldn't apply.
+ * bb scopes a plugin's styles to its root, so a host outside the slot wears
+ * the root's attributes or the plugin's own utilities wouldn't apply.
  */
+function createPluginHost(pluginId: string): HTMLElement {
+  const element = document.createElement("div");
+  element.setAttribute("data-bb-plugin-root", "");
+  element.setAttribute("data-bb-plugin", pluginId);
+  return element;
+}
+
+/** A body-level host for the flyout, so the sidebar's overflow can't clip it. */
 function usePluginPortalHost(active: boolean): HTMLElement | null {
   const pluginId = experimental_usePluginId();
   const [host, setHost] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (!active) return;
-    const element = document.createElement("div");
-    element.setAttribute("data-bb-plugin-root", "");
-    element.setAttribute("data-bb-plugin", pluginId);
+    const element = createPluginHost(pluginId);
     document.body.append(element);
     setHost(element);
     return () => {
@@ -69,6 +78,35 @@ function usePluginPortalHost(active: boolean): HTMLElement | null {
       setHost(null);
     };
   }, [active, pluginId]);
+  return host;
+}
+
+/**
+ * Since bb 0.46 the thread-list slot sits in a column beside bb's icon rail,
+ * which Slim sidebar hides, so the indicators join the rail itself. It goes
+ * after the rail's nav, where Slim sidebar doesn't number buttons for its
+ * Cmd+digit keys. bb can mount the rail after this slot, or remount it.
+ */
+function useRailHost(): HTMLElement | null {
+  const pluginId = experimental_usePluginId();
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const element = createPluginHost(pluginId);
+    const attach = () => {
+      if (element.isConnected) return;
+      const rail = document.querySelector(RAIL);
+      rail?.append(element);
+      setHost(rail === null ? null : element);
+    };
+    attach();
+    const observer = new MutationObserver(attach);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      element.remove();
+      setHost(null);
+    };
+  }, [pluginId]);
   return host;
 }
 
@@ -315,11 +353,12 @@ function CornerBadge({ value, className }: { value: number; className: string })
 }
 
 /**
- * At-a-glance counts under the sidebar's navigation: threads that need you and
- * threads still running, then pinned threads. Hovering one lists its threads;
- * clicking it opens the picker on them, which is also the keyboard path.
+ * At-a-glance counts in the sidebar's rail: threads that need you and threads
+ * still running, then pinned threads. Hovering one lists its threads; clicking
+ * it opens the picker on them, which is also the keyboard path.
  */
 export function ThreadIndicators() {
+  const railHost = useRailHost();
   const { projects } = useSidebarData();
   const draftIds = useSidebarThreadDraftIds();
   const threads = useMemo(
@@ -343,10 +382,14 @@ export function ThreadIndicators() {
   const needsYou = inbox.needsYou.length;
   const running = inbox.running.length;
   const pinned = inbox.pinned.length;
-  return (
+  const indicators = (
     <div
       data-thread-indicators=""
-      className="flex flex-wrap items-start justify-center gap-2 px-2 pb-2"
+      className={
+        railHost === null
+          ? "flex flex-wrap items-start justify-center gap-2 px-2 pb-2"
+          : "flex flex-col items-center gap-2 pb-2"
+      }
     >
       <span
         aria-hidden="true"
@@ -422,4 +465,5 @@ export function ThreadIndicators() {
       />
     </div>
   );
+  return railHost === null ? indicators : createPortal(indicators, railHost);
 }

@@ -265,6 +265,32 @@ describe("sidebar thread indicators", () => {
     ).toBe("1");
   });
 
+  it("moves into bb's rail, after its nav, when the rail mounts", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    renderIndicators();
+    await screen.findByRole("button", { name: /need/ });
+    const rail = document.createElement("div");
+    rail.setAttribute("data-testid", "app-nav-rail");
+    rail.append(document.createElement("nav"));
+    document.body.append(rail);
+    try {
+      await waitFor(() =>
+        expect(
+          rail.querySelector('[data-bb-plugin-root] [data-thread-indicators]'),
+        ).not.toBeNull(),
+      );
+      const inbox = screen.getByRole("button", { name: /need/ });
+      expect(rail.contains(inbox)).toBe(true);
+      expect(rail.querySelector("nav")?.contains(inbox)).toBe(false);
+      expect(document.querySelectorAll("[data-thread-indicators]")).toHaveLength(1);
+    } finally {
+      rail.remove();
+    }
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /need/ }).isConnected).toBe(true),
+    );
+  });
+
   it("lists the threads on hover and opens the one you click", async () => {
     setPreferencesMirrorStorageForTest(null);
     const { inspection } = renderIndicators();
