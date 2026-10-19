@@ -231,7 +231,7 @@ function TicketDetails({
         </div>
       </header>
 
-      <HandoffBrief ticket={ticket} rpc={rpc} onOpenThread={onOpenThread} />
+      <HandoffBrief ticket={ticket} rpc={rpc} run={run} pending={pending} onOpenThread={onOpenThread} />
 
       <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
         <Property label="Column">

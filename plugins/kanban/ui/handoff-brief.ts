@@ -1,4 +1,4 @@
-import { LOOP_ROUND_CAP, NEEDS_YOU_REASON_LABEL, type AttentionLevel, type CheckCommand, type ChecksOutcome, type Evidence, type LoopFinding, type LoopState } from "../shared/loop";
+import { LOOP_ROUND_CAP, NEEDS_YOU_REASON_LABEL, type AttentionLevel, type CheckCommand, type ChecksOutcome, type Evidence, type LoopDispute, type LoopFinding, type LoopState } from "../shared/loop";
 import { findingTallies, type Dispute, type Finding, type FindingSeverity, type Review, type ReviewReport } from "../shared/review";
 
 export type BriefReview = Pick<Review, "id" | "status" | "createdAt" | "report">;
@@ -12,7 +12,10 @@ export interface BriefFinding {
 }
 
 export interface BriefRound {
-  round: number;
+  /** The loop's own round number, as its fix prompt gave it; null for a round the user started, which the cap doesn't count. */
+  round: number | null;
+  /** The user's diff comments it sent, for a round that sent them rather than findings. */
+  comments: number;
   handed: number;
   /** What the re-review found addressed; null while no re-review has looked, when only the thread's answers are known. */
   resolved: Array<{ id: string; title: string }> | null;
@@ -27,7 +30,8 @@ export type BriefSection =
   | { kind: "evidence"; reran: Array<ChecksOutcome & { command: string | null }>; reranBy: CheckCommand["source"] | null; claimed: Evidence["commands"]; screenshots: string[] }
   | { kind: "history"; rounds: BriefRound[]; acceptedDisputes: Array<{ id: string; title: string; dispute: Dispute }>; polish: Array<{ id: string; title: string }> }
   | { kind: "left-out"; deferred: BriefFinding[]; dropped: BriefFinding[]; preExisting: BriefFinding[]; leftOpen: LoopFinding[] }
-  | { kind: "disputes"; disputes: Array<{ id: string; severity: FindingSeverity; title: string; agent: string; verifier: string }> };
+  /** `decidable` is false for a dispute the loop doesn't hold, such as one from before monitoring; `decision` is the user's. */
+  | { kind: "disputes"; disputes: Array<{ id: string; severity: FindingSeverity; title: string; agent: string; verifier: string; decidable: boolean; decision: LoopDispute["decision"] }> };
 
 export type BriefSectionKind = BriefSection["kind"];
 
@@ -109,7 +113,8 @@ export function handoffBrief(loop: LoopState | null, reviews: readonly BriefRevi
   const resolvedEntries = reviews.flatMap((review) => review.report?.resolved ?? []);
   const acceptedDisputes: Array<{ id: string; title: string; dispute: Dispute }> = [];
   const polish: Array<{ id: string; title: string }> = [];
-  const rounds = loop.rounds.map((round, index): BriefRound => {
+  let loopRounds = 0;
+  const rounds = loop.rounds.map((round): BriefRound => {
     const answers = Object.values(round.answers);
     const claimedCounts = { fixed: answers.filter((answer) => answer.answer === "fixed").length, disputed: answers.filter((answer) => answer.answer === "disputed").length };
     const findings = new Map((byId.get(round.reviewId)?.report?.findings ?? []).map((finding) => [finding.id, finding]));
@@ -124,7 +129,8 @@ export function handoffBrief(loop: LoopState | null, reviews: readonly BriefRevi
       else if (original?.category === "style") polish.push({ id: entry.id, title });
     }
     return {
-      round: index + 1,
+      round: round.owner === "user" ? null : (loopRounds += 1),
+      comments: round.comments,
       handed: round.handed.length,
       resolved: resolved.length === 0 ? null : resolved.map(({ entry, title }) => ({ id: entry.id, title })),
       claimed: claimedCounts,
@@ -147,7 +153,10 @@ export function handoffBrief(loop: LoopState | null, reviews: readonly BriefRevi
   if (rejected.length > 0) {
     sections.push({
       kind: "disputes",
-      disputes: rejected.map((finding) => ({ id: finding.id, severity: finding.severity, title: finding.title, agent: finding.dispute!.reason, verifier: finding.dispute!.note })),
+      disputes: rejected.map((finding) => {
+        const held = loop.disputes.find((dispute) => dispute.id === finding.id);
+        return { id: finding.id, severity: finding.severity, title: finding.title, agent: finding.dispute!.reason, verifier: finding.dispute!.note, decidable: held !== undefined, decision: held?.decision ?? null };
+      }),
     });
   }
   return sections;

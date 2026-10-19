@@ -30,7 +30,7 @@ export function builderContract(isPr: boolean, checkCommand: string | null): str
 const OUTPUT_FENCE = "~~~~~";
 
 /** The words for each prompt the loop sends into the card's thread. */
-export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" }>, ticket: Ticket, checkCommand: string | null): string {
+export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" | "comments" }>, ticket: Ticket, checkCommand: string | null): string {
   switch (prompt.kind) {
     case "monitoring":
       return [
@@ -52,14 +52,49 @@ export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" }>, tic
         "",
         "Fix what makes it fail, commit, run the checks yourself, and report with `bb kanban ready` again. Never move the card.",
       ].join("\n");
+    case "land":
+      return [
+        `The user read the board's handoff brief for "${ticket.title}" and accepted the change. Land it now.`,
+        "",
+        "Land it the way this project finishes its work: read its AGENTS.md or CLAUDE.md (at the repository root, and in the directories you changed) and follow the steps they give for a finished change, such as committing, applying it to the main branch, building and installing it. Push only if those steps say to. If they describe no finishing steps, ask the user how to land it rather than guessing.",
+        "",
+        "Once it has landed, run `bb kanban landed`; the board then moves the card to Done. Never move the card yourself.",
+      ].join("\n");
+    case "rethink":
+      return [
+        `The user stopped the board's review loop on "${ticket.title}" to rethink the approach: the way it is built looks wrong, and patching it round by round won't fix that.`,
+        "",
+        "Step back from the current implementation and reconsider the approach. Propose a new one to the user, saying what you would change, what you would keep and why, and wait for their go-ahead before rebuilding.",
+        "",
+        "Once approved, build it and finish as before; the loop counts its rounds again from that ready.",
+        "",
+        builderContract(ticket.pr !== null, checkCommand),
+      ].join("\n");
   }
 }
 
-/** A fix round: the review's findings triaged apply, which the card's thread fixes in one commit before reporting ready. */
-export function fixPromptText(ticket: Ticket, round: number, reviewedCommit: string | null, findings: Finding[]): string {
+/** The user's diff comments, sent back to the card's thread as a round of their own. */
+export function commentsPromptText(ticket: Ticket, body: string): string {
+  const commit = ticket.pr === null ? "commit the changes on your branch (do not push)" : "commit the changes and push them to the PR branch (never force-push)";
+  return [
+    `The user read the board's handoff brief for "${ticket.title}" and sent their review comments on the changes back to you. This round is theirs; it doesn't count toward the review loop's cap.`,
+    "",
+    "Apply every comment as written: the user chose them, so there is no triage step and none is dropped. Change only what the comments ask for. Then answer each inline comment (ids starting `local:` or `review-comment:`) in its thread on the board: `bb kanban comment-reply <id> \"<one or two sentences: what you changed, or why you did not>\"`.",
+    "",
+    `Then ${commit}, run the checks again, and report with \`bb kanban ready\` as before; the board re-checks and re-reviews what changed. Never move the card.`,
+    "",
+    body,
+  ].join("\n");
+}
+
+/**
+ * A fix round: the review's findings triaged apply, which the card's thread fixes in one commit before reporting ready.
+ * `round` is null for a round the user started, by pulling a finding back in or upholding a dispute.
+ */
+export function fixPromptText(ticket: Ticket, round: number | null, reviewedCommit: string | null, findings: Finding[]): string {
   const commit = ticket.pr === null ? "Commit the fixes on your branch (do not push)" : "Commit the fixes and push them to the PR branch (never force-push)";
   return [
-    `The board's code review${reviewedCommit === null ? "" : ` of commit ${reviewedCommit}`} found ${findings.length === 1 ? "a finding" : `${findings.length} findings`} to fix in this change, "${ticket.title}". This is round ${round} of the review loop.`,
+    `The board's code review${reviewedCommit === null ? "" : ` of commit ${reviewedCommit}`} found ${findings.length === 1 ? "a finding" : `${findings.length} findings`} to fix in this change, "${ticket.title}". ${round === null ? "The user sent them to fix themselves, overruling triage or the dispute you made, so fix them rather than disputing again; this round doesn't count toward the loop's cap." : `This is round ${round} of the review loop.`}`,
     "",
     "Fix exactly these findings, and nothing beyond them. A finding's locations are every instance of its bug class: fix the class in full, at every instance, but add no refactors, features or clean-ups the findings don't ask for. The next review checks that the fix commits stay within these findings.",
     "",

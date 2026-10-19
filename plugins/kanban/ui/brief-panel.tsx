@@ -2,11 +2,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ATTENTION_LEVEL_LABEL, type AttentionLevel } from "../shared/loop";
 import type { Ticket } from "../shared/board";
 import type { FindingSeverity, Review } from "../shared/review";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import type { Rpc } from "./data";
-import { Badge, Group } from "./primitives";
-import { toastError } from "./actions";
+import { Badge, COMPACT, Group } from "./primitives";
+import { toastError, type RunAction } from "./actions";
+import type { BriefAction } from "./board-nav";
 import { BRIEF_SECTION_TITLE, briefShown, handoffBrief, type BriefFinding, type BriefSection } from "./handoff-brief";
 
 const LEVEL_TONE: Record<AttentionLevel, "success" | "warning" | "danger"> = { glance: "success", read: "warning", scrutinize: "danger" };
@@ -37,15 +39,31 @@ function Items({ children }: { children: ReactNode }) {
   return <ul className="flex flex-col gap-1 text-xs">{children}</ul>;
 }
 
-function FindingItem({ id, severity, title, note }: { id: string; severity: FindingSeverity; title: string; note?: string }) {
+/** `action` makes the row a finding the card's per-finding keys act on. */
+function FindingItem({ id, severity, title, note, action }: { id: string; severity: FindingSeverity; title: string; note?: string; action?: ReactNode }) {
   return (
-    <li className="flex items-baseline gap-1.5">
+    <li data-kanban-brief-finding={action === undefined ? undefined : ""} className="flex items-baseline gap-1.5">
       <Badge tone={SEVERITY_TONE[severity]}>{id}</Badge>
       <span>
         {title}
         {note ? <span className="text-muted-foreground"> · {note}</span> : null}
       </span>
+      {action === undefined ? null : <span className="ml-auto">{action}</span>}
     </li>
+  );
+}
+
+/** Decides on the card from the brief; `findingId` is set for the actions on one finding. */
+type Decide = (action: BriefAction, findingId?: string) => void;
+
+function ActionButton({ action, label, keyHint, title, disabled, onDecide, findingId }: { action: BriefAction; label: string; keyHint: string; title: string; disabled: boolean; onDecide: Decide; findingId?: string }) {
+  return (
+    <span title={`${title} (${keyHint})`} className="shrink-0">
+      <Button type="button" variant="secondary" className={COMPACT} data-kanban-action={action} disabled={disabled} onClick={() => onDecide(action, findingId)}>
+        {label}
+        <kbd className="font-mono text-[10px] text-muted-foreground">{keyHint}</kbd>
+      </Button>
+    </span>
   );
 }
 
@@ -139,12 +157,17 @@ function HistoryBody({ section }: { section: Extract<BriefSection, { kind: "hist
   return (
     <>
       <Items>
-        {section.rounds.map((round) => (
-          <li key={round.round}>
-            <span className="font-medium">Round {round.round}</span>: {round.handed} handed,{" "}
-            {round.resolved === null
-              ? `not re-reviewed; the agent says ${round.claimed.fixed} fixed, ${round.claimed.disputed} disputed`
-              : `resolved ${round.resolved.map((entry) => entry.title).join(", ")}`}
+        {section.rounds.map((round, index) => (
+          <li key={index}>
+            <span className="font-medium">{round.round === null ? "Your round" : `Round ${round.round}`}</span>
+            :{" "}
+            {round.comments > 0
+              ? `your ${round.comments} diff comment${round.comments === 1 ? "" : "s"}`
+              : `${round.handed} handed, ${
+                  round.resolved === null
+                    ? `not re-reviewed; the agent says ${round.claimed.fixed} fixed, ${round.claimed.disputed} disputed`
+                    : `resolved ${round.resolved.map((entry) => entry.title).join(", ")}`
+                }`}
           </li>
         ))}
       </Items>
@@ -179,7 +202,7 @@ function HistoryBody({ section }: { section: Extract<BriefSection, { kind: "hist
   );
 }
 
-function LeftOutBody({ section }: { section: Extract<BriefSection, { kind: "left-out" }> }) {
+function LeftOutBody({ section, decide }: { section: Extract<BriefSection, { kind: "left-out" }>; decide: Decide | null }) {
   const groups: Array<[string, BriefFinding[]]> = [
     ["Deferred", section.deferred],
     ["Dropped", section.dropped],
@@ -194,7 +217,17 @@ function LeftOutBody({ section }: { section: Extract<BriefSection, { kind: "left
             <Subhead>{label}</Subhead>
             <Items>
               {findings.map((finding) => (
-                <FindingItem key={finding.id} {...finding} />
+                <FindingItem
+                  key={finding.id}
+                  {...finding}
+                  {...(label === "Pre-existing"
+                    ? {}
+                    : {
+                        action: (
+                          <ActionButton action="pull-in" label="Pull in" keyHint="p" title="Send it to fix as a round of yours" disabled={decide === null} onDecide={decide ?? (() => {})} findingId={finding.id} />
+                        ),
+                      })}
+                />
               ))}
             </Items>
           </div>
@@ -213,12 +246,22 @@ function LeftOutBody({ section }: { section: Extract<BriefSection, { kind: "left
   );
 }
 
-function DisputesBody({ section }: { section: Extract<BriefSection, { kind: "disputes" }> }) {
+function DisputesBody({ section, decide }: { section: Extract<BriefSection, { kind: "disputes" }>; decide: Decide | null }) {
   return (
     <Items>
       {section.disputes.map((dispute) => (
-        <li key={dispute.id} className="flex flex-col gap-0.5">
-          <FindingItem id={dispute.id} severity={dispute.severity} title={dispute.title} />
+        <li key={dispute.id} data-kanban-brief-finding="" className="flex flex-col gap-0.5">
+          <div className="flex items-start justify-between gap-2">
+            <FindingItem id={dispute.id} severity={dispute.severity} title={dispute.title} />
+            {dispute.decision !== null ? (
+              <Badge tone="outline">{dispute.decision}</Badge>
+            ) : dispute.decidable ? (
+              <span className="flex shrink-0 gap-1">
+                <ActionButton action="uphold" label="Uphold" keyHint="u" title="The finding stands: send it to fix" disabled={decide === null} onDecide={decide ?? (() => {})} findingId={dispute.id} />
+                <ActionButton action="close-dispute" label="Close" keyHint="c" title="The agent is right: close the finding" disabled={decide === null} onDecide={decide ?? (() => {})} findingId={dispute.id} />
+              </span>
+            ) : null}
+          </div>
           <span className="pl-2 text-muted-foreground">Agent: {dispute.agent || "no reason given"}</span>
           <span className="pl-2 text-muted-foreground">Verifier: {dispute.verifier || "no reason given"}</span>
         </li>
@@ -249,7 +292,7 @@ function sectionSummary(section: BriefSection): ReactNode {
   }
 }
 
-function SectionBody({ section, onOpenThread }: { section: BriefSection; onOpenThread: (threadId: string) => void }) {
+function SectionBody({ section, onOpenThread, decide }: { section: BriefSection; onOpenThread: (threadId: string) => void; decide: Decide | null }) {
   switch (section.kind) {
     case "level":
       return <LevelBody section={section} onOpenThread={onOpenThread} />;
@@ -260,22 +303,73 @@ function SectionBody({ section, onOpenThread }: { section: BriefSection; onOpenT
     case "history":
       return <HistoryBody section={section} />;
     case "left-out":
-      return <LeftOutBody section={section} />;
+      return <LeftOutBody section={section} decide={decide} />;
     case "disputes":
-      return <DisputesBody section={section} />;
+      return <DisputesBody section={section} decide={decide} />;
   }
 }
 
-/** The handoff brief at the top of a monitored card waiting on you; each section's header is a stop for the card's keys. */
-export function HandoffBrief({ ticket, rpc, onOpenThread }: { ticket: Ticket; rpc: Rpc; onOpenThread: (threadId: string) => void }) {
+const DECISION_DONE: Record<BriefAction, string> = {
+  accept: "Accepted",
+  "send-back": "Sent your comments back",
+  rethink: "Asked the card's thread to rethink the approach",
+  "pull-in": "Pulled the finding back in",
+  uphold: "Upheld the finding",
+  "close-dispute": "Closed the finding",
+};
+
+/**
+ * The handoff brief at the top of a monitored card waiting on you; each section's header is a stop for the card's keys.
+ * Its decisions need the loop stopped at Needs you, so a card paused by a question shows them disabled.
+ */
+export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { ticket: Ticket; rpc: Rpc; run: RunAction; pending: boolean; onOpenThread: (threadId: string) => void }) {
   const reviews = useBriefReviews(ticket, rpc);
   const sections = reviews === null ? null : handoffBrief(ticket.loop, reviews);
   if (sections === null) return null;
+  const stopped = ticket.loop?.phase === "needs-you" && !pending;
+  const id = ticket.id;
+  const decide: Decide = (action, findingId = "") =>
+    void run(() => {
+      switch (action) {
+        case "accept":
+          return rpc.call("loop_accept", { id });
+        case "send-back":
+          return rpc.call("loop_send_back", { id });
+        case "rethink":
+          return rpc.call("loop_rethink", { id });
+        case "pull-in":
+          return rpc.call("loop_pull_in", { id, findingId });
+        case "uphold":
+          return rpc.call("loop_decide_dispute", { id, findingId, decision: "uphold" });
+        case "close-dispute":
+          return rpc.call("loop_decide_dispute", { id, findingId, decision: "close" });
+      }
+    }, DECISION_DONE[action]);
+  const noThread = ticket.threadId === null;
   return (
     <div data-kanban-brief="" className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5">
+        <ActionButton
+          action="accept"
+          label="Accept"
+          keyHint="A"
+          title={ticket.pr === null ? "The card's thread lands the change with the project's finishing steps; the card moves to Done when it has" : "Mark it accepted; merging is yours on GitHub"}
+          disabled={!stopped || (ticket.pr === null && noThread)}
+          onDecide={decide}
+        />
+        <ActionButton
+          action="send-back"
+          label={`Send back${ticket.pendingDiffComments === 0 ? "" : ` (${ticket.pendingDiffComments})`}`}
+          keyHint="S"
+          title={ticket.pendingDiffComments === 0 ? "Leave diff comments on the changes first" : "Send your unsent diff comments to the card's thread as a round of yours"}
+          disabled={!stopped || noThread || ticket.pendingDiffComments === 0}
+          onDecide={decide}
+        />
+        <ActionButton action="rethink" label="Rethink" keyHint="R" title="Stop the loop and have the card's thread propose a new approach" disabled={!stopped || noThread} onDecide={decide} />
+      </div>
       {sections.map((section) => (
         <Group key={section.kind} title={BRIEF_SECTION_TITLE[section.kind]} summary={sectionSummary(section)} defaultOpen>
-          <SectionBody section={section} onOpenThread={onOpenThread} />
+          <SectionBody section={section} onOpenThread={onOpenThread} decide={stopped ? decide : null} />
         </Group>
       ))}
     </div>

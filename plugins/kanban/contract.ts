@@ -133,6 +133,16 @@ export const rpcContract = defineRpcContract({
     input: z.object({ id: z.string(), monitored: z.boolean() }).strict(),
     output: ticketSchema,
   },
+  /** At Needs you: a local card's thread lands the change, a PR card is left for the user to merge. */
+  loop_accept: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
+  /** At Needs you: the card's unsent local diff comments go to its thread as the user's round. */
+  loop_send_back: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
+  /** At Needs you: the loop stops and the card's thread proposes a new approach. */
+  loop_rethink: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
+  /** At Needs you: a deferred or dropped finding of the last review goes to fix as the user's round. */
+  loop_pull_in: { input: z.object({ id: z.string(), findingId: z.string() }).strict(), output: ticketSchema },
+  /** At Needs you: uphold a rejected dispute, which sends its finding to fix, or close it. */
+  loop_decide_dispute: { input: z.object({ id: z.string(), findingId: z.string(), decision: z.enum(["uphold", "close"]) }).strict(), output: ticketSchema },
   /** The project's check command, which monitored cards' checks re-run; null leaves the choice to each card's agent. */
   project_set_check_command: {
     input: z.object({ projectId: z.string(), checkCommand: z.string().trim().max(2000).nullable() }).strict(),

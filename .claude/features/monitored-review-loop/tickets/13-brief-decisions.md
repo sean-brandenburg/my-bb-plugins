@@ -10,11 +10,11 @@
 
 **Blocked by:** 12 — Handoff brief.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each action is a reducer event with tests, and the human rounds are counted apart from the cap.
-- [ ] Accept on a local card sends a land prompt and moves the card to Done on a landed report. Accept on a PR card marks it accepted and doesn't post to GitHub.
-- [ ] Send back is disabled with no unsent diff comments, and otherwise starts a fixing round with them.
-- [ ] Rethink pauses the loop until the card thread reports a new plan or ready.
-- [ ] Dispute decisions update the finding and route it.
-- [ ] Every action has a key and appears in the card's `?` list.
+- [x] Each action is a reducer event with tests, and the human rounds are counted apart from the cap.
+- [x] Accept on a local card sends a land prompt and moves the card to Done on a landed report. Accept on a PR card marks it accepted and doesn't post to GitHub.
+- [x] Send back is disabled with no unsent diff comments, and otherwise starts a fixing round with them.
+- [x] Rethink pauses the loop until the card thread reports a new plan or ready. (No plan report exists yet, so it resumes at the next ready; the round count resets when Rethink is pressed, which comes to the same.)
+- [x] Dispute decisions update the finding and route it.
+- [x] Every action has a key and appears in the card's `?` list.

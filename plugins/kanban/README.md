@@ -163,7 +163,15 @@ its PR is reviewed and its review findings and comments are handed to agents.
   disputes and the nits and smells fixed; deferred, dropped, pre-existing and
   left-open findings; and rejected disputes with both sides' reasoning. The
   changes page shows the level, reasons and not-covered list as a strip
-  above the diff, which collapses.
+  above the diff, which collapses. The brief's actions, each with a key:
+  Accept (`A`) has a local card's thread land the change with the project's
+  own finishing steps and moves the card to Done when it reports `bb kanban
+  landed` (a PR card is only marked accepted); Send back (`S`) sends your
+  unsent diff comments to the card's thread; Rethink (`R`) stops the loop and
+  asks the thread for a new approach, counting rounds again from its next
+  ready; Pull in (`p`) sends a deferred or dropped finding to fix; Uphold
+  (`u`) or Close (`c`) settles a rejected dispute, and once no serious one is
+  left the upheld ones go to fix. Rounds you start never count toward the cap.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against

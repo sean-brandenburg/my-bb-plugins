@@ -64,9 +64,16 @@ export type CardCommand =
   | { kind: "thread" }
   | { kind: "diff" }
   | { kind: "monitor" }
+  /** A handoff brief action: the brief's own button, or the one on the finding under the cursor. */
+  | { kind: "brief"; action: BriefAction }
   | { kind: "help" }
   | { kind: "close" }
   | { kind: "scroll"; direction: 1 | -1 };
+
+export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "uphold" | "close-dispute";
+
+/** The brief actions that act on the finding under the cursor rather than the whole card. */
+export const FINDING_ACTIONS: ReadonlySet<BriefAction> = new Set(["pull-in", "uphold", "close-dispute"]);
 
 /** Keys inside an open card, which take them before the board does. */
 export const CARD_KEYMAP: Keymap<CardCommand> = {
@@ -86,6 +93,12 @@ export const CARD_KEYMAP: Keymap<CardCommand> = {
   t: { kind: "thread" },
   D: { kind: "diff" },
   m: { kind: "monitor" },
+  A: { kind: "brief", action: "accept" },
+  S: { kind: "brief", action: "send-back" },
+  R: { kind: "brief", action: "rethink" },
+  p: { kind: "brief", action: "pull-in" },
+  u: { kind: "brief", action: "uphold" },
+  c: { kind: "brief", action: "close-dispute" },
   "?": { kind: "help" },
   "<Esc>": { kind: "close" },
   "<C-d>": { kind: "scroll", direction: 1 },
@@ -151,6 +164,11 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
       { keys: ["t", "D"], action: "Open the card's thread / changes" },
       { keys: ["m"], action: "Turn the card's review loop on or off" },
+      { keys: ["A"], action: "Handoff brief: accept; a local card's thread lands the change, a PR card is marked accepted" },
+      { keys: ["S"], action: "Handoff brief: send your unsent diff comments back to the card's thread" },
+      { keys: ["R"], action: "Handoff brief: stop the loop and have the card's thread rethink the approach" },
+      { keys: ["p"], action: "Handoff brief, on a deferred or dropped finding: pull it back in to fix" },
+      { keys: ["u", "c"], action: "Handoff brief, on a dispute: uphold it, sending it to fix, or close it" },
       { keys: ["h", "l", "Enter"], action: "On the review depth picker: choose Quick, Standard or Deep, then start the review" },
     ],
   },

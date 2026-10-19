@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { isTextEntry, overlayOver, scrollKeepingCursor, scrollParent, spatialStep, useKeyHandler } from "bb-vim-keys/react";
-import { CARD_KEYMAP } from "./board-nav";
+import { CARD_KEYMAP, FINDING_ACTIONS } from "./board-nav";
 import { BLOCKED_BY, stepOpenMenu } from "./board-keys";
 
 // A button taken out of the tab order is one part of a single stop, such as a picker's unselected options.
@@ -14,6 +14,9 @@ const INITIAL_STOP = "[data-kanban-initial-stop]";
 /** The card's main text box, which `i` goes to when the cursor is on no text box. */
 const MAIN_INPUT = "[data-kanban-main-input]";
 const FOCUS_REQUEST_TTL_MS = 2000;
+const BRIEF = "[data-kanban-brief]";
+/** A finding row of the brief, holding its own action buttons. */
+const BRIEF_FINDING = "[data-kanban-brief-finding]";
 
 // A card opened from the keyboard, or while another card is showing, takes focus once it renders;
 // one opened with the mouse onto an empty panel leaves focus where it is. The panel may already
@@ -186,6 +189,14 @@ export function useCardKeys(
         case "monitor":
           handlers.onMonitor();
           return;
+        case "brief": {
+          // The key presses the action's own button, so it is enabled exactly when a click would be.
+          const scope = FINDING_ACTIONS.has(command.action) ? current?.closest<HTMLElement>(BRIEF_FINDING) : root.querySelector<HTMLElement>(BRIEF);
+          const button = scope?.querySelector<HTMLButtonElement>(`[data-kanban-action="${command.action}"]:not(:disabled)`);
+          // Swallowed even with nothing to press, so a stray `u` can't reach the board's undo.
+          button?.click();
+          return;
+        }
         case "help":
           handlers.onHelp();
           return;

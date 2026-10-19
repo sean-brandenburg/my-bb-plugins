@@ -3,13 +3,15 @@ import { fixingRound, parseLoopState, unansweredFindings, type CheckCommand, typ
 import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
+import { commentsBody, type PrComments } from "../comments/pr-comments";
+import type { DiffComments } from "../comments/diff-comments";
 import type { KanbanContext } from "../context";
 import { parseClassification } from "../agent-output";
 import { rowToReview, type ChecksRunRow, type ClassifyRunRow } from "../db/rows";
 import type { ProjectSettingsStore } from "../project-settings";
 import type { Reviews } from "../reviews/reviews";
 import { errorMessage, shortId, threadTitle } from "../util";
-import { cardPromptText, checksPrompt, classifyPrompt, fixPromptText } from "./prompts";
+import { cardPromptText, checksPrompt, classifyPrompt, commentsPromptText, fixPromptText } from "./prompts";
 import { reduce, type CardPrompt, type LoopAction, type LoopEvent } from "./reducer";
 
 /** Thrown when a ready report can't name a check command; the CLI turns it into a hint. */
@@ -17,6 +19,9 @@ export class NoCheckCommandError extends Error {}
 
 /** Thrown when the card's thread reports a fix round ready, or answers, out of turn; the CLI shows the message as is. */
 export class FindingAnswerError extends Error {}
+
+/** Thrown when a decision or report doesn't fit where the loop is; the CLI and the board show the message as is. */
+export class LoopTurnError extends Error {}
 
 /**
  * The monitored review loop's adapter: it turns thread events, CLI calls and board actions into reducer events,
@@ -30,7 +35,17 @@ export function createLoop(
     codeReviewThreads,
     projectSettings,
     reviews,
-  }: { board: BoardStore; threads: CardThreads; codeReviewThreads: CodeReviewThreads; projectSettings: ProjectSettingsStore; reviews: Reviews },
+    diffComments,
+    prComments,
+  }: {
+    board: BoardStore;
+    threads: CardThreads;
+    codeReviewThreads: CodeReviewThreads;
+    projectSettings: ProjectSettingsStore;
+    reviews: Reviews;
+    diffComments: DiffComments;
+    prComments: PrComments;
+  },
 ) {
   const { bb, stmts, publish } = ctx;
   const { getTicket } = board;
@@ -112,7 +127,22 @@ export function createLoop(
       if (row === undefined) return;
       const review = rowToReview(row);
       const findings = (review.report?.findings ?? []).filter((finding) => prompt.findingIds.includes(finding.id));
-      text = fixPromptText(ticket, prompt.round, review.commitSha, findings);
+      text = fixPromptText(ticket, prompt.byUser === true ? null : prompt.round, review.commitSha, findings);
+    } else if (prompt.kind === "comments") {
+      const comments = diffComments.pendingLocalComments(ticket);
+      if (comments.length === 0) return;
+      try {
+        await bb.sdk.threads.send({ threadId: ticket.threadId, mode: "auto", input: [{ type: "text", text: commentsPromptText(ticket, commentsBody(ticket, comments)), mentions: [] }] });
+      } catch (error) {
+        bb.log.warn(`could not send the diff comments of ticket ${ticketId} to its thread: ${errorMessage(error)}`);
+        return;
+      }
+      // An apply run owned by the card's thread marks the comments sent; its next ready marks them addressed.
+      const applyId = shortId();
+      stmts.insertCommentApply.run({ id: applyId, ticket_id: ticket.id, thread_id: ticket.threadId, comment_ids: JSON.stringify(comments.map((comment) => comment.id)), started_at: Date.now(), push: 0 });
+      stmts.assignDiffCommentsApply.run(applyId, JSON.stringify(comments.map((comment) => comment.id.replace(/^local:/u, ""))));
+      publish();
+      return;
     } else {
       text = cardPromptText(prompt, ticket, projectSettings.projectSettings(ticket.projectId).checkCommand);
     }
@@ -201,11 +231,84 @@ export function createLoop(
     const ticket = getTicket(ticketId);
     const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
     if (!state.monitored) return { ticket, checkCommand: null };
+    if (state.phase === "accepted" || state.phase === "landed") {
+      throw new LoopTurnError(
+        ticket.pr === null ? `Ticket ${ticket.id} was accepted; land it and run \`bb kanban landed\` instead` : `Ticket ${ticket.id} was accepted; the user merges it on GitHub and the board moves it then`,
+      );
+    }
     const unanswered = unansweredFindings(state);
     if (unanswered.length > 0) throw new FindingAnswerError(`Answer every finding of this round first; ${unanswered.join(", ")} ${unanswered.length === 1 ? "has" : "have"} no answer.`);
     const checkCommand = resolveCheckCommand(ticket, report.checkCommand);
     await dispatch(ticket.id, { type: "ready", commit: report.commit, evidence: report.evidence, checkCommand });
+    const apply = ticket.threadId === null ? undefined : stmts.commentApplyByThread.get(ticket.threadId);
+    if (apply !== undefined && apply.completed_at === null) prComments.completeApply(apply, report.commit, false);
     return { ticket: getTicket(ticket.id), checkCommand };
+  }
+
+  /** The loop's state, when it is stopped at Needs you for the user's decision. */
+  function waitingState(ticket: Ticket) {
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    if (!state.monitored || state.phase !== "needs-you") throw new LoopTurnError(`Ticket ${ticket.id}'s review loop isn't waiting on you`);
+    return state;
+  }
+
+  /** The finding `findingId` of the review the loop stopped after. */
+  function lastReviewFinding(ticket: Ticket, reviewId: string | null, findingId: string) {
+    const row = reviewId === null ? undefined : stmts.reviewById.get(reviewId);
+    const finding = row === undefined ? undefined : rowToReview(row).report?.findings.find((entry) => entry.id === findingId);
+    if (finding === undefined) throw new LoopTurnError(`The last review of ticket ${ticket.id} has no finding ${findingId}`);
+    return finding;
+  }
+
+  async function decide(ticketId: string, event: LoopEvent): Promise<Ticket> {
+    await dispatch(ticketId, event);
+    return getTicket(ticketId);
+  }
+
+  /** A local card's thread lands the change; a PR card is left for the user to merge. */
+  async function accept(ticketId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    waitingState(ticket);
+    if (ticket.pr === null && ticket.threadId === null) throw new LoopTurnError("The card has no thread to land the change");
+    return decide(ticket.id, { type: "accept", pr: ticket.pr !== null });
+  }
+
+  /** The card's thread landed the accepted change; the card moves to Done. */
+  async function reportLanded(ticketId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    if (ticket.pr !== null) throw new LoopTurnError("A PR card lands when its pull request merges; the board moves it then");
+    if (state.phase !== "accepted") throw new LoopTurnError(`Ticket ${ticket.id} hasn't been accepted, so there's nothing to land yet`);
+    return decide(ticket.id, { type: "landed" });
+  }
+
+  async function sendBack(ticketId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    waitingState(ticket);
+    if (ticket.threadId === null) throw new LoopTurnError("The card has no thread to send the comments to");
+    const comments = stmts.pendingDiffComments.all(ticket.id).length;
+    if (comments === 0) throw new LoopTurnError("No unsent diff comments to send back");
+    return decide(ticket.id, { type: "send-back", comments });
+  }
+
+  async function rethink(ticketId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    waitingState(ticket);
+    if (ticket.threadId === null) throw new LoopTurnError("The card has no thread to rethink the approach");
+    return decide(ticket.id, { type: "rethink" });
+  }
+
+  async function pullIn(ticketId: string, findingId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    const finding = lastReviewFinding(ticket, waitingState(ticket).reviewId, findingId);
+    if (finding.preExisting || (finding.triage?.decision !== "defer" && finding.triage?.decision !== "drop")) throw new LoopTurnError(`${findingId} wasn't deferred or dropped`);
+    return decide(ticket.id, { type: "pull-in", findingId });
+  }
+
+  async function decideDispute(ticketId: string, findingId: string, decision: "uphold" | "close"): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    if (!waitingState(ticket).disputes.some((dispute) => dispute.id === findingId && dispute.decision === null)) throw new LoopTurnError(`${findingId} isn't a dispute awaiting you`);
+    return decide(ticket.id, { type: "decide-dispute", findingId, decision });
   }
 
   async function recordChecks(run: ChecksRunRow, exitCode: number, outputTail: string): Promise<void> {
@@ -285,7 +388,7 @@ export function createLoop(
     await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id) });
   }
 
-  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished };
+  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

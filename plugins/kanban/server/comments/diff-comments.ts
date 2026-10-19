@@ -371,7 +371,12 @@ export function createDiffComments(
     return { posted, postedUrl, apply, ticket: getTicket(ticket.id) };
   }
 
-  return { diffThreadRoot, listDiffComments, addDiffComment, updateDiffComment, deleteDiffComment, submitDiffComments };
+  /** The card's unsent local comments, in the shape an apply prompt lists them. */
+  function pendingLocalComments(ticket: Ticket): PrComment[] {
+    return diffCommentsAsPrComments(ticket, stmts.pendingDiffComments.all(ticket.id).map(rowToDiffComment));
+  }
+
+  return { diffThreadRoot, listDiffComments, addDiffComment, updateDiffComment, deleteDiffComment, submitDiffComments, pendingLocalComments };
 }
 
 export type DiffComments = ReturnType<typeof createDiffComments>;

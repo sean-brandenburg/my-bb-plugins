@@ -97,6 +97,7 @@ describe("handoffBrief", () => {
         reason: "dispute",
         reviewId: "r2",
         round: 1,
+        disputes: [{ id: "F4", severity: "important", title: "title F4", decision: "upheld" }],
         attention: { level: "read", reasons: ["1 disputed finding"] },
         checks: [{ commit: "abc1234", exitCode: 0, passed: true }],
         rounds: [{ reviewId: "r1", handed: ["F1", "F2", "F3"], answers: { F1: { answer: "fixed" }, F2: { answer: "fixed" }, F3: { answer: "disputed", reason: "not reachable" } } }],
@@ -112,6 +113,6 @@ describe("handoffBrief", () => {
       polish: [{ id: "r1/F2", title: "title F2" }],
     });
     expect(section(sections, "left-out")).toMatchObject({ deferred: [{ id: "F5", note: "separate work" }], dropped: [{ id: "F6", note: "churn" }], preExisting: [{ id: "F7" }], leftOpen: [] });
-    expect(section(sections, "disputes")?.disputes).toEqual([{ id: "F4", severity: "important", title: "title F4", agent: "by design", verifier: "breaks the contract" }]);
+    expect(section(sections, "disputes")?.disputes).toEqual([{ id: "F4", severity: "important", title: "title F4", agent: "by design", verifier: "breaks the contract", decidable: true, decision: "upheld" }]);
   });
 });

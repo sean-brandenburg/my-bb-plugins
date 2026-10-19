@@ -47,14 +47,29 @@ export type LoopEvent =
   /** A thread the loop started failed, was deleted, or went idle without recording its result; `threadId` is null when it couldn't be started. */
   | { type: "thread-failed"; role: "checks" | "classify"; commit: string; threadId: string | null }
   /** `reviewId` is null for a review that couldn't be started. */
-  | { type: "thread-failed"; role: "review"; reviewId: string | null; threadId: string | null };
+  | { type: "thread-failed"; role: "review"; reviewId: string | null; threadId: string | null }
+  /** The user accepts the change at Needs you; a local card's thread then lands it. */
+  | { type: "accept"; pr: boolean }
+  /** The card's thread landed an accepted change. */
+  | { type: "landed" }
+  /** The user sends their `comments` unsent diff comments to the card's thread. */
+  | { type: "send-back"; comments: number }
+  | { type: "rethink" }
+  /** The user pulls a finding of the last review that triage deferred or dropped back in. */
+  | { type: "pull-in"; findingId: string }
+  | { type: "decide-dispute"; findingId: string; decision: "uphold" | "close" };
 
 /** What the card's thread is told; the service words it. */
 export type CardPrompt =
   /** The thread already exists, so its instructions only pick the contract up at its next session. */
   | { kind: "monitoring" }
   | { kind: "checks-failed"; commit: string; command: string; exitCode: number; outputTail: string }
-  | { kind: "fix"; round: number; reviewId: string; findingIds: string[] };
+  /** `byUser` marks a round the user started, which `round` doesn't count. */
+  | { kind: "fix"; round: number; reviewId: string; findingIds: string[]; byUser?: true }
+  /** The user's unsent diff comments, which the service reads when it sends them. */
+  | { kind: "comments" }
+  | { kind: "land" }
+  | { kind: "rethink" };
 
 export type LoopColumn = typeof COLUMN.inProgress | typeof COLUMN.checking | typeof COLUMN.review | typeof COLUMN.done;
 
@@ -83,6 +98,9 @@ function needsYou(state: LoopState, reason: NeedsYouReason): LoopStep {
   return { state: { ...state, phase: "needs-you", reason }, actions: [{ type: "move", column: COLUMN.review }] };
 }
 
+/** Stopped for the user, who can accept, send back, rethink or settle findings. */
+const waiting = (state: LoopState): boolean => state.monitored && state.phase === "needs-you";
+
 const running = (state: LoopState): boolean => state.phase === "checking" || state.phase === "classifying" || state.phase === "reviewing";
 
 function failuresInARow(state: LoopState): number {
@@ -108,7 +126,7 @@ function lastRoundAnswers(state: LoopState): Record<string, FindingAnswer> {
 }
 
 function reviewAction(state: LoopState, commit: string): LoopAction {
-  return state.round === 0
+  return state.rounds.length === 0
     ? { type: "spawn-review", commit, mode: "full", depth: state.depth, answers: {} }
     : { type: "spawn-review", commit, mode: "incremental", depth: state.depth, answers: lastRoundAnswers(state) };
 }
@@ -146,27 +164,66 @@ function reviewCompleted(base: LoopState, event: Extract<LoopEvent, { type: "rev
     openScopeFindings: own.filter((finding) => finding.category === "scope" && finding.triage?.decision !== "drop" && finding.dispute?.outcome !== "accepted").length,
     deferredCritical: own.filter((finding) => finding.severity === "critical" && finding.triage?.decision === "defer").length,
   });
-  const state = { ...base, attention };
+  const rejected = own.filter((finding) => finding.dispute?.outcome === "rejected");
+  const state: LoopState = { ...base, attention, disputes: rejected.map((finding) => ({ ...loopFinding(finding), decision: null })), heldFindings: [] };
   const answers = lastRoundAnswers(state);
   if (own.some((finding) => finding.carriedFrom !== null && answers[finding.carriedFrom]?.answer === "fixed")) return needsYou(state, "not-converging");
-  const rejected = own.filter((finding) => finding.dispute?.outcome === "rejected");
-  if (rejected.some((finding) => finding.severity !== "minor")) return needsYou(state, "dispute");
   const keptOpen = rejected.map(loopFinding);
-  const open = routed(findings);
-  if (open.length === 0) return needsYou({ ...state, openFindings: keptOpen }, "clean");
-  if (state.round >= LOOP_ROUND_CAP) {
-    if (open.some((finding) => finding.severity !== "minor")) return needsYou(state, "cap");
-    return needsYou({ ...state, openFindings: [...open.map(loopFinding), ...keptOpen] }, "clean");
+  const open = routed(findings).map(loopFinding);
+  if (rejected.some((finding) => finding.severity !== "minor")) return needsYou({ ...state, openFindings: keptOpen, heldFindings: open }, "dispute");
+  return route(state, { ...base, disputes: state.disputes }, reviewId, open, keptOpen);
+}
+
+/**
+ * Hands `open` to the card's thread as the loop's next round, or stops at Needs you: clean when nothing is open or
+ * only minors are left at the cap. A round starts from `base`, since the level is only recomputed when the loop stops.
+ */
+function route(stopped: LoopState, base: LoopState, reviewId: string, open: LoopFinding[], keptOpen: LoopFinding[]): LoopStep {
+  if (open.length === 0) return needsYou({ ...stopped, openFindings: keptOpen }, "clean");
+  if (stopped.round >= LOOP_ROUND_CAP) {
+    if (open.some((finding) => finding.severity !== "minor")) return needsYou(stopped, "cap");
+    return needsYou({ ...stopped, openFindings: [...open, ...keptOpen] }, "clean");
   }
-  const round = state.round + 1;
+  const round = stopped.round + 1;
   const findingIds = open.map((finding) => finding.id);
   return {
-    state: { ...base, phase: "fixing", reason: null, round, reviewId, rounds: [...state.rounds, { reviewId, handed: findingIds, answers: {} }] },
+    state: { ...base, phase: "fixing", reason: null, round, reviewId, heldFindings: [], rounds: [...stopped.rounds, { reviewId, handed: findingIds, answers: {}, owner: "loop", comments: 0 }] },
     actions: [
       { type: "move", column: COLUMN.inProgress },
       { type: "prompt-card", prompt: { kind: "fix", round, reviewId, findingIds } },
     ],
   };
+}
+
+/** A fix round the user started on the last review's findings; it goes through the usual answers and re-review, but `round` doesn't count it. */
+function userRound(state: LoopState, reviewId: string, findingIds: string[]): LoopStep {
+  return {
+    state: {
+      ...state,
+      phase: "fixing",
+      reason: null,
+      humanRounds: state.humanRounds + 1,
+      heldFindings: [],
+      rounds: [...state.rounds, { reviewId, handed: findingIds, answers: {}, owner: "user", comments: 0 }],
+    },
+    actions: [
+      { type: "move", column: COLUMN.inProgress },
+      { type: "prompt-card", prompt: { kind: "fix", round: state.round, reviewId, findingIds, byUser: true } },
+    ],
+  };
+}
+
+/** Once no serious dispute waits on the user, the upheld ones go to fix with what they held back, as the user's round. */
+function decideDispute(state: LoopState, findingId: string, decision: "uphold" | "close"): LoopStep {
+  const target = state.disputes.find((dispute) => dispute.id === findingId && dispute.decision === null);
+  if (target === undefined || state.reviewId === null) return stay(state);
+  const disputes = state.disputes.map((dispute) => (dispute === target ? { ...dispute, decision: decision === "uphold" ? ("upheld" as const) : ("closed" as const) } : dispute));
+  const closed = new Set(disputes.filter((dispute) => dispute.decision === "closed").map((dispute) => dispute.id));
+  const next = { ...state, disputes, openFindings: state.openFindings.filter((finding) => !closed.has(finding.id)) };
+  if (disputes.some((dispute) => dispute.decision === null && dispute.severity !== "minor")) return stay(next);
+  const upheld = disputes.filter((dispute) => dispute.decision === "upheld").map((dispute) => dispute.id);
+  if (upheld.length > 0) return userRound(next, state.reviewId, [...upheld, ...next.heldFindings.map((finding) => finding.id)]);
+  return route(next, next, state.reviewId, next.heldFindings, next.openFindings);
 }
 
 export function reduce(state: LoopState, event: LoopEvent): LoopStep {
@@ -190,7 +247,8 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       const passed = event.exitCode === 0;
       const recorded = { ...state, checks: [...state.checks, { commit: event.commit, exitCode: event.exitCode, passed }] };
       if (!state.monitored) return stay({ ...recorded, phase: "idle" });
-      if (passed && state.round === 0) return { state: { ...recorded, phase: "classifying", reason: null, retries: 0 }, actions: [{ type: "spawn-classify", commit: event.commit }] };
+      // Only a change not yet classified is, so the user's rounds don't classify again; a rethink clears the level.
+      if (passed && state.attention === null) return { state: { ...recorded, phase: "classifying", reason: null, retries: 0 }, actions: [{ type: "spawn-classify", commit: event.commit }] };
       if (passed) {
         return { state: { ...recorded, phase: "reviewing", reason: null, reviewId: null, retries: 0 }, actions: [reviewAction(state, event.commit)] };
       }
@@ -207,7 +265,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       };
     }
     case "ready": {
-      if (!state.monitored) return stay(state);
+      if (!state.monitored || state.phase === "accepted" || state.phase === "landed") return stay(state);
       if (state.phase === "checking" && state.commit === event.commit) return stay(state);
       // The service refuses such a report with the ids; this only keeps the round from completing half-answered.
       if (unansweredFindings(state).length > 0) return stay(state);
@@ -266,5 +324,40 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       // A plan gate's own approval will arrive as an interaction too, so only the thread's working phases pause.
       if (!state.monitored || (state.phase !== "building" && state.phase !== "fixing")) return stay(state);
       return stay({ ...state, phase: "paused", reason: "question", pausedPhase: state.phase });
+    case "accept":
+      if (!waiting(state)) return stay(state);
+      // A PR card is left for the user to merge; sync moves it to Done.
+      if (event.pr) return stay({ ...state, phase: "accepted", reason: null });
+      return { state: { ...state, phase: "accepted", reason: null }, actions: [{ type: "prompt-card", prompt: { kind: "land" } }] };
+    case "landed":
+      if (state.phase !== "accepted") return stay(state);
+      return { state: { ...state, phase: "landed" }, actions: [{ type: "move", column: COLUMN.done }] };
+    case "send-back": {
+      if (!waiting(state) || event.comments === 0) return stay(state);
+      // Logged as a round on the last review, so the next review is the incremental one of what the comments changed.
+      const rounds = state.reviewId === null ? state.rounds : [...state.rounds, { reviewId: state.reviewId, handed: [], answers: {}, owner: "user" as const, comments: event.comments }];
+      return {
+        state: { ...state, phase: "building", reason: null, humanRounds: state.humanRounds + 1, heldFindings: [], rounds },
+        actions: [
+          { type: "move", column: COLUMN.inProgress },
+          { type: "prompt-card", prompt: { kind: "comments" } },
+        ],
+      };
+    }
+    case "rethink":
+      if (!waiting(state)) return stay(state);
+      return {
+        state: { ...state, phase: "building", reason: null, round: 0, rounds: [], reviewId: null, attention: null, classification: null, openFindings: [], disputes: [], heldFindings: [] },
+        actions: [
+          { type: "move", column: COLUMN.inProgress },
+          { type: "prompt-card", prompt: { kind: "rethink" } },
+        ],
+      };
+    case "pull-in":
+      if (!waiting(state) || state.reviewId === null) return stay(state);
+      return userRound(state, state.reviewId, [event.findingId]);
+    case "decide-dispute":
+      if (!waiting(state)) return stay(state);
+      return decideDispute(state, event.findingId, event.decision);
   }
 }

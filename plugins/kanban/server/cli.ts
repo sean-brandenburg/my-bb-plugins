@@ -7,7 +7,7 @@ import { DEFAULT_REVIEW_DEPTH, REVIEW_DEPTH_LABEL, reviewDepthSchema, type Revie
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
-import { FindingAnswerError, NoCheckCommandError } from "./loop/loop";
+import { FindingAnswerError, LoopTurnError, NoCheckCommandError } from "./loop/loop";
 import { countSeverities } from "./reviews/findings";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
@@ -23,7 +23,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
   const { runSync } = services.sourceSync;
-  const { setMonitored, answerFindings, reportReady, recordChecks } = services.loop;
+  const { setMonitored, answerFindings, reportReady, recordChecks, reportLanded } = services.loop;
 
   const COMMIT_SHA = /^[0-9a-f]{7,40}$/iu;
 
@@ -384,6 +384,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               if (error instanceof FindingAnswerError) {
                 throw new PluginCliError(error.message, { code: "unanswered_findings", hint: 'Run `bb kanban answer <ids> fixed`, or `bb kanban answer <id> disputed --reason "<why>"`, for each.' });
               }
+              if (error instanceof LoopTurnError) throw new PluginCliError(error.message, { code: "accepted" });
               if (!(error instanceof NoCheckCommandError)) throw error;
               throw new PluginCliError(error.message, { code: "check_command_required", hint: 'Pass --check-command "<the command you ran>".' });
             }
@@ -423,6 +424,20 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             }
             const rest = unanswered.length === 0 ? "every finding is answered; report with `bb kanban ready`" : `still to answer: ${unanswered.join(", ")}`;
             return { exitCode: 0, stdout: `Answered ${findingIds.join(", ")} as ${parsed.data.answer}; ${rest}` };
+          },
+        }),
+        landed: cliCommand({
+          summary: "Report an accepted local card's change landed by the project's finishing steps (run by the card's own thread): the board moves it to Done",
+          options: { ...ticketOption },
+          async run({ options }, ctx) {
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            try {
+              await reportLanded(ticket.id);
+            } catch (error) {
+              if (!(error instanceof LoopTurnError)) throw error;
+              throw new PluginCliError(error.message, { code: "not_accepted" });
+            }
+            return { exitCode: 0, stdout: `Landed; ticket ${ticket.id} moved to Done` };
           },
         }),
         "checks-record": cliCommand({

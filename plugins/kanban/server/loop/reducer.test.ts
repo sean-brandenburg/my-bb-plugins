@@ -321,4 +321,94 @@ describe("loop reducer", () => {
     expect(state.phase).toBe("checking");
     expect(actions[2]).toEqual([]);
   });
+  describe("the user's decisions at Needs you", () => {
+    const clean: LoopEvent[] = [...reviewing, reviewed("rev1", [finding("F1", "important", "defer")])];
+
+    it("accepts a local card by asking its thread to land the change, and moves it to Done when it reports landed", () => {
+      const { state, actions } = run([...clean, { type: "accept", pr: false }, { type: "landed" }]);
+      expect(actions.at(-2)).toEqual([{ type: "prompt-card", prompt: { kind: "land" } }]);
+      expect(actions.at(-1)).toEqual([{ type: "move", column: "done" }]);
+      expect(state).toMatchObject({ phase: "landed", reason: null });
+    });
+
+    it("accepts a PR card without prompting or moving it", () => {
+      const { state, actions } = run([...clean, { type: "accept", pr: true }]);
+      expect(state).toMatchObject({ phase: "accepted", reason: null });
+      expect(actions.at(-1)).toEqual([]);
+      // Nothing but a stop at Needs you is accepted.
+      expect(run([...reviewing, { type: "accept", pr: true }]).state.phase).toBe("reviewing");
+    });
+
+    it("sends the user's diff comments back as a round of theirs, which neither re-classifies nor counts toward the cap", () => {
+      expect(run([...clean, { type: "send-back", comments: 0 }]).state.phase).toBe("needs-you");
+      const sent = run([...clean, { type: "send-back", comments: 2 }]);
+      expect(sent.state).toMatchObject({ phase: "building", round: 0, humanRounds: 1, rounds: [{ reviewId: "rev1", handed: [], owner: "user", comments: 2 }] });
+      expect(sent.actions.at(-1)).toEqual([
+        { type: "move", column: "in-progress" },
+        { type: "prompt-card", prompt: { kind: "comments" } },
+      ]);
+      const after = run([ready(fixSha), checks(0, fixSha)], sent.state);
+      expect(after.actions.at(-1)).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard", answers: {} }]);
+    });
+
+    it("pulls a deferred finding back in as a round of the user's", () => {
+      const { state, actions } = run([...clean, { type: "pull-in", findingId: "F1" }]);
+      expect(state).toMatchObject({ phase: "fixing", round: 0, humanRounds: 1, rounds: [{ reviewId: "rev1", handed: ["F1"], owner: "user" }] });
+      expect(actions.at(-1)).toEqual([
+        { type: "move", column: "in-progress" },
+        { type: "prompt-card", prompt: { kind: "fix", round: 0, reviewId: "rev1", findingIds: ["F1"], byUser: true } },
+      ]);
+      // It goes through the round's usual answers and an incremental re-review of the fix.
+      const after = run([answer({ F1: fixed }), ...fixedAndReviewing(fixSha, "rev2")], state);
+      expect(after.actions[1]![0]).toEqual({ type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] });
+      expect(after.actions[2]).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard", answers: { "rev1/F1": fixed } }]);
+    });
+
+    it("never trips the cap on the user's rounds", () => {
+      const capped = run(threeRounds([finding("F1", "minor"), finding("F2", "important", "defer")]));
+      const { state } = run([{ type: "pull-in", findingId: "F2" }, answer({ F2: fixed }), ...fixedAndReviewing("d".repeat(40), "rev5"), reviewed("rev5", [finding("F1", "minor")])], capped.state);
+      expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 3, humanRounds: 1, openFindings: [{ id: "F1" }] });
+    });
+
+    it("stops the loop to rethink, starting the round count again at the next ready", () => {
+      const capped = run(threeRounds([finding("F1", "important")]));
+      const { state, actions } = run([{ type: "rethink" }], capped.state);
+      expect(state).toMatchObject({ phase: "building", round: 0, rounds: [], attention: null });
+      expect(actions[0]).toEqual([
+        { type: "move", column: "in-progress" },
+        { type: "prompt-card", prompt: { kind: "rethink" } },
+      ]);
+      // The new approach is classified and reviewed in full again.
+      expect(run([ready(fixSha), checks(0, fixSha)], state).actions.at(-1)).toEqual([{ type: "spawn-classify", commit: fixSha }]);
+    });
+
+    describe("disputes", () => {
+      const rejected = (severity: ReviewedFinding["severity"], id = "F1") => carried(id, severity, "rev1/F2", "rejected");
+      const disputing = (findings: ReviewedFinding[]) =>
+        run([...reviewing, reviewed("rev1", [finding("F1", "important"), finding("F2", "minor")]), answer({ F1: fixed, F2: disputed }), ...fixedAndReviewing(fixSha, "rev2"), reviewed("rev2", findings)]);
+
+      it("waits for every serious dispute, then sends the upheld ones to fix with the findings they held back", () => {
+        const stopped = disputing([rejected("important"), rejected("critical", "F2"), finding("F3", "minor")]);
+        expect(stopped.state).toMatchObject({ reason: "dispute", disputes: [{ id: "F1", decision: null }, { id: "F2", decision: null }], heldFindings: [{ id: "F3" }] });
+        const one = run([{ type: "decide-dispute", findingId: "F1", decision: "uphold" }], stopped.state);
+        expect(one.state).toMatchObject({ phase: "needs-you", reason: "dispute", disputes: [{ decision: "upheld" }, { decision: null }] });
+        const both = run([{ type: "decide-dispute", findingId: "F2", decision: "close" }], one.state);
+        expect(both.state).toMatchObject({ phase: "fixing", round: 1, humanRounds: 1, rounds: [{}, { reviewId: "rev2", handed: ["F1", "F3"], owner: "user" }] });
+      });
+
+      it("closing the last one routes the held findings as the loop's own round, or ends clean", () => {
+        const held = run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], disputing([rejected("important"), finding("F3", "minor")]).state);
+        expect(held.state).toMatchObject({ phase: "fixing", round: 2, humanRounds: 0, rounds: [{}, { reviewId: "rev2", handed: ["F3"], owner: "loop" }] });
+        const none = run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], disputing([rejected("important")]).state);
+        expect(none.state).toMatchObject({ phase: "needs-you", reason: "clean", disputes: [{ id: "F1", decision: "closed" }] });
+      });
+
+      it("settles a minor dispute left open: closing drops it from the open findings, upholding sends it to fix", () => {
+        const minor = disputing([rejected("minor")]);
+        expect(minor.state).toMatchObject({ reason: "clean", openFindings: [{ id: "F1" }], disputes: [{ id: "F1" }] });
+        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], minor.state).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [] });
+        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "uphold" }], minor.state).state).toMatchObject({ phase: "fixing", rounds: [{}, { handed: ["F1"], owner: "user" }] });
+      });
+    });
+  });
 });

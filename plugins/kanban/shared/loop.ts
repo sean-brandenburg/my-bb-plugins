@@ -112,8 +112,17 @@ export const findingAnswerSchema = z.discriminatedUnion("answer", [
 ]);
 export type FindingAnswer = z.infer<typeof findingAnswerSchema>;
 
-/** One automatic fix round: the review it answers, the findings it handed over, and the thread's answer to each, by finding id. */
-export const loopRoundSchema = z.object({ reviewId: z.string(), handed: z.array(z.string()), answers: z.record(z.string(), findingAnswerSchema).default({}) });
+/**
+ * One fix round: the review it answers, the findings it handed over, and the thread's answer to each, by finding id.
+ * A round the user started never counts toward the cap; one that sent their diff comments hands no findings.
+ */
+export const loopRoundSchema = z.object({
+  reviewId: z.string(),
+  handed: z.array(z.string()),
+  answers: z.record(z.string(), findingAnswerSchema).default({}),
+  owner: z.enum(["loop", "user"]).default("loop"),
+  comments: z.number().int().default(0),
+});
 export type LoopRound = z.infer<typeof loopRoundSchema>;
 
 /** The phase the loop is in, or the one a question paused. */
@@ -121,9 +130,9 @@ export function workingPhase(state: LoopState): LoopPhase {
   return state.phase === "paused" && state.pausedPhase !== null ? state.pausedPhase : state.phase;
 }
 
-/** The round the card's thread is fixing, paused by a question or not. */
+/** The round the card's thread is fixing, paused by a question or not; the newest, since a user's round can answer a review a loop round already did. */
 export function fixingRound(state: LoopState): LoopRound | undefined {
-  return workingPhase(state) === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+  return workingPhase(state) === "fixing" ? [...state.rounds].reverse().find((entry) => entry.reviewId === state.reviewId) : undefined;
 }
 
 /** The handed findings of the round being fixed that the card's thread hasn't answered yet. */
@@ -131,6 +140,10 @@ export function unansweredFindings(state: LoopState): string[] {
   const round = fixingRound(state);
   return round === undefined ? [] : round.handed.filter((id) => round.answers[id] === undefined);
 }
+
+/** A dispute the verifier rejected, and what the user decided: upheld sends it to fix, closed settles it. */
+export const loopDisputeSchema = loopFindingSchema.extend({ decision: z.enum(["upheld", "closed"]).nullable().default(null) });
+export type LoopDispute = z.infer<typeof loopDisputeSchema>;
 
 export const loopGatesSchema = z.object({
   /** Stop after the card's thread proposes a plan, until it's approved. */
@@ -168,6 +181,10 @@ export const loopStateSchema = z.object({
   rounds: z.array(loopRoundSchema).default([]),
   /** The minor findings left open when the loop ended clean: at the cap, or disputed and the dispute rejected. */
   openFindings: z.array(loopFindingSchema).default([]),
+  /** The last review's rejected disputes, which the user upholds or closes. */
+  disputes: z.array(loopDisputeSchema).default([]),
+  /** Findings to fix that a serious dispute held back; they go to fix once every serious dispute is decided. */
+  heldFindings: z.array(loopFindingSchema).default([]),
   /** Rounds the user started, which never count toward the cap. */
   humanRounds: z.number().int().default(0),
   /** The commit being checked or reviewed. */
@@ -210,6 +227,7 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
     case "classifying":
       return { label: "classifying", tone: "accent", title: `Scoring the risk of each file changed at${commit}, which picks the review's depth` };
     case "fixing":
+      if (fixingRound(loop)?.owner === "user") return { label: "fixing · yours", tone: "accent", title: "The card's thread is fixing the findings you sent back; this round doesn't count toward the cap" };
       return { label: `fixing r${loop.round}`, tone: "accent", title: `The card's thread is fixing round ${loop.round}'s findings` };
     case "needs-you":
       if (loop.reason === "clean" || loop.reason === null) {

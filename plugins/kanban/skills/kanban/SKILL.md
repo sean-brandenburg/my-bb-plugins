@@ -25,6 +25,7 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the commit out: records which commit the review covers. |
 | `bb kanban monitor on\|off [--ticket <id>]` | Turn a card's review loop on or off. A monitored card is checked and routed by the board itself; off stops the loop after its current step. Turn it on for a card you create for a larger task. |
 | `bb kanban ready --commit <sha> --evidence-stdin [--screenshot <path>] [--check-command "<cmd>"]` | Run from a monitored card's own thread once its work is committed and verified (see below). |
+| `bb kanban landed [--ticket <id>]` | Run from a monitored local card's own thread after the user accepted it and you landed it with the project's finishing steps: the board moves the card to Done. |
 | `bb kanban checks-record --exit-code <n> --output-stdin` | Run from a checks thread: records the check command's exit code and the tail of its output. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
 | `bb kanban narrative-check --report-stdin < draft.json` | Run from a narrative thread: checks a draft kanban-narrative report parses and that its steps (and revision steps) cover every changed line; lists what they miss. |

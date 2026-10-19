@@ -2044,6 +2044,45 @@ describe("monitored review loop", () => {
     expect((await board()).columns.map((column) => column.name)).toEqual(["Backlog", "To Do", "In Progress", "In Review", "Done"]);
   });
 
+  /** A monitored local card whose first review came back clean, so it waits at Needs you. */
+  async function cleanAtNeedsYou(): Promise<Ticket> {
+    await monitoredCard();
+    await ready();
+    await recordChecks("thr_2", 0);
+    await classify("thr_3", 2);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.any(String) }));
+    await completeReview("thr_4", reviewBody(sha, []), sha);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "needs-you", reason: "clean" }));
+    return card();
+  }
+
+  it("accepts a local card by asking its thread to land the change, and moves it to Done when it reports landed", async () => {
+    const ticket = await cleanAtNeedsYou();
+    expect((await current().harness.behavior.runCli(["landed"], ctx("thr_1"))).exitCode).not.toBe(0);
+    await current().harness.behavior.callRpc("loop_accept", { id: ticket.id });
+    const land = sentTexts().at(-1)!;
+    expect(land).toMatchObject({ threadId: "thr_1", text: expect.stringContaining("AGENTS.md or CLAUDE.md") });
+    expect(land.text).toContain("bb kanban landed");
+    expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "accepted" } });
+    expect((await current().harness.behavior.runCli(["landed"], ctx("thr_1"))).exitCode).toBe(0);
+    expect(await card()).toMatchObject({ columnId: "done", loop: { phase: "landed" } });
+  });
+
+  it("sends the unsent diff comments to the card's thread as the user's round, and marks them addressed at its next ready", async () => {
+    const ticket = await cleanAtNeedsYou();
+    await expect(current().harness.behavior.callRpc("loop_send_back", { id: ticket.id })).rejects.toThrow("No unsent diff comments");
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: ticket.id, path: "cache.ts", line: 3, side: "RIGHT", body: "Name this lookupCache", target: "local", inReplyTo: null });
+    await current().harness.behavior.callRpc("loop_send_back", { id: ticket.id });
+    const sent = sentTexts().at(-1)!;
+    expect(sent).toMatchObject({ threadId: "thr_1", text: expect.stringContaining("Name this lookupCache") });
+    expect(sent.text).toContain("doesn't count toward the review loop's cap");
+    expect(await card()).toMatchObject({ columnId: "in-progress", pendingDiffComments: 0, loop: { phase: "building", round: 0, humanRounds: 1 } });
+
+    await ready(fixSha);
+    const { comments } = (await current().harness.behavior.callRpc("diff_comments_list", { ticketId: ticket.id })) as { comments: DiffComment[] };
+    expect(comments[0]!.addressedAt).not.toBeNull();
+  });
+
   it("keeps a card's checks runs through delete and restore", async () => {
     const ticket = await monitoredCard();
     await ready();
