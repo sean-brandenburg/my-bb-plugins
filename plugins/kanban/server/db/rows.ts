@@ -79,6 +79,7 @@ export interface ReviewRow {
   id: string;
   ticket_id: string;
   thread_id: string;
+  subject_kind: Review["subjectKind"];
   status: Review["status"];
   commit_sha: string | null;
   base_ref: string | null;
@@ -284,6 +285,7 @@ export function rowToReview(row: ReviewRow): Review {
     id: row.id,
     ticketId: row.ticket_id,
     threadId: row.thread_id,
+    subjectKind: row.subject_kind,
     status: row.status,
     commitSha: row.commit_sha,
     baseRef: row.base_ref,

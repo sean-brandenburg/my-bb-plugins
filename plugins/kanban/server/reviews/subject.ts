@@ -1,9 +1,9 @@
 import type { Ticket } from "../../shared/board";
-import { reviewSubjectSchema, type ReviewSubject } from "../../shared/review";
+import { reviewSubjectSchema, type PrReviewSubject, type ReviewSubject } from "../../shared/review";
 import { prShortName } from "../github";
 
-/** A PR card's subject is its pull request; other cards have none until their committed work is resolved. */
-export function prSubject(ticket: Ticket): ReviewSubject {
+/** A PR card's subject is its pull request; other cards review their thread's commits. */
+export function prSubject(ticket: Ticket): PrReviewSubject {
   if (ticket.pr === null) throw new Error("Only PR cards can be reviewed");
   const { repo, number, url } = ticket.pr;
   return { kind: "pr", repo, number, url };

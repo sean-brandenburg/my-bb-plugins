@@ -95,11 +95,16 @@ export function prepareStatements(db: KanbanDatabase) {
     latestCompletedReview: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE ticket_id = ? AND status = 'completed' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     ),
+    latestCompletedReviewOfKind: db.prepare<[string, ReviewRow["subject_kind"]], ReviewRow>(
+      `SELECT * FROM reviews WHERE ticket_id = ? AND subject_kind = ? AND status = 'completed' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    ),
     reviewById: db.prepare<[string], ReviewRow>(`SELECT * FROM reviews WHERE id = ?`),
     unappliedFinishedReviews: db.prepare<[], ReviewRow>(`SELECT * FROM reviews WHERE status != 'running' AND apply_thread_id IS NULL`),
+    // A local review's apply round runs in the card's own thread, which the hide-review-threads setting must never touch.
     codeReviewThreadIds: db.prepare<[], { thread_id: string }>(
       `SELECT thread_id FROM reviews
        UNION SELECT apply_thread_id FROM reviews WHERE apply_thread_id IS NOT NULL
+         AND apply_thread_id NOT IN (SELECT thread_id FROM tickets WHERE thread_id IS NOT NULL)
        UNION SELECT thread_id FROM comment_applies
        UNION SELECT thread_id FROM narratives
        UNION SELECT thread_id FROM hunk_explanations`,
@@ -111,8 +116,8 @@ export function prepareStatements(db: KanbanDatabase) {
       `SELECT * FROM reviews WHERE apply_thread_id = ? ORDER BY created_at DESC LIMIT 1`,
     ),
     insertReview: db.prepare(
-      `INSERT INTO reviews (id, ticket_id, thread_id, status, since_commit_sha, created_at)
-       VALUES (@id, @ticket_id, @thread_id, 'running', @since_commit_sha, @created_at)`,
+      `INSERT INTO reviews (id, ticket_id, thread_id, subject_kind, status, since_commit_sha, created_at)
+       VALUES (@id, @ticket_id, @thread_id, @subject_kind, 'running', @since_commit_sha, @created_at)`,
     ),
     recordReviewCommit: db.prepare<[string, string | null, string | null, string]>(
       `UPDATE reviews SET commit_sha = ?, base_ref = COALESCE(?, base_ref), head_ref = COALESCE(?, head_ref) WHERE id = ?`,

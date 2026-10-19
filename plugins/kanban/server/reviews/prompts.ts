@@ -1,5 +1,5 @@
 import type { Ticket } from "../../shared/board";
-import type { Review, ReviewSubject } from "../../shared/review";
+import type { PrReviewSubject, Review, ReviewSubject } from "../../shared/review";
 import { finishSteps } from "../apply-steps";
 import { earlierFindings } from "./findings";
 
@@ -114,33 +114,40 @@ const APPLY_AS_GIVEN =
 const SKIPPED_NOTE =
   "The board crosses off every finding handed to this round once it is recorded. If you could not apply some, add `--skipped <ids>` (comma-separated finding ids, e.g. `--skipped F2,F5`) to that command so they stay open.";
 
+function applyDrift(review: Review): string {
+  return review.commitSha === null
+    ? "Note `git rev-parse HEAD`."
+    : `The review was made against commit ${review.commitSha}. If \`git rev-parse HEAD\` differs, say so and check each finding still applies before fixing it.`;
+}
+
+function applyFooter(ticket: Ticket, review: Review, findingsBody: string): string[] {
+  return [`This apply run belongs to kanban ticket ${ticket.id}, review ${review.id}.`, "", "## Review Findings (persisted)", "", findingsBody];
+}
+
 /**
- * A PR review is applied by a fresh thread that fetches the PR head. A local review's apply prompt sets nothing up,
- * since its thread already has the commit checked out, and records the round by review id rather than by thread.
+ * A local review is applied by the card's own thread, which already has the commit checked out on its branch, so the
+ * prompt sets nothing up. It names the review by id because the card's thread outlives any one review's apply round.
  */
-export function applyPrompt(subject: ReviewSubject, ticket: Ticket, review: Review, push: boolean, findingsBody: string): string {
-  const drift =
-    review.commitSha === null
-      ? "Note `git rev-parse HEAD`."
-      : `The review was made against commit ${review.commitSha}. If \`git rev-parse HEAD\` differs, say so and check each finding still applies before fixing it.`;
-  const footer = [`This apply run belongs to kanban ticket ${ticket.id}, review ${review.id}.`, "", "## Review Findings (persisted)", "", findingsBody];
-  if (subject.kind === "local") {
-    return [
-      `Apply the persisted code review of your work on this card, "${ticket.title}", as a new commit on top of it.`,
-      "",
-      drift,
-      "",
-      `Then ${APPLY_AS_GIVEN}`,
-      "",
-      "When the skill reports done and verification passed:",
-      '1. Commit the fixes with `git commit -m "Apply code review findings"` (use a more specific message if the changes are narrow), leaving out any unrelated uncommitted work. Do not amend or rewrite existing commits.',
-      `2. \`bb kanban review-applied --review ${review.id} --commit "$(git rev-parse HEAD)"\` so the board records the commit.`,
-      SKIPPED_NOTE,
-      "",
-      "Rules: do not push, never post comments or reviews on GitHub, and report the result and any findings you could not apply.",
-      ...footer,
-    ].join("\n");
-  }
+export function localApplyPrompt(ticket: Ticket, review: Review, findingsBody: string): string {
+  return [
+    `Apply the persisted code review of your work on this card, "${ticket.title}", as a new commit on top of it.`,
+    "",
+    applyDrift(review),
+    "",
+    `Then ${APPLY_AS_GIVEN}`,
+    "",
+    "When the skill reports done and verification passed:",
+    '1. Commit the fixes with `git commit -m "Apply code review findings"` (use a more specific message if the changes are narrow), leaving out any unrelated uncommitted work. Do not amend or rewrite existing commits.',
+    `2. \`bb kanban review-applied --review ${review.id} --commit "$(git rev-parse HEAD)"\` so the board records the commit.`,
+    SKIPPED_NOTE,
+    "",
+    "Rules: do not push, never post comments or reviews on GitHub, and report the result and any findings you could not apply.",
+    ...applyFooter(ticket, review, findingsBody),
+  ].join("\n");
+}
+
+/** A PR review is applied by a fresh thread that fetches the PR head, then pushes the fixes to its branch or stops at a local commit. */
+export function prApplyPrompt(subject: PrReviewSubject, ticket: Ticket, review: Review, push: boolean, findingsBody: string): string {
   const { repo, number, url } = subject;
   const headRef = review.headRef ?? `$(gh pr view ${number} --repo ${repo} --json headRefName --jq .headRefName)`;
   return [
@@ -148,7 +155,7 @@ export function applyPrompt(subject: ReviewSubject, ticket: Ticket, review: Revi
     "",
     "Setup (this worktree is disposable; do not touch any other checkout). `git fetch`, `git push`, and `gh` need your credentials, which the sandbox hides; running them with the sandbox disabled is expected and authorized here.",
     `1. \`git fetch origin "pull/${number}/head"\` then \`git checkout --detach FETCH_HEAD\`.`,
-    `2. ${drift}`,
+    `2. ${applyDrift(review)}`,
     "",
     `Then ${APPLY_AS_GIVEN}`,
     "",
@@ -156,6 +163,6 @@ export function applyPrompt(subject: ReviewSubject, ticket: Ticket, review: Revi
     SKIPPED_NOTE,
     "",
     "Rules: never force-push, never post comments or reviews on GitHub, and report the result and any findings you could not apply.",
-    ...footer,
+    ...applyFooter(ticket, review, findingsBody),
   ].join("\n");
 }

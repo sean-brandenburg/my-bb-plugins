@@ -299,17 +299,15 @@ function TicketDetails({
 
       <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
 
-      {ticket.pr !== null ? (
-        <ReviewPanel
-          ticket={ticket}
-          threads={threads}
-          rpc={rpc}
-          pending={pending}
-          canReview={ticket.projectId !== null}
-          run={run}
-          onOpenThread={onOpenThread}
-        />
-      ) : null}
+      <ReviewPanel
+        ticket={ticket}
+        threads={threads}
+        rpc={rpc}
+        pending={pending}
+        canReview={ticket.projectId !== null}
+        run={run}
+        onOpenThread={onOpenThread}
+      />
 
       {ticket.pr !== null ? (
         <CommentsPanel

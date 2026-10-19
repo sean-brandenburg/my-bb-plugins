@@ -783,11 +783,11 @@ describe("PR review", () => {
     expect((await board()).tickets[0]!.latestReview).toMatchObject({ threadId: "thr_2" });
   });
 
-  it("refuses to review a card without a PR and asks for a project when none matches", async () => {
+  it("refuses to review a card with no thread and asks for a project when none matches", async () => {
     vi.stubGlobal("fetch", stubGithub({ authored: [searchItem("other/repo", 1)] }));
     await load({ autoStartThreads: false, autoCreateProjects: false });
     const adhoc = (await current().harness.behavior.callRpc("ticket_create", { title: "A" })) as Ticket;
-    await expect(current().harness.behavior.callRpc("ticket_review_pr", { id: adhoc.id })).rejects.toThrow(/Only PR cards/u);
+    await expect(current().harness.behavior.callRpc("ticket_review_pr", { id: adhoc.id })).rejects.toThrow(/Start the card's thread first/u);
 
     await current().harness.behavior.callRpc("sync_now", null);
     const pr = (await board()).tickets.find((ticket) => ticket.pr !== null)!;
@@ -1317,6 +1317,189 @@ describe("persisted reviews", () => {
     expect(resynced).toHaveLength(1);
     expect(await current().harness.behavior.callRpc("ticket_restore", { id: card.id })).toEqual({ restored: false });
     expect((await board()).tickets.map((ticket) => ticket.id)).toEqual([resynced[0]!.id]);
+  });
+});
+
+describe("local card review", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const newSha = "fedcba9876543210fedcba9876543210fedcba98";
+  const ctx = (threadId: string) => ({ threadId, signal: new AbortController().signal });
+  const reportBody = (commit: string, extra: Record<string, unknown>, findings: Array<Record<string, unknown>>) =>
+    ["## Review Findings", `Reviewed commit: ${commit}`, "```json review-findings", JSON.stringify({ version: 1, summary: "x", commit, findings, ...extra }), "```"].join("\n");
+
+  interface Checkout {
+    headSha?: string | null;
+    ahead?: number;
+    mergeBaseBranch?: string | null;
+    defaultBranch?: string | null;
+    hostId?: string;
+    unavailable?: string;
+  }
+
+  /** The card thread's environment: a branch `ahead` commits past its merge base, at `headSha`. */
+  function stubCheckout(checkout: Checkout = {}) {
+    const { headSha = sha, ahead = 2, mergeBaseBranch = "main", defaultBranch = "main", hostId = "host_1" } = checkout;
+    current().harness.sdk.stub("environments.get", async ({ environmentId }: { environmentId: string }) => ({ id: environmentId, hostId, mergeBaseBranch, defaultBranch }));
+    current().harness.sdk.stub("environments.status", async () =>
+      checkout.unavailable !== undefined
+        ? { outcome: "not_applicable", reason: "non_git_environment", message: checkout.unavailable }
+        : {
+            outcome: "available",
+            workspace: {
+              branch: { currentBranch: "feature", defaultBranch: "main" },
+              checkout: { kind: "branch", branchName: "feature", headSha },
+              mergeBase: { aheadCount: ahead, behindCount: 0, baseRef: null, commits: [], files: [], insertions: 0, deletions: 0, hasCommittedUnmergedChanges: ahead > 0, lineStatsComplete: true, mergeBaseBranch: "main" },
+            },
+          },
+    );
+  }
+
+  async function localCard(checkout: Checkout = {}): Promise<Ticket> {
+    await load({ autoStartThreads: false });
+    stubCheckout(checkout);
+    return (await current().harness.behavior.callRpc("ticket_create", { title: "Local work", projectId: "proj_acme", startThread: true })) as Ticket;
+  }
+
+  async function completeReview(threadId: string, body: string, commit = sha): Promise<Review> {
+    await current().harness.behavior.runCli(["review-record", "--commit", commit, "--base", "main"], ctx(threadId));
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: threadId, projectId: "proj_acme" }), lastAssistantText: body });
+    return ((await current().harness.behavior.callRpc("review_list", { ticketId: (await board()).tickets[0]!.id })) as { reviews: Review[] }).reviews[0]!;
+  }
+
+  it("reviews the card thread's HEAD in a fresh hidden worktree against its merge base and persists the findings", async () => {
+    const card = await localCard();
+    expect(card.threadId).toBe("thr_1");
+    expect(await current().harness.behavior.callRpc("review_subject", { ticketId: card.id })).toEqual({ subject: { kind: "local", commit: sha, defaultBranch: "main" }, reason: null });
+
+    const reviewed = (await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id })) as Ticket;
+    expect(reviewed.reviewThreadId).toBe("thr_2");
+    expect(spawned[1]).toMatchObject({
+      projectId: "proj_acme",
+      environment: { type: "host", hostId: "host_1", workspace: { type: "managed-worktree", baseBranch: { kind: "default" } } },
+      parentThreadId: "thr_1",
+      title: "Review 0123456: Local work",
+      visibility: "hidden",
+      pluginMetadata: { ticketId: card.id, role: "review" },
+    });
+    const prompt = String(spawned[1]!.prompt);
+    expect(prompt).toContain(`git checkout --detach ${sha}`);
+    expect(prompt).toContain('bb kanban review-record --commit "$(git rev-parse HEAD)" --base "main"');
+    expect(prompt).toContain("with the range `main...HEAD` (three-dot)");
+    expect(prompt).not.toMatch(/gh pr|git fetch/u);
+    expect(reviewed.latestReview).toMatchObject({ subjectKind: "local", status: "running", commitSha: null });
+
+    const review = await completeReview("thr_2", reportBody(sha, {}, [{ id: "F1", severity: "important", title: "Leaky handle", locations: [{ file: "a.go", startLine: 3 }] }]));
+    expect(review).toMatchObject({ subjectKind: "local", status: "completed", commitSha: sha, baseRef: "main" });
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "completed", counts: { critical: 0, important: 1, minor: 0 } });
+  });
+
+  it("starts from the CLI on the thread's card", async () => {
+    await localCard();
+    const result = await current().harness.behavior.runCli(["review"], ctx("thr_1"));
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("@thread:thr_2");
+  });
+
+  it.each<[string, Checkout | null, RegExp]>([
+    ["has no thread", null, /Start the card's thread first/u],
+    ["has no commits beyond its merge base", { ahead: 0 }, /No commits beyond `main` to review/u],
+    ["has no branch to review against", { mergeBaseBranch: null, defaultBranch: null }, /no default branch/u],
+    ["is not a git checkout", { unavailable: "Not a git repository" }, /Not a git repository/u],
+    ["runs on another machine", { hostId: "host_2" }, /another machine/u],
+  ])("explains why a card that %s cannot be reviewed, and refuses to start one", async (_, checkout, reason) => {
+    let card: Ticket;
+    if (checkout === null) {
+      await load({ autoStartThreads: false });
+      card = (await current().harness.behavior.callRpc("ticket_create", { title: "No thread" })) as Ticket;
+    } else {
+      card = await localCard(checkout);
+    }
+    const { subject, reason: given } = (await current().harness.behavior.callRpc("review_subject", { ticketId: card.id })) as { subject: unknown; reason: string };
+    expect(subject).toBeNull();
+    expect(given).toMatch(reason);
+    await expect(current().harness.behavior.callRpc("ticket_review_pr", { id: card.id })).rejects.toThrow(reason);
+    expect(spawned.filter((args) => (args.pluginMetadata as { role?: string }).role === "review")).toEqual([]);
+  });
+
+  it("falls back to the default branch when the environment has no merge-base branch", async () => {
+    const card = await localCard({ mergeBaseBranch: null, defaultBranch: "trunk" });
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    expect(String(spawned[1]!.prompt)).toContain("`trunk...HEAD`");
+  });
+
+  it("re-reviews the commits since the last local review and carries its open findings forward", async () => {
+    const card = await localCard();
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    const first = await completeReview("thr_2", reportBody(sha, {}, [
+      { id: "F1", severity: "important", title: "Leaky handle", locations: [{ file: "a.go", startLine: 3 }] },
+      { id: "F2", severity: "minor", title: "Wrong default", locations: [] },
+    ]));
+
+    stubCheckout({ headSha: newSha });
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    expect(String(spawned[2]!.title)).toBe("Re-review fedcba9: Local work");
+    const prompt = String(spawned[2]!.prompt);
+    expect(prompt).toContain(`git checkout --detach ${newSha}`);
+    expect(prompt).toContain(`${sha}..HEAD`);
+    expect(prompt).toContain(`"handle": "${first.id}/F1"`);
+
+    const second = await completeReview(
+      "thr_3",
+      reportBody(newSha, { carriesForward: true, resolved: [{ id: `${first.id}/F1`, title: "Leaky handle", note: "closed in defer" }] }, [
+        { id: "F1", severity: "minor", title: "Wrong default", locations: [], carriedFrom: `${first.id}/F2` },
+      ]),
+      newSha,
+    );
+    expect(second).toMatchObject({ sinceCommitSha: sha, commitSha: newSha, report: { carriesForward: true, resolved: [{ title: "Leaky handle" }] } });
+  });
+
+  it("applies into the card's own thread, records the round, and leaves that thread's visibility alone", async () => {
+    const card = await localCard();
+    const updates: Array<{ threadId: string; visibility?: string }> = [];
+    current().harness.sdk.stub("threads.update", async (args: { threadId: string; visibility?: string }) => {
+      updates.push(args);
+      return {};
+    });
+    current().harness.sdk.stub("threads.send", async () => ({ ok: true }));
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    const review = await completeReview("thr_2", reportBody(sha, {}, [
+      { id: "F1", severity: "critical", title: "Real bug", locations: [{ file: "a.go", startLine: 10 }] },
+      { id: "F2", severity: "critical", title: "Other bug", locations: [{ file: "b.go", startLine: 2 }] },
+    ]));
+
+    const applied = (await current().harness.behavior.callRpc("review_apply", { ticketId: card.id, push: true })) as Ticket;
+    expect(spawned).toHaveLength(2);
+    const sent = current().harness.inspection.sdk.callsTo("threads.send") as Array<[{ threadId: string; input: Array<{ text: string }> }]>;
+    expect(sent).toHaveLength(1);
+    expect(sent[0]![0].threadId).toBe("thr_1");
+    const prompt = sent[0]![0].input[0]!.text;
+    expect(prompt).toContain("`apply-review` skill");
+    expect(prompt).toContain("apply every one as written, without a triage step");
+    expect(prompt).toContain(`bb kanban review-applied --review ${review.id} --commit`);
+    expect(prompt).toContain("**F1**");
+    expect(prompt).toContain("**F2**");
+    expect(prompt).toContain("Rules: do not push");
+    expect(applied.latestReview?.apply).toMatchObject({ threadId: "thr_1", completedAt: null, push: false, findingIds: ["F1", "F2"] });
+    await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/already in progress/u);
+
+    const done = await current().harness.behavior.runCli(["review-applied", "--review", review.id, "--commit", newSha, "--skipped", "F2"], ctx("thr_1"));
+    expect(done.stdout).toContain("1 finding(s) marked applied, 1 left open");
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ appliedCount: 1, apply: { completedAt: expect.any(Number), pushedCommit: newSha, push: false } });
+
+    // The card's thread is never a code review thread, so the visibility setting never hides it.
+    await current().harness.behavior.setSettings({ hideReviewThreads: false });
+    await vi.waitFor(() => expect(updates.map((update) => update.threadId)).toContain("thr_2"));
+    await current().harness.behavior.setSettings({ hideReviewThreads: true });
+    await vi.waitFor(() => expect(updates.filter((update) => update.visibility === "hidden").length).toBeGreaterThan(0));
+    expect(updates.map((update) => update.threadId)).not.toContain("thr_1");
+  });
+
+  it("refuses a local apply once the card's thread is gone", async () => {
+    const card = await localCard();
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    await completeReview("thr_2", reportBody(sha, {}, [{ id: "F1", severity: "critical", title: "Real bug", locations: [] }]));
+    await current().harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "thr_1", projectId: "proj_acme" }) });
+    await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/card's thread is gone/u);
   });
 });
 

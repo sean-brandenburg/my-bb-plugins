@@ -2,7 +2,6 @@ import { rpcContract } from "../contract";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToDump } from "./db/rows";
-import { prSubject } from "./reviews/subject";
 import type { Services } from "./services";
 
 /** The board's RPC surface; each handler hands off to the feature that owns it. */
@@ -100,9 +99,10 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
     ticket_review_pr: async ({ id, projectId, mode }) => {
       const ticket = board.getTicket(id);
-      const subject = prSubject(ticket);
+      const subject = await reviews.reviewSubjectForTicket(ticket);
       return reviews.spawnReviewForTicket(id, await projects.projectForTicket(ticket, projectId), mode, subject);
     },
+    review_subject: ({ ticketId }) => reviews.reviewAvailability(ticketId),
     review_list: ({ ticketId }) => reviews.listReviews(ticketId),
     review_apply: ({ ticketId, reviewId, push }) => reviews.spawnApplyForReview(ticketId, reviewId, push),
     review_set_selection: ({ reviewId, findingId, selected }) => reviews.setSelection(reviewId, findingId, selected),

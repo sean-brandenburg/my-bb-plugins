@@ -133,7 +133,7 @@ export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardS
     };
   }
 
-  return { spawnThreadForTicket, promptTicketThread, linkThread, freshWorktree };
+  return { spawnThreadForTicket, promptTicketThread, linkThread, projectHostId, freshWorktree };
 }
 
 export type CardThreads = ReturnType<typeof createCardThreads>;

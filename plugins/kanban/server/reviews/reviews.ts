@@ -8,8 +8,8 @@ import type { KanbanContext } from "../context";
 import { rowToReview, type ReviewRow } from "../db/rows";
 import type { Projects } from "../projects";
 import { parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
-import { applyPrompt, reviewPrompt } from "./prompts";
-import { prSubject, subjectLabel } from "./subject";
+import { localApplyPrompt, prApplyPrompt, reviewPrompt } from "./prompts";
+import { localSubject, prSubject, subjectLabel } from "./subject";
 import { parseStringArray, shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
@@ -21,9 +21,44 @@ export function createReviews(
 ) {
   const { bb, stmts, publish } = ctx;
   const { getTicket } = board;
-  const { freshWorktree } = threads;
+  const { freshWorktree, projectHostId } = threads;
   const { projectForTicket } = projects;
   const { codeReviewThreadVisibility } = codeReviewThreads;
+
+  /**
+   * What a review of the card covers: its pull request, or the commits its thread made beyond the branch the changes
+   * view diffs against. The error says why the card can't be reviewed yet, in words the board shows as the reason.
+   */
+  async function reviewSubjectForTicket(ticket: Ticket): Promise<ReviewSubject> {
+    if (ticket.pr !== null) return prSubject(ticket);
+    if (ticket.threadId === null) throw new Error("Start the card's thread first; a review covers the commits it makes");
+    const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
+    if (thread.environmentId === null) throw new Error("The card's thread has no environment yet");
+    const environment = await bb.sdk.environments.get({ environmentId: thread.environmentId });
+    const branch = environment.mergeBaseBranch ?? environment.defaultBranch;
+    if (branch === null) throw new Error("The card's environment has no default branch to review its commits against");
+    // The review's fresh worktree comes from the project's checkout, so it only has commits made in that repository.
+    if (environment.hostId !== (await projectHostId(thread.projectId))) {
+      throw new Error("The card's thread runs on another machine than the project's checkout, so a review worktree can't see its commits");
+    }
+    const status = await bb.sdk.environments.status({ environmentId: environment.id, mergeBaseBranch: branch });
+    if (status.outcome === "not_applicable") throw new Error(status.message);
+    if (status.outcome === "unavailable") throw new Error(status.failure.message);
+    const { checkout, mergeBase } = status.workspace;
+    const head = checkout.kind === "branch" || checkout.kind === "detached" ? checkout.headSha : null;
+    if (head === null) throw new Error("The card's thread has no commits yet");
+    if (mergeBase === null || mergeBase.aheadCount === 0) throw new Error(`No commits beyond \`${branch}\` to review; commit the card's work first`);
+    return localSubject(head, branch);
+  }
+
+  async function reviewAvailability(ticketId: string): Promise<{ subject: ReviewSubject | null; reason: string | null }> {
+    const ticket = getTicket(ticketId);
+    try {
+      return { subject: await reviewSubjectForTicket(ticket), reason: null };
+    } catch (error) {
+      return { subject: null, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
 
   async function spawnReviewForTicket(
     ticketId: string,
@@ -32,9 +67,11 @@ export function createReviews(
     subject: ReviewSubject,
   ): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    const previousRow = mode === "incremental" ? stmts.latestCompletedReview.get(ticket.id) : undefined;
+    // A card reviewed both as a PR and locally keeps two chains; a re-review only continues the one of its own kind.
+    const previousRow = mode === "incremental" ? stmts.latestCompletedReviewOfKind.get(ticket.id, subject.kind) : undefined;
     const previous = previousRow === undefined || previousRow.commit_sha === null ? null : rowToReview(previousRow);
-    const standing = previous === null ? [] : standingReviews(stmts.reviewsForTicket.all(ticket.id).map(rowToReview));
+    const standing =
+      previous === null ? [] : standingReviews(stmts.reviewsForTicket.all(ticket.id).map(rowToReview).filter((review) => review.subjectKind === subject.kind));
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: await freshWorktree(projectId),
@@ -49,6 +86,7 @@ export function createReviews(
       id: shortId(),
       ticket_id: ticket.id,
       thread_id: thread.id,
+      subject_kind: subject.kind,
       since_commit_sha: previous?.commitSha ?? null,
       created_at: now,
     });
@@ -59,7 +97,6 @@ export function createReviews(
 
   async function spawnApplyForReview(ticketId: string, reviewId: string | null, push: boolean): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    const subject = prSubject(ticket);
     const row = reviewId === null ? stmts.latestCompletedReview.get(ticket.id) : stmts.reviewById.get(reviewId);
     if (row === undefined || row.ticket_id !== ticket.id) throw new Error("No completed review to apply for this card");
     if (row.status === "running") throw new Error("The review is still running");
@@ -72,6 +109,9 @@ export function createReviews(
     if (findingIds !== null && findingIds.length === 0) {
       throw new Error("No selected findings are left to apply; tick at least one open finding");
     }
+    const handed = findingIds === null ? null : JSON.stringify(findingIds);
+    if (review.subjectKind === "local") return applyInCardThread(ticket, review, findingsBody, handed);
+    const subject = prSubject(ticket);
     const projectId = await projectForTicket(ticket, null);
     // Reuse the review thread's worktree when it still exists: the PR is already fetched there.
     let environment: ThreadEnvironment | null = null;
@@ -86,13 +126,25 @@ export function createReviews(
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: environment ?? (await freshWorktree(projectId)),
-      prompt: applyPrompt(subject, ticket, review, push, findingsBody),
+      prompt: prApplyPrompt(subject, ticket, review, push, findingsBody),
       title: threadTitle(`Apply review ${subjectLabel(subject)}: ${ticket.title}`),
       parentThreadId: ticket.threadId ?? review.threadId,
       visibility: await codeReviewThreadVisibility(),
       pluginMetadata: { ticketId: ticket.id, role: "apply", reviewId: review.id },
     });
-    stmts.startApply.run(thread.id, Date.now(), findingIds === null ? null : JSON.stringify(findingIds), push ? 1 : 0, review.id);
+    stmts.startApply.run(thread.id, Date.now(), handed, push ? 1 : 0, review.id);
+    publish();
+    return getTicket(ticket.id);
+  }
+
+  /**
+   * A local review's fixes belong on the card's branch, so the card's own thread applies them, keeping its own
+   * instructions; a fresh worktree would commit them off that branch.
+   */
+  async function applyInCardThread(ticket: Ticket, review: Review, findingsBody: string, handed: string | null): Promise<Ticket> {
+    if (ticket.threadId === null) throw new Error("The card's thread is gone, and a local review's fixes are made there; start a new thread and review again");
+    await bb.sdk.threads.send({ threadId: ticket.threadId, mode: "auto", input: [{ type: "text", text: localApplyPrompt(ticket, review, findingsBody), mentions: [] }] });
+    stmts.startApply.run(ticket.threadId, Date.now(), handed, 0, review.id);
     publish();
     return getTicket(ticket.id);
   }
@@ -238,7 +290,7 @@ export function createReviews(
     return rowToReview(stmts.reviewById.get(reviewId)!);
   }
 
-  return { spawnReviewForTicket, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
+  return { reviewSubjectForTicket, reviewAvailability, spawnReviewForTicket, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
 }
 
 export type Reviews = ReturnType<typeof createReviews>;

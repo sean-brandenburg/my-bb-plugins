@@ -206,5 +206,6 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
       files TEXT NOT NULL,
       delta TEXT
     )`,
+    `ALTER TABLE reviews ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'pr'`,
   ]);
 }

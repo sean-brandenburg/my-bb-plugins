@@ -2,11 +2,11 @@ import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
+import type { ReviewSubject } from "../shared/review";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
 import { countSeverities } from "./reviews/findings";
-import { prSubject } from "./reviews/subject";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
 
@@ -16,7 +16,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { getTicket, hydrate, getColumns, getSources, createTicket, moveTicket, setParent, setTags, setDueDate } = services.board;
   const { spawnThreadForTicket, linkThread } = services.threads;
   const { projectForTicket, fallbackProject } = services.projects;
-  const { spawnReviewForTicket, spawnApplyForReview, completeApply: completeReviewApply } = services.reviews;
+  const { reviewSubjectForTicket, spawnReviewForTicket, spawnApplyForReview, completeApply: completeReviewApply } = services.reviews;
   const { spawnApplyForComments, completeApply } = services.prComments;
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
@@ -223,23 +223,26 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           },
         }),
         review: cliCommand({
-          summary: "Start a code-review thread for a card's pull request (defaults to the current thread's card)",
+          summary: "Start a code-review thread for a card's pull request, or for the commits its thread made beyond its merge base (defaults to the current thread's card)",
           options: {
             ...ticketOption,
             project: { type: "string", description: "Project id to run the review in; defaults to the card's project" },
-            full: { type: "boolean", description: "Review the whole PR even if an earlier review exists (default: the commits since the last review, re-checking its open findings)" },
+            full: { type: "boolean", description: "Review the whole change even if an earlier review exists (default: the commits since the last review, re-checking its open findings)" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
             const ticket = ticketForContext(options.ticket, ctx.threadId);
-            if (ticket.pr === null) {
-              throw new PluginCliError(`Ticket ${ticket.id} has no linked pull request.`, { code: "no_pull_request" });
+            let subject: ReviewSubject;
+            try {
+              subject = await reviewSubjectForTicket(ticket);
+            } catch (error) {
+              throw new PluginCliError(`Ticket ${ticket.id} can't be reviewed: ${error instanceof Error ? error.message : String(error)}.`, { code: "not_reviewable" });
             }
             const reviewed = await spawnReviewForTicket(
               ticket.id,
               await projectForTicket(ticket, options.project ?? null),
               options.full ? "full" : "incremental",
-              prSubject(ticket),
+              subject,
             );
             return {
               exitCode: 0,
@@ -291,8 +294,8 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
         "review-record": cliCommand({
           summary: "Record the commit a running review covers (run by the review thread itself)",
           options: {
-            commit: { type: "string", required: true, description: "Full sha of the reviewed PR head" },
-            base: { type: "string", description: "PR base branch name" },
+            commit: { type: "string", required: true, description: "Full sha of the reviewed commit (the PR head, or the card thread's HEAD)" },
+            base: { type: "string", description: "Branch the review diffs against: the PR base, or the merge-base branch of local work" },
             head: { type: "string", description: "PR head branch name" },
             review: { type: "string", description: "Review id; defaults to the review owned by the current thread" },
           },
@@ -370,11 +373,11 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           },
         }),
         "apply-review": cliCommand({
-          summary: "Start a thread that applies the latest persisted review to the PR branch and pushes it",
+          summary: "Apply the latest persisted review: a PR review in a new thread that pushes to the PR branch, a local review in the card's own thread",
           options: {
             ...ticketOption,
             review: { type: "string", description: "Review id; defaults to the latest completed review" },
-            "no-push": { type: "boolean", description: "Commit in the worktree but do not push to the PR branch" },
+            "no-push": { type: "boolean", description: "PR reviews: commit in the worktree but do not push to the PR branch" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
@@ -480,7 +483,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           },
         }),
         "review-applied": cliCommand({
-          summary: "Mark the review's fixes as committed (and pushed) — run by the apply thread itself",
+          summary: "Mark the review's fixes as committed (and pushed) — run by the thread applying them",
           options: {
             commit: { type: "string", description: "Sha of the resulting commit" },
             pushed: { type: "boolean", description: "The commit was pushed to the PR branch" },

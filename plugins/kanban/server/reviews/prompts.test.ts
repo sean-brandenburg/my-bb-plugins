@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Ticket } from "../../shared/board";
 import type { Review } from "../../shared/review";
-import { applyPrompt, reviewPrompt } from "./prompts";
+import { localApplyPrompt, prApplyPrompt, reviewPrompt } from "./prompts";
 import { localSubject, prSubject, subjectLabel } from "./subject";
 
 const commit = "0123456789abcdef0123456789abcdef01234567";
@@ -59,6 +59,7 @@ function review(overrides: Partial<Review> = {}): Review {
     id: "r1",
     ticketId: "t1",
     threadId: "thr_review",
+    subjectKind: "local",
     status: "completed",
     commitSha: since,
     baseRef: "main",
@@ -129,13 +130,20 @@ describe("review prompt", () => {
 
 describe("apply prompt", () => {
   it("applies a local review as a new commit, records it by review id, and never pushes", () => {
-    for (const push of [true, false]) {
-      const prompt = applyPrompt(localSubject(commit, "main"), ticket(), review(), push, "- a.ts:1 fix me");
-      expect(prompt).toContain("as a new commit on top of it.");
-      expect(prompt).toContain("Do not amend or rewrite existing commits.");
-      expect(prompt).toContain('`bb kanban review-applied --review r1 --commit "$(git rev-parse HEAD)"`');
-      expect(prompt).toContain("Rules: do not push");
-      expect(prompt).not.toMatch(/disposable|git fetch|git push|gh pr|--pushed|FETCH_HEAD/u);
-    }
+    const prompt = localApplyPrompt(ticket(), review(), "- a.ts:1 fix me");
+    expect(prompt).toContain("as a new commit on top of it.");
+    expect(prompt).toContain("Do not amend or rewrite existing commits.");
+    expect(prompt).toContain('`bb kanban review-applied --review r1 --commit "$(git rev-parse HEAD)"`');
+    expect(prompt).toContain("Rules: do not push");
+    expect(prompt).not.toMatch(/disposable|git fetch|git push|gh pr|--pushed|FETCH_HEAD/u);
+  });
+
+  it("fetches the PR head and pushes or stops at a local commit as asked", () => {
+    const subject = prSubject(prTicket());
+    const pushed = prApplyPrompt(subject, prTicket(), review({ subjectKind: "pr", headRef: "feature" }), true, "- a.ts:1 fix me");
+    expect(pushed).toContain('git fetch origin "pull/7/head"');
+    expect(pushed).toContain("git push origin HEAD:refs/heads/feature");
+    const local = prApplyPrompt(subject, prTicket(), review({ subjectKind: "pr", headRef: "feature" }), false, "- a.ts:1 fix me");
+    expect(local).toContain("Do NOT push.");
   });
 });

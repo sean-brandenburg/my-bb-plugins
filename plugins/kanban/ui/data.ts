@@ -5,6 +5,7 @@ import type { rpcContract } from "../contract";
 import { knownChangeTotals } from "bb-diff-view/app/change-totals";
 import { useThreadChangeTotals } from "bb-diff-view/app/use-change-totals";
 import type { Board, Ticket } from "../shared/board";
+import type { ReviewSubject } from "../shared/review";
 import { BOARD_CHANGED } from "../shared/events";
 import { errorMessage } from "./format";
 
@@ -126,6 +127,33 @@ export function useOpenThread(): (threadId: string) => void {
     },
     [actions, navigate, threads],
   );
+}
+
+/**
+ * What a review of the card would cover, or why it can't be reviewed yet. A local card's answer depends on its thread's
+ * commits, so it is asked again whenever the thread's status changes.
+ */
+export function useReviewSubject(ticket: Ticket, enabled = true): { subject: ReviewSubject | null; reason: string | null } | null {
+  const rpc = useRpc<typeof rpcContract>();
+  const threads = useThreadIndex();
+  const threadStatus = ticket.threadId === null ? null : (threads.get(ticket.threadId)?.status ?? null);
+  const [availability, setAvailability] = useState<{ subject: ReviewSubject | null; reason: string | null } | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    rpc.call("review_subject", { ticketId: ticket.id }).then(
+      (next) => {
+        if (!cancelled) setAvailability(next);
+      },
+      (cause: unknown) => {
+        if (!cancelled) setAvailability({ subject: null, reason: errorMessage(cause) });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, rpc, ticket.id, ticket.threadId, ticket.updatedAt, threadStatus]);
+  return availability;
 }
 
 /** "Push after applying" is a per-user habit, so it lives in localStorage rather than on the card. */

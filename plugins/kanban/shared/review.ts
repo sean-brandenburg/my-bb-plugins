@@ -14,6 +14,7 @@ export const reviewSubjectSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type ReviewSubject = z.infer<typeof reviewSubjectSchema>;
+export type PrReviewSubject = Extract<ReviewSubject, { kind: "pr" }>;
 
 export const reviewApplySchema = z.object({
   threadId: z.string(),
@@ -23,7 +24,7 @@ export const reviewApplySchema = z.object({
   pushedCommit: z.string().nullable(),
   /** Finding ids handed to the apply round; null when a free-form review was passed whole. */
   findingIds: z.array(z.string()).nullable(),
-  /** Whether the run was asked to push; `pushedCommit` is then the pushed sha, otherwise the local commit. */
+  /** Whether the run was asked to push; `pushedCommit` is then the pushed sha, otherwise the local commit. Never set for a local review, whose fixes the card's own thread commits. */
   push: z.boolean(),
 });
 
@@ -100,14 +101,16 @@ export const reviewScoresSchema = z.object({
 });
 export type ReviewScores = z.infer<typeof reviewScoresSchema>;
 
-/** One persisted code review of a PR card. `body` is the compiled findings. */
+/** One persisted code review of a card's PR or local commits. `body` is the compiled findings. */
 export const reviewSchema = z.object({
   id: z.string(),
   ticketId: z.string(),
   threadId: z.string(),
+  /** A re-review only continues from a review of the same kind, and a local review is applied in the card's own thread. */
+  subjectKind: z.enum(["pr", "local"]),
   /** `failed`: the thread went idle without recording a commit or producing a report (setup problems, usually). */
   status: z.enum(["running", "completed", "failed"]),
-  /** PR head commit that was reviewed; the next review diffs from here. */
+  /** The PR head or local commit that was reviewed; the next review diffs from here. */
   commitSha: z.string().nullable(),
   baseRef: z.string().nullable(),
   headRef: z.string().nullable(),

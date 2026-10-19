@@ -21,13 +21,13 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban show [--ticket <id>]` | Show one card. Inside a thread, defaults to that thread's card. |
 | `bb kanban move <column-id> [--ticket <id>]` | Move a card. Inside a thread, defaults to that thread's card. |
 | `bb kanban add "<title>" [--tag <tag>] [--description <md>] [--column <id>] [--project <id>] [--start-thread]` | Add a card. Inside a thread it is linked to that thread unless `--no-link`, `--project`, or `--start-thread` is passed. |
-| `bb kanban review [--ticket <id>] [--project <id>]` | Start a code-review thread for the card's PR: a fresh worktree checks the PR out detached and runs the `code-review` skill. Inside a thread, defaults to that thread's card. |
-| `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the PR out: records which commit the review covers. |
+| `bb kanban review [--ticket <id>] [--project <id>] [--full]` | Start a code-review thread for the card's PR, or for a card without one, for the commits its thread made beyond its merge base: a fresh worktree checks the PR head (or the thread's HEAD) out detached and runs the `code-review` skill. Inside a thread, defaults to that thread's card. |
+| `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the commit out: records which commit the review covers. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
 | `bb kanban narrative-check --report-stdin < draft.json` | Run from a narrative thread: checks a draft kanban-narrative report parses and that its steps (and revision steps) cover every changed line; lists what they miss. |
 | `bb kanban narrative-context` | Run from a narrative thread: prints the earlier narrative's steps and the delta a revision chapter must explain. |
-| `bb kanban apply-review [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-review` skill on the selected findings, applying all of them without confirmation, commits, and (unless `--no-push`) pushes to the PR branch. |
-| `bb kanban review-applied --commit <sha> [--pushed] [--skipped F2,F5]` | Run from an apply thread after committing: records the commit (`--pushed` when it was pushed) and marks every finding it was handed applied, except the `--skipped` ones it could not apply. |
+| `bb kanban apply-review [--ticket <id>] [--no-push]` | Apply the selected findings with the `apply-review` skill, all of them without confirmation. A PR review starts a thread that commits and (unless `--no-push`) pushes to the PR branch; a local review is sent to the card's own thread, which commits without pushing. |
+| `bb kanban review-applied [--review <id>] --commit <sha> [--pushed] [--skipped F2,F5]` | Run from the thread applying the findings after committing: records the commit (`--pushed` when it was pushed) and marks every finding it was handed applied, except the `--skipped` ones it could not apply. |
 | `bb kanban comments [--ticket <id>]` | List the PR's synced comments with their selection state. |
 | `bb kanban apply-comments [--ticket <id>] [--no-push]` | Start a thread that runs the `apply-pr-comments` skill on the selected comments, applying all of them without confirmation, commits, and (unless `--no-push`) pushes. |
 | `bb kanban comments-applied --commit <sha> [--pushed]` | Run from an apply-comments thread after committing: marks the comments addressed. |

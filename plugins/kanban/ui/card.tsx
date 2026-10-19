@@ -140,11 +140,11 @@ export function CardView({
         </span>
         {/* Hover actions sit over the counters instead of reserving room for themselves. */}
         <span className={`pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 bg-card pl-3 opacity-0 ${OPACITY_TRANSITION} [mask-image:linear-gradient(to_right,transparent,black_12px)] focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100`}>
-          {ticket.pr !== null ? (
+          {ticket.pr !== null || review !== null ? (
             <button
               type="button"
-              aria-label={review === null ? "Review PR" : "Open PR review"}
-              title={review === null ? "Run the code-review skill on this PR" : "Open the PR review"}
+              aria-label={review === null ? "Review PR" : ticket.pr === null ? "Open review" : "Open PR review"}
+              title={review === null ? "Run the code-review skill on this PR" : ticket.pr === null ? "Open the review" : "Open the PR review"}
               className={iconButton}
               onClick={stopping(review === null ? onReview : onOpenReview)}
             >

@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — Reviews take a subject, not a PR.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Review button and `bb kanban review` are available on an ad hoc or Jira card whose thread has commits beyond its merge base, and disabled with a reason otherwise.
-- [ ] The review thread runs hidden in a fresh worktree at the card thread's HEAD commit and records that commit.
-- [ ] Findings persist on the card and render in the card panel and the changes view as they do for PR cards.
-- [ ] Re-review since the last reviewed commit carries findings forward and lists resolved ones.
-- [ ] Apply on a local card prompts the card's own thread with the selected findings and records the round, crossing off what it fixed and keeping skipped ones open.
-- [ ] Server tests cover spawning a local review, completing it, and applying it into the card thread.
+- [x] The Review button and `bb kanban review` are available on an ad hoc or Jira card whose thread has commits beyond its merge base, and disabled with a reason otherwise.
+- [x] The review thread runs hidden in a fresh worktree at the card thread's HEAD commit and records that commit.
+- [x] Findings persist on the card and render in the card panel and the changes view as they do for PR cards.
+- [x] Re-review since the last reviewed commit carries findings forward and lists resolved ones.
+- [x] Apply on a local card prompts the card's own thread with the selected findings and records the round, crossing off what it fixed and keeping skipped ones open.
+- [x] Server tests cover spawning a local review, completing it, and applying it into the card thread.

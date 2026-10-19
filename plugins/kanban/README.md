@@ -116,6 +116,15 @@ its PR is reviewed and its review findings and comments are handed to agents.
   your `code-review` skill (`~/.claude/skills/code-review`) against
   `origin/<base>...HEAD`. Findings land in that thread; nothing is posted to
   GitHub. The card shows the review thread's status and opens it on click.
+- **Review the commits** on any other card (ad hoc, Jira, subtask) whose
+  thread has committed work: the review thread gets a fresh worktree of the
+  project, checks the card thread's HEAD out detached, and reviews it against
+  its merge base with the branch the changes view diffs against (the
+  environment's merge-base branch, else the project's default branch). The
+  button and `bb kanban review` are disabled with the reason when the card
+  has no thread, no commits beyond that branch, or its thread runs on another
+  machine than the project's checkout. Re-reviews only continue from a review
+  of the same kind, so a card reviewed locally and as a PR keeps two chains.
   Every thread a code review button starts (reviews from the button, `bb kanban
   review` or an automation, applying findings or comments, tours, and hunk
   explanations) runs hidden, so it stays out of the sidebar and the project's
@@ -304,7 +313,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
 - **Apply N findings**: spawns a thread (reusing the review's worktree)
   that runs your `apply-review` skill on the selected findings only (deselected
   ones are omitted from the prompt entirely), commits, and pushes
-  to the PR head branch. Your selection is the triage: the thread applies
+  to the PR head branch. A local review is applied by the card's own thread
+  instead: the findings arrive there as a prompt, it commits the fixes on its
+  branch without pushing, and the round is recorded the same way. Your selection is the triage: the thread applies
   every selected finding as written, without asking or dropping any, and
   reports the ones it could not apply.
   When the round is recorded, every finding it fixed is marked applied: the
