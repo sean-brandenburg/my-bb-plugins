@@ -2202,7 +2202,13 @@ describe("narrative review", () => {
     const card = (await board()).tickets[0]!;
     const cli = (args: string[], threadId: string) => current().harness.behavior.runCli(args, { threadId, signal: new AbortController().signal });
 
-    const first = (await current().harness.behavior.callRpc("narrative_generate", { ticketId: card.id })) as Narrative;
+    // Two presses before the first spawn lands start one thread.
+    const [first, twin] = (await Promise.all([
+      current().harness.behavior.callRpc("narrative_generate", { ticketId: card.id }),
+      current().harness.behavior.callRpc("narrative_generate", { ticketId: card.id }),
+    ])) as [Narrative, Narrative];
+    expect(twin.id).toBe(first.id);
+    expect(spawned.filter((args) => (args.pluginMetadata as { role?: string } | undefined)?.role === "narrative")).toHaveLength(1);
     const firstPrompt = String(spawned.at(-1)!.prompt);
     expect(firstPrompt).toContain("narrative-review skill");
     expect(firstPrompt).toContain("narrative-check");

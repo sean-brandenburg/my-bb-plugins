@@ -56,8 +56,10 @@ export function buildChapters(story: NarrativeStory): NarrativeChapter[] {
   story.revisions.forEach((revision, index) => {
     const report = revision.narrative.report;
     if (report === null) return;
-    const previous = index > 0 ? story.revisions[index - 1] : undefined;
-    if (report.revision !== null && previous !== undefined) {
+    // Its predecessor may have no steps, or have dropped out of the story's window; the delta still names its head.
+    const previous = story.revisions.find((entry) => entry.narrative.id === revision.previousId);
+    if (report.revision !== null && revision.previousId !== null) {
+      const fromHead = previous === undefined ? { head: revision.delta?.fromHead ?? null, dirty: false } : { head: previous.head, dirty: previous.dirty };
       const files = revision.delta?.files ?? [];
       const { steps, coverage } = revision.delta === null ? { steps: report.revision.steps, coverage: null } : withUncovered(report.revision.steps, files, "the delta");
       chapters.push({
@@ -65,7 +67,7 @@ export function buildChapters(story: NarrativeStory): NarrativeChapter[] {
         kind: "revision",
         narrativeId: revision.narrative.id,
         current: false,
-        title: `What changed: ${headLabel(previous.head, previous.dirty)} → ${headLabel(revision.head, revision.dirty)}`,
+        title: `What changed: ${headLabel(fromHead.head, fromHead.dirty)} → ${headLabel(revision.head, revision.dirty)}`,
         summary: report.revision.summary,
         notes: [
           ...(revision.delta === null ? ["The board could not measure the delta between these heads, so these steps show no code."] : []),

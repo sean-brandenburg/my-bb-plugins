@@ -62,7 +62,18 @@ export function createTour(
   }
 
   /** One agent reads the diff and writes the tour; the thread.idle handler parses its final message. */
-  async function spawnNarrative(subject: Ticket): Promise<Narrative> {
+  // Snapshotting and measuring the delta take a while before the row exists; a second request meanwhile joins the first.
+  const starting = new Map<string, Promise<Narrative>>();
+
+  function spawnNarrative(subject: Ticket): Promise<Narrative> {
+    const pending = starting.get(subject.id);
+    if (pending !== undefined) return pending;
+    const started = startNarrative(subject).finally(() => starting.delete(subject.id));
+    starting.set(subject.id, started);
+    return started;
+  }
+
+  async function startNarrative(subject: Ticket): Promise<Narrative> {
     const running = stmts.latestNarrative.get(subject.id);
     if (running !== undefined && running.status === "running") return rowToNarrative(running);
     const diff = await ticketDiff(subject, false);
@@ -149,8 +160,10 @@ export function createTour(
       });
     }
     const id = shortId();
-    stmts.insertNarrative.run({ id, ticket_id: subject.id, thread_id: thread.id, head_sha: diff.headSha, created_at: Date.now() });
-    snapshots.record(id, revising ? previous.id : null, head, files, delta);
+    ctx.db.transaction(() => {
+      stmts.insertNarrative.run({ id, ticket_id: subject.id, thread_id: thread.id, head_sha: diff.headSha, created_at: Date.now() });
+      snapshots.record(id, revising ? previous.id : null, head, files, delta);
+    })();
     publish();
     return rowToNarrative(stmts.latestNarrative.get(subject.id)!);
   }

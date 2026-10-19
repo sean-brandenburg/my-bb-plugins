@@ -74,12 +74,12 @@ export function NarrativeView({
   const [lastSearch, setLastSearch] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // A new story (a narrative finished, or the view opened on another subject) re-resolves where to stand.
+  // Where the reader stands, by chapter and step id: a new story (a narrative finished, an old one left the window)
+  // shifts indices, so it is re-resolved from these.
+  const standing = useRef<{ chapterKey: string; stepId: string | null } | null>(null);
   useEffect(() => {
-    setAddressState((current) => {
-      if (current !== null && chapters[current.chapter] !== undefined && current.step < chapters[current.chapter]!.steps.length) return current;
-      return initialAddress(chapters, readJson<{ chapterKey: string; stepId: string | null } | null>(readPreference(positionKey), null));
-    });
+    const saved = standing.current ?? readJson<{ chapterKey: string; stepId: string | null } | null>(readPreference(positionKey), null);
+    setAddressState(initialAddress(chapters, saved));
   }, [chapters, positionKey]);
 
   const chapter = address === null ? null : (chapters[address.chapter] ?? null);
@@ -94,7 +94,8 @@ export function NarrativeView({
     const target = chapters[next.chapter];
     if (target === undefined) return;
     const stepId = next.step < 0 ? null : (target.steps[next.step]?.id ?? null);
-    writePreference(positionKey, JSON.stringify({ chapterKey: target.key, stepId }));
+    standing.current = { chapterKey: target.key, stepId };
+    writePreference(positionKey, JSON.stringify(standing.current));
   };
 
   // A step counts as read once it has been on screen.
@@ -109,11 +110,13 @@ export function NarrativeView({
     });
   }, [chapter, step, readKey]);
 
+  // Line numbers only mean today's lines in the current narrative of a diff that has not moved since.
+  const describesCurrentDiff = chapter?.current === true && story?.stale === false;
   const readInChapter = useMemo(() => {
     if (chapter === null) return new Set<string>();
     return new Set([...read].filter((key) => key.startsWith(`${chapter.key}/`)).map((key) => key.slice(chapter.key.length + 1)));
   }, [read, chapter]);
-  const narratedUnviewed = chapter?.current === true && story?.stale === false ? narratedFiles(chapter, readInChapter).filter((path) => currentPaths.has(path) && !viewed.has(path)) : [];
+  const narratedUnviewed = describesCurrentDiff ? narratedFiles(chapter, readInChapter).filter((path) => currentPaths.has(path) && !viewed.has(path)) : [];
 
   const setOutline = (open: boolean) => {
     setOutlineState(open);
@@ -124,6 +127,10 @@ export function NarrativeView({
       notify("This step shows no code");
       return false;
     }
+    if (!describesCurrentDiff) {
+      notify(chapter?.kind === "revision" ? "Revision steps point into the delta; open lines from the current narrative's steps" : "These lines are from an earlier head; open them from the current narrative's steps");
+      return false;
+    }
     if (!currentPaths.has(excerptEntry.path)) {
       notify(`${excerptEntry.path} is not in the current diff`);
       return false;
@@ -131,9 +138,15 @@ export function NarrativeView({
     return true;
   };
 
+  const startGenerate = () => {
+    if (generating) return;
+    if (story?.running != null) notify("A narrative is already being written");
+    else onGenerate();
+  };
+
   const run = (command: NarrativeCommand, count: number) => {
     if (address === null) {
-      if (command.kind === "generate") onGenerate();
+      if (command.kind === "generate") startGenerate();
       else if (command.kind === "files") onFiles();
       else if (command.kind === "help") setOverlay("help");
       return;
@@ -170,14 +183,12 @@ export function NarrativeView({
       }
       case "openExcerpt": {
         const entry = excerpts[excerpt];
-        if (chapter?.kind === "revision") notify("Revision steps point into the delta; gf opens a current narrative step's lines");
-        else if (canTouchCurrentDiff(entry)) onOpenRef(entry.refs[0]!);
+        if (canTouchCurrentDiff(entry)) onOpenRef(entry.refs[0]!);
         return;
       }
       case "comment": {
         const entry = excerpts[excerpt];
-        if (chapter?.current !== true || story?.stale !== false) notify("Comments go on the current diff: comment from the current narrative's steps");
-        else if (canTouchCurrentDiff(entry)) onCommentRef(entry.refs[0]!);
+        if (canTouchCurrentDiff(entry)) onCommentRef(entry.refs[0]!);
         return;
       }
       case "affected": {
@@ -215,7 +226,7 @@ export function NarrativeView({
         return;
       }
       case "generate":
-        onGenerate();
+        startGenerate();
         return;
       case "files":
         onFiles();
@@ -237,9 +248,9 @@ export function NarrativeView({
     setOverlay(null);
     rootRef.current?.focus({ preventScroll: true });
   };
+  const running = story?.running ?? null;
   const total = pages(chapters).length;
   const position = address === null ? 0 : pages(chapters).findIndex((page) => page.chapter === address.chapter && page.step === address.step) + 1;
-  const running = story?.running ?? null;
 
   return (
     <div className="relative flex min-h-0 flex-1">
@@ -258,7 +269,7 @@ export function NarrativeView({
                 Writing… thread
               </button>
             ) : (
-              <button type="button" className={cn("rounded px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)} disabled={generating} title="U" onClick={onGenerate}>
+              <button type="button" className={cn("rounded px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)} disabled={generating} title="U" onClick={startGenerate}>
                 {generating ? "Starting…" : chapters.length === 0 ? "Write narrative" : story?.stale === true ? "Write update" : "Rewrite"}
               </button>
             )}
@@ -287,7 +298,7 @@ export function NarrativeView({
                   : "No narrative yet. An agent walks through the change step by step, every changed line in at least one step, with diagrams where they help."}
               </p>
               {running === null ? (
-                <button type="button" className={cn("rounded border border-border px-2 py-1 text-xs hover:bg-state-hover disabled:opacity-50", PRESS)} disabled={generating} onClick={onGenerate}>
+                <button type="button" className={cn("rounded border border-border px-2 py-1 text-xs hover:bg-state-hover disabled:opacity-50", PRESS)} disabled={generating} onClick={startGenerate}>
                   {generating ? "Starting…" : "Write narrative (U)"}
                 </button>
               ) : null}
@@ -305,8 +316,7 @@ export function NarrativeView({
                   excerpts={excerpts}
                   focusedExcerpt={excerpt}
                   onOpenExcerpt={(entry) => {
-                    if (chapter.kind === "revision") notify("Revision steps point into the delta, not the current diff");
-                    else if (canTouchCurrentDiff(entry)) onOpenRef(entry.refs[0]!);
+                    if (canTouchCurrentDiff(entry)) onOpenRef(entry.refs[0]!);
                   }}
                   affected={(id) => {
                     const target = affectedAddress(chapters, address, id);

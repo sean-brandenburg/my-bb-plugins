@@ -41,6 +41,9 @@ interface Row {
 
 interface Hunk {
   rows: Row[];
+  /** The line before the hunk's first line on each side, which a side with no rows of its own starts after. */
+  oldBase: number;
+  newBase: number;
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u;
@@ -55,15 +58,23 @@ function parseHunks(patch: string): Hunk[] {
   for (const text of patch.split("\n")) {
     const header = HUNK_HEADER.exec(text);
     if (header !== null) {
-      current = { rows: [] };
-      hunks.push(current);
       oldLine = Number(header[1]);
       oldLeft = header[2] === undefined ? 1 : Number(header[2]);
       newLine = Number(header[3]);
       newLeft = header[4] === undefined ? 1 : Number(header[4]);
+      // An empty side's start is the line it follows; a non-empty side's is its first line.
+      current = { rows: [], oldBase: oldLeft === 0 ? oldLine : oldLine - 1, newBase: newLeft === 0 ? newLine : newLine - 1 };
+      hunks.push(current);
       continue;
     }
-    if (current === null || (oldLeft <= 0 && newLeft <= 0)) continue;
+    if (current === null) continue;
+    // Belongs to the row before it, so it goes wherever that row goes.
+    if (text.startsWith("\\")) {
+      const last = current.rows.at(-1);
+      if (last !== undefined) last.text += `\n${text}`;
+      continue;
+    }
+    if (oldLeft <= 0 && newLeft <= 0) continue;
     const mark = text[0];
     if (mark === "-") {
       current.rows.push({ kind: "del", old: oldLine++, new: null, text });
@@ -105,8 +116,9 @@ export function changedLines(patch: string): { old: number[]; new: number[] } {
   return { old, new: added };
 }
 
-function refMatchesPath(ref: NarrativeRef, file: NarrativePatchFile): boolean {
-  return ref.path === file.path || (file.previousPath !== null && ref.path === file.previousPath);
+/** A ref names a file by its path, or by its old name unless another file in the diff now has that name. */
+export function fileForRef(files: readonly NarrativePatchFile[], path: string): NarrativePatchFile | null {
+  return files.find((file) => file.path === path) ?? files.find((file) => file.previousPath === path) ?? null;
 }
 
 function inRef(ref: NarrativeRef, line: number): boolean {
@@ -121,7 +133,7 @@ export function narrativeCoverage(files: readonly NarrativePatchFile[], refs: re
   let changed = 0;
   let covered = 0;
   for (const file of files) {
-    const mine = refs.filter((ref) => refMatchesPath(ref, file));
+    const mine = refs.filter((ref) => fileForRef(files, ref.path) === file);
     if (file.patch === null) {
       changed += 1;
       if (mine.length > 0) covered += 1;
@@ -146,8 +158,9 @@ export function uncoveredText(patch: string, old: ReadonlyArray<[number, number]
   const out: string[] = [];
   for (const hunk of parseHunks(patch)) {
     for (const row of hunk.rows) {
-      if (row.kind === "del" && within(old, row.old)) out.push(`-${row.old} ${row.text.slice(1)}`);
-      else if (row.kind === "add" && within(added, row.new)) out.push(`+${row.new} ${row.text.slice(1)}`);
+      const text = row.text.split("\n")[0]!.slice(1);
+      if (row.kind === "del" && within(old, row.old)) out.push(`-${row.old} ${text}`);
+      else if (row.kind === "add" && within(added, row.new)) out.push(`+${row.new} ${text}`);
     }
   }
   return out.length > limit ? [...out.slice(0, limit), `… ${out.length - limit} more`] : out;
@@ -209,8 +222,8 @@ export function excerptPatch(patch: string, refs: readonly NarrativeRef[], conte
       const start = index;
       while (index < hunk.rows.length && keep[index]) index += 1;
       const rows = hunk.rows.slice(start, index);
-      const firstOld = rows.find((row) => row.old !== null)?.old ?? oldBefore(hunk.rows, start) + 1;
-      const firstNew = rows.find((row) => row.new !== null)?.new ?? newBefore(hunk.rows, start) + 1;
+      const firstOld = rows.find((row) => row.old !== null)?.old ?? lastBefore(hunk.rows, start, "old", hunk.oldBase) + 1;
+      const firstNew = rows.find((row) => row.new !== null)?.new ?? lastBefore(hunk.rows, start, "new", hunk.newBase) + 1;
       const oldCount = rows.filter((row) => row.kind !== "add").length;
       const newCount = rows.filter((row) => row.kind !== "del").length;
       out.push(`@@ -${oldCount === 0 ? firstOld - 1 : firstOld},${oldCount} +${newCount === 0 ? firstNew - 1 : firstNew},${newCount} @@`);
@@ -220,14 +233,10 @@ export function excerptPatch(patch: string, refs: readonly NarrativeRef[], conte
   return out.length === 0 ? null : out.join("\n");
 }
 
-function oldBefore(rows: readonly Row[], index: number): number {
-  for (let at = index - 1; at >= 0; at--) if (rows[at]!.old !== null) return rows[at]!.old!;
-  const next = rows.slice(index).find((row) => row.old !== null)?.old ?? null;
-  return next === null ? 0 : next - 1;
-}
-
-function newBefore(rows: readonly Row[], index: number): number {
-  for (let at = index - 1; at >= 0; at--) if (rows[at]!.new !== null) return rows[at]!.new!;
-  const next = rows.slice(index).find((row) => row.new !== null)?.new ?? null;
-  return next === null ? 0 : next - 1;
+function lastBefore(rows: readonly Row[], index: number, side: "old" | "new", base: number): number {
+  for (let at = index - 1; at >= 0; at--) {
+    const line = rows[at]![side];
+    if (line !== null) return line;
+  }
+  return base;
 }

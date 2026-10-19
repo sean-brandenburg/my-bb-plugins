@@ -771,6 +771,23 @@ describe("narrative coverage", () => {
     expect(excerptPatch(patch, [{ path: "x.go", side: "new", startLine: null, endLine: null }])).toBe(patch);
   });
 
+  it("starts a zero-context hunk's empty side after the line its header names", () => {
+    expect(excerptPatch(["@@ -5,0 +6,2 @@", "+x", "+y"].join("\n"), [{ path: "a", side: "new", startLine: 7, endLine: 7 }], 0)).toBe(["@@ -5,0 +7,1 @@", "+y"].join("\n"));
+    expect(excerptPatch(["@@ -3,2 +2,0 @@", "-x", "-y"].join("\n"), [{ path: "a", side: "old", startLine: 4, endLine: 4 }], 0)).toBe(["@@ -4,1 +2,0 @@", "-y"].join("\n"));
+  });
+
+  it("keeps a no-newline marker with its line", () => {
+    const eof = ["@@ -1 +1 @@", "-c", "\\ No newline at end of file", "+c"].join("\n");
+    expect(changedLines(eof)).toEqual({ old: [1], new: [1] });
+    expect(excerptPatch(eof, [{ path: "a", side: "old", startLine: 1, endLine: 1 }], 0)).toBe(["@@ -1,1 +0,0 @@", "-c", "\\ No newline at end of file"].join("\n"));
+  });
+
+  it("sends a ref to a recreated path to the new file, not the one renamed away from it", () => {
+    const renamed = { path: "b.ts", previousPath: "a.ts", patch: "@@ -1 +1 @@\n-x\n+y" };
+    const recreated = { path: "a.ts", previousPath: null, patch: "@@ -0,0 +1 @@\n+z" };
+    expect(narrativeCoverage([renamed, recreated], [{ path: "a.ts", side: "new", startLine: null, endLine: null }]).uncovered.map((file) => file.path)).toEqual(["b.ts"]);
+  });
+
   it("gives a pure insertion an old count of zero after the line it follows", () => {
     const insertion = ["@@ -3,2 +3,4 @@", " x", "+y", "+z", " w"].join("\n");
     expect(excerptPatch(insertion, [{ path: "a", side: "new", startLine: 4, endLine: 5 }], 0)).toBe(["@@ -3,0 +4,2 @@", "+y", "+z"].join("\n"));
@@ -829,6 +846,15 @@ describe("narrative chapters", () => {
     expect(movePage(chapters, { chapter: 2, step: 0 }, 5)).toEqual({ chapter: 2, step: 0 });
     expect(moveChapter(chapters, { chapter: 2, step: 0 }, -1)).toEqual({ chapter: 2, step: -1 });
     expect(moveChapter(chapters, { chapter: 2, step: -1 }, -1)).toEqual({ chapter: 1, step: -1 });
+  });
+
+  it("pairs a revision with the narrative it names, even when that one has no steps to show", () => {
+    const withGap: NarrativeStory = { ...story, revisions: [story.revisions[1]!] };
+    const only = buildChapters(withGap);
+    expect(only.map((chapter) => [chapter.kind, chapter.title])).toEqual([
+      ["revision", "What changed: 1111111 → 2222222"],
+      ["narrative", "Narrative at 2222222"],
+    ]);
   });
 
   it("follows a revision step into the narrative it led to", () => {

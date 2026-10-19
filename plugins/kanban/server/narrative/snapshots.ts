@@ -25,6 +25,8 @@ export interface NarrativeHead {
   dirty: boolean;
 }
 
+const UNTRACKED_BATCH = 8;
+
 /** A newer narrative keeps this many earlier ones readable; older ones drop out of the story. */
 const STORY_REVISIONS = 8;
 
@@ -128,7 +130,12 @@ export function createNarrativeSnapshots(ctx: KanbanContext) {
       // Against the working tree, so uncommitted edits since the earlier narrative count; untracked files need --no-index.
       const tracked = await git(dir, ["diff", "--no-color", "--no-ext-diff", "-M", previous.head, "--", ...paths]);
       const untracked = (await git(dir, ["ls-files", "--others", "--exclude-standard", "-z", "--", ...paths])).split("\0").filter((path) => path !== "");
-      const added = await Promise.all(untracked.map((path) => gitDiffNoIndex(dir, path)));
+      const added: string[] = [];
+      // A few at a time, and a file git cannot diff is left out rather than losing the whole delta.
+      for (let start = 0; start < untracked.length; start += UNTRACKED_BATCH) {
+        const batch = await Promise.all(untracked.slice(start, start + UNTRACKED_BATCH).map((path) => gitDiffNoIndex(dir, path).catch(() => "")));
+        added.push(...batch.filter((text) => text !== ""));
+      }
       const files = splitUnifiedDiff([tracked, ...added].join("\n")).map((file) => ({ path: file.path, previousPath: file.previousPath, status: file.status, patch: file.patch })).filter(keep);
       const note = previous.dirty ? "The earlier narrative was written over uncommitted changes, so this delta runs from its last commit and can include lines it already covered." : null;
       return { fromHead: previous.head, toHead: current.head, files, note };
