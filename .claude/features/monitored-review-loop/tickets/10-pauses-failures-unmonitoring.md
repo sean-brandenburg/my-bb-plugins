@@ -10,9 +10,9 @@ Every escalation's reason shows on the card.
 
 **Blocked by:** 08 — Loop review and fix rounds.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The card thread's needs-input state pauses the loop and shows reason "question". The next ready resumes it.
-- [ ] A failed loop thread is retried once, and a second failure escalates with reason "loop error" and a link to the thread.
-- [ ] Unmonitoring partway through leaves the card's findings and history intact and restores the manual Review and Apply buttons.
-- [ ] Reducer tests cover pause and resume, retry then error, and unmonitoring in each phase.
+- [x] The card thread's needs-input state pauses the loop and shows reason "question". The next ready resumes it.
+- [x] A failed loop thread is retried once, and a second failure escalates with reason "loop error" and a link to the thread.
+- [x] Unmonitoring partway through leaves the card's findings and history intact and restores the manual Review and Apply buttons.
+- [x] Reducer tests cover pause and resume, retry then error, and unmonitoring in each phase.

@@ -32,6 +32,10 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     if (reviews.handleIdle(thread.id, lastAssistantText)) void loop.reviewFinished(thread.id);
   });
 
+  bb.events.on("thread.failed", ({ thread, error }) => loop.threadFailed(thread.id, error));
+
+  bb.events.on("interaction.pending", ({ thread }) => loop.questionAsked(thread.id));
+
   bb.events.on("thread.archived", async ({ thread }) => {
     const row = stmts.byThread.get(thread.id);
     if (row === undefined) return;
@@ -41,6 +45,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
+    loop.threadFailed(thread.id, null);
     const now = Date.now();
     const changes = stmts.clearThread.run(now, thread.id).changes + stmts.clearReviewThread.run(now, thread.id).changes;
     if (changes > 0) publish();

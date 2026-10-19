@@ -301,7 +301,7 @@ function TicketDetails({
               Review loop
             </label>
             <LoopChip ticket={ticket} />
-            {monitored ? <LoopStatus ticket={ticket} /> : null}
+            {monitored ? <LoopStatus ticket={ticket} onOpenThread={onOpenThread} /> : null}
           </div>
         </Property>
         {monitored && ticket.projectId !== null ? (
@@ -410,7 +410,7 @@ function TicketDetails({
 }
 
 /** One line on where the loop stands, beyond what the chip says. */
-function LoopStatus({ ticket }: { ticket: Ticket }) {
+function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (threadId: string) => void }) {
   const loop = ticket.loop!;
   const last = loop.checks.at(-1);
   const chip = phaseChip(loop);
@@ -419,6 +419,8 @@ function LoopStatus({ ticket }: { ticket: Ticket }) {
       ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
       : loop.phase === "reviewing" || loop.phase === "fixing"
         ? (chip?.title ?? "")
+        : loop.phase === "paused"
+          ? "Paused: the card's thread is waiting on you; the loop resumes when it reports ready"
         : loop.phase === "needs-you" && loop.reason !== null && loop.reason !== "clean"
           ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
           : loop.phase === "needs-you" && loop.openFindings.length > 0
@@ -426,9 +428,18 @@ function LoopStatus({ ticket }: { ticket: Ticket }) {
             : last !== undefined
             ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
             : "Waiting for the card's thread to report ready";
+  const failedThreadId = loop.phase === "needs-you" && loop.reason === "loop-error" ? loop.failedThreadId : null;
   return (
     <span className="text-xs text-muted-foreground" title={chip?.title}>
       {text}
+      {failedThreadId === null ? null : (
+        <>
+          {" · "}
+          <button type="button" className="hover:underline" onClick={() => onOpenThread(failedThreadId)}>
+            open the failed thread
+          </button>
+        </>
+      )}
     </span>
   );
 }

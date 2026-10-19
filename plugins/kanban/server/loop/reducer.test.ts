@@ -171,11 +171,17 @@ describe("loop reducer", () => {
     });
   });
 
-  it("ignores a review it didn't start, and escalates its own review ending without a report", () => {
+  it("ignores a review it didn't start, and retries its own review ending without a report once before a loop error", () => {
     expect(run([...reviewing, reviewed("manual", [finding("F1", "critical")])]).state.phase).toBe("reviewing");
-    const { state, actions } = run([...reviewing, { type: "thread-failed", role: "review", reviewId: "rev1" }]);
-    expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error" });
-    expect(actions[4]).toEqual([{ type: "move", column: "review" }]);
+    const { state, actions } = run([
+      ...reviewing,
+      { type: "thread-failed", role: "review", reviewId: "rev1", threadId: "thr_r1" },
+      { type: "review-started", reviewId: "rev2" },
+      { type: "thread-failed", role: "review", reviewId: "rev2", threadId: "thr_r2" },
+    ]);
+    expect(actions[4]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
+    expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error", failedThreadId: "thr_r2" });
+    expect(actions[6]).toEqual([{ type: "move", column: "review" }]);
   });
 
   it("sends a single failure back to the card's thread with the output, spending no review", () => {
@@ -209,13 +215,45 @@ describe("loop reducer", () => {
     expect(actions[2]).toEqual([]);
   });
 
-  it("escalates a checks thread that ended without a result as a loop error", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), { type: "thread-failed", role: "checks", commit: sha }]);
-    expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error" });
-    expect(actions[2]).toEqual([{ type: "move", column: "review" }]);
+  it("retries a checks thread that ended without a result once, then escalates as a loop error naming the thread", () => {
+    const failed = (threadId: string): LoopEvent => ({ type: "thread-failed", role: "checks", commit: sha, threadId });
+    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), failed("thr_c2")]);
+    expect(actions[2]).toEqual([{ type: "spawn-checks", commit: sha, checkCommand: { command: "pnpm check", source: "project" } }]);
+    expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error", failedThreadId: "thr_c2" });
+    expect(actions[3]).toEqual([{ type: "move", column: "review" }]);
 
+    // A retry that succeeds leaves the next step its own retry.
+    expect(run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), checks(0), { type: "thread-failed", role: "review", reviewId: null, threadId: null }]).actions[4]).toEqual([
+      { type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} },
+    ]);
     // The thread of a commit since superseded failing says nothing about the current one.
-    expect(run([{ type: "monitor", hasThread: true }, ready(), ready(fixSha), { type: "thread-failed", role: "checks", commit: sha }]).state.phase).toBe("checking");
+    expect(run([{ type: "monitor", hasThread: true }, ready(), ready(fixSha), failed("thr_c1")]).state).toMatchObject({ phase: "checking", retries: 0 });
+  });
+
+  describe("questions", () => {
+    it("pauses with reason question without moving the card, and resumes on the next ready", () => {
+      const { state, actions } = run([{ type: "monitor", hasThread: true }, { type: "question" }]);
+      expect(state).toMatchObject({ phase: "paused", reason: "question", pausedPhase: "building" });
+      expect(actions[1]).toEqual([]);
+      const resumed = run([ready()], state);
+      expect(resumed.state).toMatchObject({ phase: "checking", reason: null, pausedPhase: null });
+      expect(resumed.actions[0]).toEqual([
+        { type: "move", column: "checking" },
+        { type: "spawn-checks", commit: sha, checkCommand: { command: "pnpm check", source: "project" } },
+      ]);
+    });
+
+    it("keeps a fix round paused by a question open for its answers, and records it at the next ready", () => {
+      const { state, actions } = run([...reviewing, reviewed("rev1", [finding("F1", "important")]), { type: "question" }, answer({ F1: fixed }), ready(fixSha)]);
+      expect(actions[6]).toEqual([]);
+      expect(state).toMatchObject({ phase: "checking", rounds: [{ reviewId: "rev1", answers: { F1: fixed } }] });
+      expect(actions[7]).toContainEqual({ type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] });
+    });
+
+    it("ignores a question while the board's own threads run", () => {
+      expect(run([{ type: "monitor", hasThread: true }, ready(), { type: "question" }]).state.phase).toBe("checking");
+      expect(run([{ type: "question" }]).state.phase).toBe("idle");
+    });
   });
 
   it("stops after the current step when unmonitored: a running check's result is kept but drives nothing", () => {
@@ -223,6 +261,29 @@ describe("loop reducer", () => {
     expect(state).toMatchObject({ monitored: false, phase: "idle", reason: null, commit: sha, checks: [{ commit: sha, exitCode: 1, passed: false }] });
     expect(actions[2]).toEqual([]);
     expect(actions[3]).toEqual([]);
+  });
+
+  it("keeps the findings and history when unmonitored in any phase, ending an open fix round unfixed", () => {
+    const building = [{ type: "monitor", hasThread: true }] as LoopEvent[];
+    const checking = [...building, ready()];
+    const fixing = [...reviewing, reviewed("rev1", [finding("F1", "important")])];
+    const phases: Record<string, LoopEvent[]> = {
+      building,
+      paused: [...building, { type: "question" }],
+      checking,
+      reviewing,
+      fixing,
+      "paused fixing": [...fixing, { type: "question" }],
+      "needs-you": [...checking, checks(1), ready(fixSha), checks(1, fixSha)],
+      "loop error": [...reviewing, { type: "thread-failed", role: "review", reviewId: "rev1", threadId: null }, { type: "thread-failed", role: "review", reviewId: null, threadId: null }],
+    };
+    for (const [name, events] of Object.entries(phases)) {
+      const before = run(events).state;
+      const { state, actions } = run([{ type: "unmonitor" }], before);
+      expect(state, name).toMatchObject({ monitored: false, reason: null, pausedPhase: null, failedThreadId: null, rounds: before.rounds, checks: before.checks });
+      expect(state.phase, name).toBe(name === "checking" || name === "reviewing" ? name : "idle");
+      expect(actions[0], name).toEqual(name.endsWith("fixing") ? [{ type: "end-fix", reviewId: "rev1", findingIds: ["F1"] }] : []);
+    }
   });
 
   it("does nothing on an unmonitored card", () => {

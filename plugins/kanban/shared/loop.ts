@@ -66,9 +66,19 @@ export type FindingAnswer = z.infer<typeof findingAnswerSchema>;
 export const loopRoundSchema = z.object({ reviewId: z.string(), handed: z.array(z.string()), answers: z.record(z.string(), findingAnswerSchema).default({}) });
 export type LoopRound = z.infer<typeof loopRoundSchema>;
 
+/** The phase the loop is in, or the one a question paused. */
+export function workingPhase(state: LoopState): LoopPhase {
+  return state.phase === "paused" && state.pausedPhase !== null ? state.pausedPhase : state.phase;
+}
+
+/** The round the card's thread is fixing, paused by a question or not. */
+export function fixingRound(state: LoopState): LoopRound | undefined {
+  return workingPhase(state) === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+}
+
 /** The handed findings of the round being fixed that the card's thread hasn't answered yet. */
 export function unansweredFindings(state: LoopState): string[] {
-  const round = state.phase === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+  const round = fixingRound(state);
   return round === undefined ? [] : round.handed.filter((id) => round.answers[id] === undefined);
 }
 
@@ -87,8 +97,14 @@ export const loopStateSchema = z.object({
   monitored: z.boolean().default(false),
   gates: loopGatesSchema.default({ plan: false, findings: false, autoAccept: false }),
   phase: loopPhaseSchema.default("idle"),
-  /** Set while the phase is needs-you. */
+  /** Set while the phase is needs-you, and to question while paused. */
   reason: needsYouReasonSchema.nullable().default(null),
+  /** The phase a question paused, which the next ready resumes from. */
+  pausedPhase: loopPhaseSchema.nullable().default(null),
+  /** Times the current check or review was started again after its thread failed. */
+  retries: z.number().int().default(0),
+  /** The thread whose second failure stopped the loop with a loop error. */
+  failedThreadId: z.string().nullable().default(null),
   /** Automatic fix rounds started; the cap counts these. */
   round: z.number().int().default(0),
   /** The depth the loop's reviews run at. */
@@ -144,6 +160,7 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
         const minors = loop.openFindings.length === 0 ? "" : `; ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} left open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`;
         return { label: "ready", tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you` };
       }
+      if (loop.reason === "loop-error") return { label: "stuck · loop error", tone: "danger", title: "Needs you: a checks or review thread failed twice; open it from the card" };
       return { label: `stuck · ${NEEDS_YOU_REASON_LABEL[loop.reason]}`, tone: "danger", title: `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}` };
     case "paused":
       return { label: "stuck · question", tone: "warning", title: "The card's thread is waiting on you" };

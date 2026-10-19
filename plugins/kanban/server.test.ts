@@ -8,6 +8,7 @@ import {
   makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
+import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
 
 type Host = ReturnType<typeof createFakePluginHost>;
@@ -1936,11 +1937,24 @@ describe("monitored review loop", () => {
     expect(sentTexts()).toHaveLength(2);
   });
 
-  it("escalates a checks thread that goes idle without recording a result as a loop error", async () => {
+  it("retries a checks thread that fails or goes idle without a result once, then escalates as a loop error naming it", async () => {
     await monitoredCard();
     await ready();
-    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }), lastAssistantText: "I could not run it" });
-    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { reason: "loop-error" } }));
+    await current().harness.behavior.emitThreadEvent("thread.failed", { thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }), error: "provider crashed" });
+    await vi.waitFor(() => expect(spawned).toHaveLength(3));
+    expect(spawned[2]).toMatchObject({ pluginMetadata: { role: "checks" } });
+    expect((await card()).loop).toMatchObject({ phase: "checking", retries: 1 });
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_3", projectId: "proj_acme" }), lastAssistantText: "I could not run it" });
+    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { reason: "loop-error", failedThreadId: "thr_3" } }));
+  });
+
+  it("pauses on the card thread's question without moving the card, and resumes at its next ready", async () => {
+    const { columnId } = await monitoredCard();
+    const interaction = { id: "int_1", kind: "user_question" } as unknown as PluginThreadEventPayloads["interaction.pending"]["interaction"];
+    await current().harness.behavior.emitThreadEvent("interaction.pending", { thread: makeThreadResponse({ id: "thr_1", projectId: "proj_acme" }), interaction });
+    expect(await card()).toMatchObject({ columnId, loop: { phase: "paused", reason: "question" } });
+    await ready();
+    expect(await card()).toMatchObject({ columnId: "checking", loop: { phase: "checking", reason: null } });
   });
 
   it("uses the agent's command, marked as its choice, when the project sets none", async () => {

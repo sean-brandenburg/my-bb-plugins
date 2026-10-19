@@ -1,5 +1,5 @@
 import type { Ticket } from "../../shared/board";
-import { parseLoopState, unansweredFindings, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
+import { fixingRound, parseLoopState, unansweredFindings, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
 import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
@@ -61,7 +61,7 @@ export function createLoop(
           await spawnChecks(getTicket(ticketId), action.commit, action.checkCommand);
         } catch (error) {
           bb.log.warn(`could not start a checks thread for ticket ${ticketId}: ${errorMessage(error)}`);
-          await dispatch(ticketId, { type: "thread-failed", role: "checks", commit: action.commit });
+          await dispatch(ticketId, { type: "thread-failed", role: "checks", commit: action.commit, threadId: null });
         }
         return;
       case "spawn-review": {
@@ -70,7 +70,7 @@ export function createLoop(
           reviewThreadId = (await reviews.startReview(ticketId, null, action.mode, action.depth, action.commit, action.answers)).reviewThreadId;
         } catch (error) {
           bb.log.warn(`could not start a review for ticket ${ticketId}: ${errorMessage(error)}`);
-          await dispatch(ticketId, { type: "thread-failed", role: "review", reviewId: null });
+          await dispatch(ticketId, { type: "thread-failed", role: "review", reviewId: null, threadId: null });
           return;
         }
         const review = reviewThreadId === null ? undefined : stmts.reviewByThread.get(reviewThreadId);
@@ -83,6 +83,11 @@ export function createLoop(
       case "record-fix": {
         const row = stmts.reviewById.get(action.reviewId);
         if (row !== undefined) reviews.completeApply(row, action.commit, false, action.disputed);
+        return;
+      }
+      case "end-fix": {
+        const row = stmts.reviewById.get(action.reviewId);
+        if (row !== undefined) reviews.completeApply(row, null, false, action.findingIds);
         return;
       }
     }
@@ -156,7 +161,7 @@ export function createLoop(
   async function answerFindings(ticketId: string, findingIds: string[], answer: FindingAnswer): Promise<string[]> {
     const ticket = getTicket(ticketId);
     const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
-    const round = state.phase === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+    const round = fixingRound(state);
     if (round === undefined) throw new FindingAnswerError(`Ticket ${ticket.id} isn't in a fix round, so there are no findings to answer.`);
     const unknown = findingIds.filter((id) => !round.handed.includes(id));
     if (unknown.length > 0) throw new FindingAnswerError(`This round handed over ${round.handed.join(", ")}; not ${unknown.join(", ")}.`);
@@ -185,11 +190,36 @@ export function createLoop(
   function handleIdle(threadId: string): boolean {
     const run = stmts.checksRunByThread.get(threadId);
     if (run === undefined) return false;
-    if (run.status === "running") {
-      stmts.failChecksRun.run(Date.now(), run.id);
-      void dispatch(run.ticket_id, { type: "thread-failed", role: "checks", commit: run.commit_sha });
-    }
+    failChecks(run);
     return true;
+  }
+
+  /** Only a run still running counts: a retried run's old thread failing late must not count as the retry failing. */
+  function failChecks(run: ChecksRunRow): void {
+    if (run.status !== "running") return;
+    stmts.failChecksRun.run(Date.now(), run.id);
+    publish();
+    void dispatch(run.ticket_id, { type: "thread-failed", role: "checks", commit: run.commit_sha, threadId: run.thread_id });
+  }
+
+  /** A checks or review thread that errored or was deleted never records its result. */
+  function threadFailed(threadId: string, error: string | null): void {
+    const run = stmts.checksRunByThread.get(threadId);
+    if (run !== undefined) {
+      failChecks(run);
+      return;
+    }
+    const review = stmts.reviewByThread.get(threadId);
+    if (review === undefined || review.status !== "running") return;
+    stmts.failReview.run(error, Date.now(), review.id);
+    publish();
+    void dispatch(review.ticket_id, { type: "thread-failed", role: "review", reviewId: review.id, threadId });
+  }
+
+  /** The card's thread waits on the user; a monitored card's loop pauses until its next ready. */
+  function questionAsked(threadId: string): void {
+    const row = stmts.byThread.get(threadId);
+    if (row !== undefined) void dispatch(row.id, { type: "question" });
   }
 
   /** A review thread finished; on a monitored card its findings drive the next step. */
@@ -198,14 +228,14 @@ export function createLoop(
     if (row === undefined || row.status === "running") return;
     const report = row.status === "completed" ? rowToReview(row).report : null;
     if (report === null) {
-      await dispatch(row.ticket_id, { type: "thread-failed", role: "review", reviewId: row.id });
+      await dispatch(row.ticket_id, { type: "thread-failed", role: "review", reviewId: row.id, threadId });
       return;
     }
     const findings = report.findings.map(({ id, severity, title, preExisting, triage, carriedFrom, dispute }) => ({ id, severity, title, preExisting, triage, carriedFrom, dispute }));
     await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings });
   }
 
-  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, reviewFinished };
+  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

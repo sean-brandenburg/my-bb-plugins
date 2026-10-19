@@ -1,11 +1,14 @@
 // The monitored review loop as a pure function: no I/O, no clock. The loop service feeds it events from threads, the
 // CLI and the board, stores the state it returns, and carries out its actions.
 import { COLUMN } from "../../shared/columns";
-import { LOOP_ROUND_CAP, unansweredFindings, type CheckCommand, type Evidence, type FindingAnswer, type LoopFinding, type LoopState, type NeedsYouReason } from "../../shared/loop";
+import { LOOP_ROUND_CAP, fixingRound, unansweredFindings, workingPhase, type CheckCommand, type Evidence, type FindingAnswer, type LoopFinding, type LoopState, type NeedsYouReason } from "../../shared/loop";
 import type { Finding, ReviewDepth } from "../../shared/review";
 
 /** Failing checks in a row that stop the loop rather than go back to the card's thread. */
 const CHECK_FAILURES_TO_ESCALATE = 2;
+
+/** Times a failed checks or review thread is started again before the loop stops with a loop error. */
+const THREAD_RETRIES = 1;
 
 /** What the loop reads of a review's finding to route it. */
 export type ReviewedFinding = LoopFinding &
@@ -22,10 +25,12 @@ export type LoopEvent =
   | { type: "answer"; answers: Record<string, FindingAnswer> }
   /** `findings` are the report's own, without the ones its verifier filtered out. */
   | { type: "review-completed"; reviewId: string; findings: ReviewedFinding[] }
-  /** A thread the loop started went idle without recording its result. */
-  | { type: "thread-failed"; role: "checks"; commit: string }
+  /** The card's thread is waiting on the user: a question, an approval. */
+  | { type: "question" }
+  /** A thread the loop started failed, was deleted, or went idle without recording its result; `threadId` is null when it couldn't be started. */
+  | { type: "thread-failed"; role: "checks"; commit: string; threadId: string | null }
   /** `reviewId` is null for a review that couldn't be started. */
-  | { type: "thread-failed"; role: "review"; reviewId: string | null };
+  | { type: "thread-failed"; role: "review"; reviewId: string | null; threadId: string | null };
 
 /** What the card's thread is told; the service words it. */
 export type CardPrompt =
@@ -45,7 +50,9 @@ export type LoopAction =
   | { type: "spawn-review"; commit: string; mode: "full" | "incremental"; depth: ReviewDepth; answers: Record<string, FindingAnswer> }
   | { type: "prompt-card"; prompt: CardPrompt }
   /** The card's thread committed its answer to a fix round's findings; the disputed ones stay open. */
-  | { type: "record-fix"; reviewId: string; commit: string; findingIds: string[]; disputed: string[] };
+  | { type: "record-fix"; reviewId: string; commit: string; findingIds: string[]; disputed: string[] }
+  /** The fix round ended unfixed, its findings left open. */
+  | { type: "end-fix"; reviewId: string; findingIds: string[] };
 
 export interface LoopStep {
   state: LoopState;
@@ -82,6 +89,17 @@ function lastRoundAnswers(state: LoopState): Record<string, FindingAnswer> {
   return Object.fromEntries(Object.entries(round.answers).map(([id, answer]) => [`${round.reviewId}/${id}`, answer]));
 }
 
+function reviewAction(state: LoopState, commit: string): LoopAction {
+  return state.round === 0
+    ? { type: "spawn-review", commit, mode: "full", depth: state.depth, answers: {} }
+    : { type: "spawn-review", commit, mode: "incremental", depth: state.depth, answers: lastRoundAnswers(state) };
+}
+
+function retryAction(state: LoopState, event: Extract<LoopEvent, { type: "thread-failed" }>): LoopAction | null {
+  if (event.role === "checks") return state.checkCommand === null ? null : { type: "spawn-checks", commit: event.commit, checkCommand: state.checkCommand };
+  return state.commit === null ? null : reviewAction(state, state.commit);
+}
+
 function reviewCompleted(state: LoopState, reviewId: string, findings: ReviewedFinding[]): LoopStep {
   const own = findings.filter((finding) => !finding.preExisting);
   const answers = lastRoundAnswers(state);
@@ -112,26 +130,23 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       if (state.monitored) return stay(state);
       return {
         // A check or review still running from before the card was unmonitored carries on.
-        state: { ...state, monitored: true, phase: running(state) ? state.phase : "building", reason: null },
+        state: { ...state, monitored: true, phase: running(state) ? state.phase : "building", reason: null, pausedPhase: null, failedThreadId: null },
         actions: [{ type: "ensure-columns" }, ...(event.hasThread ? [{ type: "prompt-card" as const, prompt: { kind: "monitoring" as const } }] : [])],
       };
-    case "unmonitor":
+    case "unmonitor": {
       // The loop stops after the current step, so a running check or review keeps its phase until its result arrives.
-      return stay({ ...state, monitored: false, phase: running(state) ? state.phase : "idle", reason: null });
+      const next = { ...state, monitored: false, phase: running(state) ? state.phase : "idle", reason: null, pausedPhase: null, failedThreadId: null };
+      const round = fixingRound(state);
+      // The fix round is the review's apply round; ending it gives the review its manual Apply back.
+      return round === undefined ? stay(next) : { state: next, actions: [{ type: "end-fix", reviewId: round.reviewId, findingIds: round.handed }] };
+    }
     case "checks-result": {
       if (state.phase !== "checking" || state.commit !== event.commit) return stay(state);
       const passed = event.exitCode === 0;
       const recorded = { ...state, checks: [...state.checks, { commit: event.commit, exitCode: event.exitCode, passed }] };
       if (!state.monitored) return stay({ ...recorded, phase: "idle" });
       if (passed) {
-        return {
-          state: { ...recorded, phase: "reviewing", reason: null, reviewId: null },
-          actions: [
-            state.round === 0
-              ? { type: "spawn-review", commit: event.commit, mode: "full", depth: state.depth, answers: {} }
-              : { type: "spawn-review", commit: event.commit, mode: "incremental", depth: state.depth, answers: lastRoundAnswers(state) },
-          ],
-        };
+        return { state: { ...recorded, phase: "reviewing", reason: null, reviewId: null, retries: 0 }, actions: [reviewAction(state, event.commit)] };
       }
       if (failuresInARow(recorded) >= CHECK_FAILURES_TO_ESCALATE) return needsYou(recorded, "checks");
       return {
@@ -150,9 +165,9 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       if (state.phase === "checking" && state.commit === event.commit) return stay(state);
       // The service refuses such a report with the ids; this only keeps the round from completing half-answered.
       if (unansweredFindings(state).length > 0) return stay(state);
-      const handed = state.phase === "fixing" && state.reviewId !== null ? state.rounds.find((round) => round.reviewId === state.reviewId) : undefined;
+      const handed = fixingRound(state);
       return {
-        state: { ...state, phase: "checking", reason: null, commit: event.commit, evidence: event.evidence, checkCommand: event.checkCommand, openFindings: [] },
+        state: { ...state, phase: "checking", reason: null, pausedPhase: null, retries: 0, failedThreadId: null, commit: event.commit, evidence: event.evidence, checkCommand: event.checkCommand, openFindings: [] },
         actions: [
           ...(handed === undefined
             ? []
@@ -171,7 +186,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       };
     }
     case "answer": {
-      if (state.phase !== "fixing") return stay(state);
+      if (workingPhase(state) !== "fixing") return stay(state);
       const rounds = state.rounds.map((round) =>
         round.reviewId !== state.reviewId
           ? round
@@ -190,7 +205,13 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       const ours = event.role === "checks" ? state.phase === "checking" && state.commit === event.commit : state.phase === "reviewing" && state.reviewId === event.reviewId;
       if (!ours) return stay(state);
       if (!state.monitored) return stay({ ...state, phase: "idle" });
-      return needsYou(state, "loop-error");
+      const retry = state.retries < THREAD_RETRIES ? retryAction(state, event) : null;
+      if (retry !== null) return { state: { ...state, retries: state.retries + 1, reviewId: null }, actions: [retry] };
+      return needsYou({ ...state, failedThreadId: event.threadId }, "loop-error");
     }
+    case "question":
+      // A plan gate's own approval will arrive as an interaction too, so only the thread's working phases pause.
+      if (!state.monitored || (state.phase !== "building" && state.phase !== "fixing")) return stay(state);
+      return stay({ ...state, phase: "paused", reason: "question", pausedPhase: state.phase });
   }
 }

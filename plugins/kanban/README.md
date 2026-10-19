@@ -135,14 +135,19 @@ its PR is reviewed and its review findings and comments are handed to agents.
   stops it with reason "not converging". A clean review moves the card to
   Needs you. After three fix rounds the loop stops: at Needs you with reason
   "cap" while a critical or important finding is open, or as clean with the
-  open minors listed. A checks thread that ends without a result stops it as
-  a loop error. The check command is set per project in the card panel's
+  open minors listed. A checks or review thread that fails, is deleted, or
+  ends without a result is started again once; a second failure stops the
+  loop as a loop error, with a link to the thread in the card panel. While
+  the card's thread waits on you (a question or an approval) the loop pauses
+  as `stuck · question` without moving the card, and resumes at its next
+  ready. The check command is set per project in the card panel's
   Checks field; a project without one lets the agent pick, and the board marks
   it as the agent's choice. Monitored cards carry a chip naming the loop's
   phase (`building`, `checks`, `review rN`, `fixing rN`, `ready`, or
   `stuck · <reason>`) and a pip per fix round used. Turning
-  monitoring off stops the loop after its current step: a running check
-  finishes, and its result is kept but drives nothing.
+  monitoring off stops the loop after its current step: a running check or
+  review finishes, and its result is kept but drives nothing; a fix round in
+  progress ends with its findings left open, so the review's Apply is back.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against
