@@ -1,7 +1,18 @@
-import { ANY_OVERLAY, isTextEntry } from "bb-vim-keys";
+import {
+  ANY_OVERLAY,
+  bindKeys,
+  createPickerKeys,
+  isTextEntry,
+  type KeyHelpSection,
+  type Keymap,
+  keyToken,
+  mapKeymap,
+  renderKeyHelp,
+  stepWrapping,
+} from "bb-vim-keys";
 import { crawlPages, createFrameLoader, type PageLoader } from "./crawler.js";
-import { createPageCursor, CURSOR_ATTRIBUTE, PAGE_ROOT } from "./page-cursor.js";
-import { createSidebarCursor, SETTINGS_LINK } from "./sidebar-cursor.js";
+import { createPageCursor, CURSOR_ATTRIBUTE, PAGE_CURSOR_KEYMAP, PAGE_ROOT, type PageCommand } from "./page-cursor.js";
+import { createSidebarCursor, SETTINGS_LINK, SIDEBAR_CURSOR_KEYMAP, type SidebarCommand } from "./sidebar-cursor.js";
 import {
   extractEntries,
   findEntryElement,
@@ -40,19 +51,60 @@ const NAV_LIST = ":scope > .overflow-auto";
 const UNINDEXED_PAGES = new Set(["/settings/archived", "/settings/plugins"]);
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="switch"], [tabindex]:not([tabindex="-1"])';
+// Keyboard settings record a shortcut from the next key pressed anywhere.
+const RECORDING_SHORTCUT = 'button[aria-pressed="true"][aria-label^="Record shortcut"]';
 
-const KEYS: [string, string][] = [
-  ["j  k", "Next or previous page, or setting"],
-  ["l  h", "Into the page's settings, or back to the pages"],
-  ["gg  G", "First or last"],
-  ["Ctrl-D Ctrl-U", "Half a list down or up"],
-  ["Enter", "Use the setting: flip, open, or edit"],
-  ["i", "Focus the setting's control"],
-  ["Esc", "Back to the keys from a control"],
-  ["/", "Search settings"],
-  ["↑ ↓  Ctrl-N Ctrl-P", "Move through results"],
-  ["n  N", "Open the next or previous result"],
-  ["?", "Show these keys"],
+type SearchCommand =
+  | { kind: "sidebar"; command: SidebarCommand }
+  | { kind: "page"; command: PageCommand }
+  /** From the page list into the open page's settings; Enter only when no link holds focus, since a link keeps its own. */
+  | { kind: "into-page"; unfocusedOnly: boolean }
+  | { kind: "to-sidebar" }
+  | { kind: "escape" }
+  | { kind: "search" }
+  | { kind: "help" }
+  | { kind: "result"; step: 1 | -1 };
+
+const SHARED_KEYMAP: Keymap<SearchCommand> = {
+  "/": { kind: "search" },
+  "?": { kind: "help" },
+  n: { kind: "result", step: 1 },
+  N: { kind: "result", step: -1 },
+  "<Esc>": { kind: "escape" },
+};
+
+// j and k move through whichever list has the keys: the page list in the
+// sidebar, or the open page's settings. l and h move between them.
+export const SIDEBAR_KEYMAP: Keymap<SearchCommand> = {
+  ...mapKeymap(SIDEBAR_CURSOR_KEYMAP, (command): SearchCommand => ({ kind: "sidebar", command })),
+  ...SHARED_KEYMAP,
+  l: { kind: "into-page", unfocusedOnly: false },
+  "<CR>": { kind: "into-page", unfocusedOnly: true },
+};
+
+export const PAGE_KEYMAP: Keymap<SearchCommand> = {
+  ...mapKeymap(PAGE_CURSOR_KEYMAP, (command): SearchCommand => ({ kind: "page", command })),
+  ...SHARED_KEYMAP,
+  h: { kind: "to-sidebar" },
+};
+
+export const KEY_HELP: KeyHelpSection[] = [
+  {
+    title: "",
+    keys: [
+      { keys: ["j", "k"], action: "Next or previous page, or setting" },
+      { keys: ["l", "h"], action: "Into the page's settings, or back to the pages" },
+      { keys: ["gg", "G"], action: "First or last" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a list down or up" },
+      { keys: ["Enter"], action: "Use the setting: flip, open, or edit" },
+      { keys: ["i"], action: "Focus the setting's control" },
+      { keys: ["Esc"], action: "Back to the keys from a control" },
+      { keys: ["/"], action: "Search settings" },
+      { keys: ["↑", "↓", "Ctrl-n", "Ctrl-p"], action: "Move through results" },
+      { keys: ["n", "N"], action: "Open the next or previous result" },
+      { keys: ["?"], action: "Show these keys" },
+    ],
+  },
 ];
 
 const SEARCH_ICON = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17L21 21"/><path d="M19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19C15.4183 19 19 15.4183 19 11Z"/></svg>`;
@@ -91,7 +143,7 @@ export const SETTINGS_SEARCH_CSS = `
 [${ROOT_ATTRIBUTE}] input:focus {
   border-color: var(--ring);
 }
-[${ROOT_ATTRIBUTE}] kbd {
+[${ROOT_ATTRIBUTE}] > kbd {
   position: absolute;
   right: 15px;
   top: 5px;
@@ -107,8 +159,8 @@ export const SETTINGS_SEARCH_CSS = `
   pointer-events: none;
   transition: opacity var(--bbm-duration-fast) var(--bbm-ease-out);
 }
-[${ROOT_ATTRIBUTE}]:focus-within kbd,
-[${ROOT_ATTRIBUTE}][data-has-query] kbd {
+[${ROOT_ATTRIBUTE}]:focus-within > kbd,
+[${ROOT_ATTRIBUTE}][data-has-query] > kbd {
   opacity: 0;
 }
 [${ROOT_ATTRIBUTE}] [data-keys] {
@@ -119,16 +171,20 @@ export const SETTINGS_SEARCH_CSS = `
   font-size: 12px;
   color: var(--muted-foreground);
 }
-[${ROOT_ATTRIBUTE}] [data-keys] div {
+[${ROOT_ATTRIBUTE}] [data-key-help-row] {
   display: flex;
   gap: 8px;
   padding: 2px 0;
 }
-[${ROOT_ATTRIBUTE}] [data-keys] span:first-child {
+[${ROOT_ATTRIBUTE}] [data-key-help-row] > span:first-child {
+  display: flex;
   flex: 0 0 auto;
+  gap: 6px;
   min-width: 96px;
   color: var(--sidebar-foreground);
-  white-space: pre;
+}
+[${ROOT_ATTRIBUTE}] [data-keys] kbd {
+  font: inherit;
 }
 [${ACTIVE_ATTRIBUTE}] > [${NAV_ATTRIBUTE}] {
   display: none !important;
@@ -365,12 +421,6 @@ export function mountSettingsSearch(doc: Document, win: Window, options: Setting
     render();
   };
 
-  const move = (delta: number) => {
-    if (results.length === 0) return;
-    selected = (selected + delta + results.length) % results.length;
-    render();
-  };
-
   const flash = (row: Element) => {
     hit?.removeAttribute(HIT_ATTRIBUTE);
     hit = row;
@@ -441,25 +491,20 @@ export function mountSettingsSearch(doc: Document, win: Window, options: Setting
     keys = doc.createElement("div");
     keys.dataset.keys = "";
     keys.classList.add("bbm-drop-in", "bbm-near", "bbm-fast");
-    for (const [key, action] of KEYS) {
-      const row = doc.createElement("div");
-      row.append(
-        Object.assign(doc.createElement("span"), { textContent: key }),
-        Object.assign(doc.createElement("span"), { textContent: action }),
-      );
-      keys.append(row);
-    }
+    keys.append(renderKeyHelp(doc, KEY_HELP));
     root.append(keys);
   };
 
-  const onInputKey = (event: KeyboardEvent) => {
-    if (event.isComposing || event.metaKey || event.altKey) return;
-    const ctrl = event.ctrlKey && !event.shiftKey;
-    let handled = true;
-    if (event.key === "ArrowDown" || (ctrl && event.key === "n")) move(1);
-    else if (event.key === "ArrowUp" || (ctrl && event.key === "p")) move(-1);
-    else if (event.key === "Enter" && !event.ctrlKey) open(selected, true);
-    else if (event.key === "Escape" && !event.ctrlKey) {
+  const inputKeys = createPickerKeys({
+    length: () => results.length,
+    highlight: () => selected,
+    setHighlight: (index) => {
+      selected = index;
+      render();
+    },
+    pick: (index) => open(index, true),
+    wrap: true,
+    onFilterEscape: () => {
       if (input!.value !== "") {
         input!.value = "";
         refresh(true);
@@ -467,65 +512,62 @@ export function mountSettingsSearch(doc: Document, win: Window, options: Setting
         toggleKeys(false);
         input!.blur();
       }
-    } else handled = false;
-    if (!handled) return;
-    event.preventDefault();
-    event.stopPropagation();
+    },
+  });
+
+  const onInputKey = (event: KeyboardEvent) => {
+    if (inputKeys.filter(event)) event.stopPropagation();
   };
 
   const cursor = createPageCursor(doc, win);
   const sidebarCursor = createSidebarCursor(win, () => sidebar?.querySelector(`[${NAV_ATTRIBUTE}]`) ?? null);
-  // j and k move through whichever list has the keys: the page list in the
-  // sidebar, or the open page's settings. l and h move between them.
   let pane: "sidebar" | "page" = "sidebar";
 
-  const paneKey = (event: KeyboardEvent): boolean => {
-    const nothingFocused = !doc.activeElement || doc.activeElement === doc.body;
-    if (pane === "sidebar" && (event.key === "l" || (event.key === "Enter" && nothingFocused))) {
-      pane = "page";
-      sidebarCursor.hide();
-      cursor.enter();
-      return true;
+  const runCommand = (command: SearchCommand, target: Element | null): boolean | void => {
+    switch (command.kind) {
+      case "search":
+        input!.focus();
+        input!.select();
+        return;
+      case "help":
+        toggleKeys();
+        return;
+      case "escape":
+        if (keys) {
+          toggleKeys(false);
+          return;
+        }
+        return pane === "sidebar" ? sidebarCursor.run("escape") : cursor.run("escape");
+      case "result":
+        if (input!.value.trim() === "" || results.length === 0) return false;
+        open(stepWrapping(results.length, selected, command.step)!, true);
+        return;
+      case "into-page":
+        if (command.unfocusedOnly && target !== null) return false;
+        pane = "page";
+        sidebarCursor.hide();
+        cursor.enter();
+        return;
+      case "to-sidebar":
+        pane = "sidebar";
+        cursor.hide();
+        sidebarCursor.show();
+        return;
+      case "sidebar":
+        return sidebarCursor.run(command.command);
+      case "page":
+        return cursor.run(command.command);
     }
-    if (pane === "page" && event.key === "h") {
-      pane = "sidebar";
-      cursor.hide();
-      sidebarCursor.show();
-      return true;
-    }
-    return (pane === "sidebar" ? sidebarCursor : cursor).handleKey(event);
   };
 
-  const onDocumentKey = (event: KeyboardEvent) => {
-    if (!input || event.isComposing || event.metaKey || event.altKey) return;
-    // While one of these is open, the keys belong to it.
-    if (doc.querySelector(ANY_OVERLAY)) return;
-    if (event.target instanceof HTMLElement && isTextEntry(event.target)) {
-      // vim-mode marks the Escape that leaves a text box as handled, and only
-      // leaves text boxes on thread pages itself; one it kept never gets here.
-      const target = event.target as HTMLElement;
-      const plain = !event.ctrlKey && !event.shiftKey;
-      if (event.key === "Escape" && plain && target !== input && target.closest(PAGE_ROOT)) target.blur();
-      return;
-    }
-    if (event.defaultPrevented) return;
-    // Keyboard settings record a shortcut from the next key pressed anywhere.
-    if (doc.querySelector('button[aria-pressed="true"][aria-label^="Record shortcut"]')) return;
-    if (event.ctrlKey) {
-      if (paneKey(event)) event.preventDefault();
-      return;
-    }
-    const hasResults = input.value.trim() !== "" && results.length > 0;
-    if (event.key === "/") {
-      input.focus();
-      input.select();
-    } else if (event.key === "?") toggleKeys();
-    else if (event.key === "Escape" && keys) toggleKeys(false);
-    else if ((event.key === "n" || event.key === "N") && hasResults) {
-      const delta = event.key === "n" ? 1 : -1;
-      open((selected + delta + results.length) % results.length, true);
-    } else if (!paneKey(event)) return;
-    event.preventDefault();
+  // vim-mode marks the Escape that leaves a text box as handled, and only
+  // leaves text boxes on thread pages itself, so this watches every Escape
+  // rather than waiting for one the key handler would take. One vim-mode kept
+  // never gets here.
+  const onFieldEscape = (event: KeyboardEvent) => {
+    const field = event.target;
+    if (keyToken(event) !== "<Esc>" || event.shiftKey || !input || field === input || !(field instanceof HTMLElement)) return;
+    if (isTextEntry(field) && field.closest(PAGE_ROOT) && !doc.querySelector(ANY_OVERLAY)) field.blur();
   };
 
   const startIndexing = () => {
@@ -635,13 +677,21 @@ export function mountSettingsSearch(doc: Document, win: Window, options: Setting
   };
   const observer = new MutationObserver(schedule);
   observer.observe(doc.body, { childList: true, subtree: true });
-  doc.addEventListener("keydown", onDocumentKey);
+  const unbindKeys = bindKeys<SearchCommand>(doc, {
+    observe: onFieldEscape,
+    active: () => input !== null,
+    blocked: () => doc.querySelector(ANY_OVERLAY) !== null || doc.querySelector(RECORDING_SHORTCUT) !== null,
+    keymap: () => (pane === "sidebar" ? SIDEBAR_KEYMAP : PAGE_KEYMAP),
+    // The cursors decide for themselves when a focused control keeps Enter.
+    leaveToPressables: false,
+    onCommand: (command, { target }) => runCommand(command, target),
+  });
   schedule();
 
   return () => {
     observer.disconnect();
     if (frame !== 0) win.cancelAnimationFrame(frame);
-    doc.removeEventListener("keydown", onDocumentKey);
+    unbindKeys();
     detach();
     cursor.dispose();
     sidebarCursor.dispose();

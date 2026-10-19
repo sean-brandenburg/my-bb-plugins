@@ -1,4 +1,4 @@
-import { createKeyReader, type Keymap, keyToken } from "bb-vim-keys";
+import { type Keymap, type Motion, scrollPane, stepIndex } from "bb-vim-keys";
 
 export const CURSOR_ATTRIBUTE = "data-settings-search-cursor";
 // Taller than any list row, shorter than a section.
@@ -17,9 +17,30 @@ const POPUP_TRIGGER = '[aria-haspopup]:not([aria-haspopup="false"]), [role="comb
 // dnd-kit drag handles, which do nothing on a click.
 const DRAG_HANDLE = '[aria-roledescription="sortable"], [aria-label^="Reorder "]';
 
+export type CursorMotion = Extract<Motion, "down" | "up" | "top" | "bottom" | "halfDown" | "halfUp">;
+
+/** The motions both settings cursors take: no arrows, which still scroll the page. */
+export const CURSOR_MOTION_KEYS: Keymap<CursorMotion> = {
+  j: "down",
+  k: "up",
+  gg: "top",
+  G: "bottom",
+  "<C-d>": "halfDown",
+  "<C-u>": "halfUp",
+};
+
+export type PageCommand = CursorMotion | "activate" | "focus" | "escape";
+
+export const PAGE_CURSOR_KEYMAP: Keymap<PageCommand> = {
+  ...CURSOR_MOTION_KEYS,
+  "<CR>": "activate",
+  i: "focus",
+  "<Esc>": "escape",
+};
+
 export interface PageCursor {
-  /** Handles a keydown aimed at the page; returns true when it was a cursor key. */
-  handleKey(event: KeyboardEvent): boolean;
+  /** Runs a command on the page's settings; false when it did nothing, leaving its key to the page. */
+  run(command: PageCommand): boolean;
   /** Puts the cursor on the item holding `element`, showing it. */
   place(element: Element): void;
   /** Shows the cursor where it was last hidden on this page, or on the first setting in view. */
@@ -70,26 +91,11 @@ function primaryControl(item: Element): HTMLElement | null {
   );
 }
 
-type PageCommand = "down" | "up" | "top" | "bottom" | "activate" | "focus" | "escape" | "half-down" | "half-up";
-
-const PAGE_KEYMAP: Keymap<PageCommand> = {
-  j: "down",
-  k: "up",
-  gg: "top",
-  G: "bottom",
-  "<CR>": "activate",
-  i: "focus",
-  "<Esc>": "escape",
-  "<C-d>": "half-down",
-  "<C-u>": "half-up",
-};
-
 export function createPageCursor(doc: Document, win: Window): PageCursor {
   let current: Element | null = null;
   let index = -1;
   let path: string | null = null;
   let parked: { path: string; index: number } | null = null;
-  const reader = createKeyReader(PAGE_KEYMAP);
 
   const root = () => doc.querySelector(PAGE_ROOT);
 
@@ -145,18 +151,19 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
     return fromEnd ? pool.at(-1) : pool[0];
   };
 
-  const move = (delta: number) => {
+  const move = (motion: "down" | "up" | "top" | "bottom") => {
     const list = items();
     if (list.length === 0) return;
     const at = position(list);
-    if (at < 0 && Number.isFinite(delta)) return show(firstVisible(list, delta < 0), list);
-    show(list[Math.max(0, Math.min(list.length - 1, at + delta))], list);
+    if (at < 0 && (motion === "down" || motion === "up")) return show(firstVisible(list, motion === "up"), list);
+    show(list[stepIndex(list.length, at < 0 ? null : at, motion)!], list);
   };
 
-  const halfPage = (direction: 1 | -1) => {
+  /** Scrolls half the page and puts the cursor on the setting nearest the middle. */
+  const halfPage = (motion: "halfDown" | "halfUp") => {
     const viewport = scroller();
     if (!viewport) return;
-    viewport.scrollTop += direction * Math.round(viewport.clientHeight / 2);
+    scrollPane(viewport, motion);
     const list = items();
     const box = viewport.getBoundingClientRect();
     const middle = (box.top + box.bottom) / 2;
@@ -193,35 +200,13 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
     return true;
   };
 
-  const handleKey = (event: KeyboardEvent): boolean => {
-    const token = keyToken(event);
-    if (token === null) return false;
-    const read = reader.read(token, event.timeStamp);
-    if (read.kind !== "command") return read.kind === "pending";
-    switch (read.command) {
-      case "half-down":
-      case "half-up":
-        leaveControl();
-        halfPage(read.command === "half-down" ? 1 : -1);
-        return true;
-      case "down":
-      case "up":
-        leaveControl();
-        move(read.command === "down" ? 1 : -1);
-        return true;
-      case "top":
-        leaveControl();
-        move(-Infinity);
-        return true;
-      case "bottom":
-        leaveControl();
-        move(Infinity);
-        return true;
+  const run = (command: PageCommand): boolean => {
+    switch (command) {
       case "activate":
       case "focus":
         // A focused control keeps its own Enter.
         if (focusIsOnPage()) return false;
-        return activate(read.command === "focus");
+        return activate(command === "focus");
       case "escape":
         if (focusIsOnPage()) {
           leaveControl();
@@ -229,6 +214,15 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
         }
         if (!current) return false;
         clear();
+        return true;
+      case "halfDown":
+      case "halfUp":
+        leaveControl();
+        halfPage(command);
+        return true;
+      default:
+        leaveControl();
+        move(command);
         return true;
     }
   };
@@ -254,7 +248,7 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
     const list = items();
     if (parked?.path === win.location.pathname && list.length > 0) {
       show(list[Math.min(parked.index, list.length - 1)], list);
-    } else move(1);
+    } else move("down");
     parked = null;
   };
 
@@ -265,7 +259,7 @@ export function createPageCursor(doc: Document, win: Window): PageCursor {
   };
 
   return {
-    handleKey,
+    run,
     place,
     enter,
     hide,

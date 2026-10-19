@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { keymapConflicts, unboundHelpKeys } from "bb-vim-keys";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mountPromptKeys } from "./prompt-keys.js";
+import { DECISION_KEYMAP, DECISION_KEYS, mountPromptKeys, QUESTION_KEYMAP, QUESTION_KEYS } from "./prompt-keys.js";
 
 window.requestAnimationFrame ??= ((cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0)) as never;
 window.cancelAnimationFrame ??= ((id: number) => window.clearTimeout(id)) as never;
@@ -444,6 +445,29 @@ describe("questions", () => {
     expect(document.querySelector("[data-prompt-keys-panel]")).toBeNull();
     expect(banner.section.hasAttribute("data-expanded")).toBe(true);
   });
+
+  it("closes its keys on a key it doesn't bind, leaving that key to bb", async () => {
+    const page = composer();
+    const banner = new QuestionBanner([{ prompt: "Name?", options: ["Alpha"] }]);
+    page.show(banner.section);
+    await frames();
+    press("?", { shiftKey: true });
+    expect(document.querySelector("[data-prompt-keys-panel]")).not.toBeNull();
+    expect(press("q").defaultPrevented).toBe(false);
+    expect(document.querySelector("[data-prompt-keys-panel]")).toBeNull();
+  });
+
+  it("scrolls the question on Ctrl-D without leaving the answers", async () => {
+    const page = composer();
+    const banner = new QuestionBanner([{ prompt: "Name?", options: ["Alpha", "Beta"] }]);
+    page.show(banner.section);
+    await frames();
+    const content = banner.section.querySelector<HTMLElement>("[id]")!;
+    Object.defineProperty(content, "clientHeight", { get: () => 100 });
+    expect(press("d", { ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(content.scrollTop).toBe(50);
+    expect(focusedLabel()).toBe("Alpha");
+  });
 });
 
 describe("approvals", () => {
@@ -496,5 +520,27 @@ describe("approvals", () => {
     press("g");
     press("g");
     expect(banner.content.scrollTop).toBe(0);
+  });
+});
+
+describe("keys", () => {
+  it("has no sequence that starts another", () => {
+    expect(keymapConflicts(QUESTION_KEYMAP)).toEqual([]);
+    expect(keymapConflicts(DECISION_KEYMAP)).toEqual([]);
+  });
+
+  it("lists only keys it binds, besides the focused button's own Space and Enter", () => {
+    expect(unboundHelpKeys(QUESTION_KEYS, QUESTION_KEYMAP, ["Space"])).toEqual([]);
+    expect(unboundHelpKeys(DECISION_KEYS, DECISION_KEYMAP, ["Enter"])).toEqual([]);
+  });
+
+  it("shows the decision keys over an approval", async () => {
+    const page = composer();
+    page.show(approvalBanner().section);
+    await frames();
+    press("?", { shiftKey: true });
+    const rows = [...document.querySelectorAll("[data-prompt-keys-panel] [data-key-help-row]")];
+    expect(rows[0]!.querySelector("span")!.textContent).toBe("hl");
+    expect(rows[0]!.lastElementChild!.textContent).toBe("Move across the buttons");
   });
 });

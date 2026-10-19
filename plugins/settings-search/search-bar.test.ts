@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
+import { createPickerKeys, keymapConflicts, unboundHelpKeys } from "bb-vim-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageLoader } from "./crawler.js";
 import { extractEntries, type SettingsPage } from "./settings-index.js";
-import { mountSettingsSearch } from "./search-bar.js";
+import { KEY_HELP, mountSettingsSearch, PAGE_KEYMAP, SIDEBAR_KEYMAP } from "./search-bar.js";
 
 const row = (label: string, description = "") => `
   <div data-control-placement="inline">
@@ -71,6 +72,7 @@ const type = (value: string) => {
 };
 const press = (target: Element, key: string, init: KeyboardEventInit = {}) =>
   target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
+const cursorText = () => document.querySelector("[data-settings-search-cursor]")?.textContent ?? null;
 
 let cleanup: (() => void) | null = null;
 
@@ -207,7 +209,6 @@ describe("mountSettingsSearch", () => {
 
   it("walks the page list with j and k until l moves into the page's settings", async () => {
     await mount();
-    const cursorText = () => document.querySelector("[data-settings-search-cursor]")?.textContent ?? null;
     press(document.body, "j");
     expect(window.location.pathname).toBe("/settings/appearance");
     expect(cursorText()).toBe("Appearance");
@@ -269,8 +270,42 @@ describe("mountSettingsSearch", () => {
     await mount();
     press(document.body, "?");
     expect(document.querySelector("[data-settings-search] [data-keys]")!.textContent).toContain("Search settings");
+    const first = document.querySelector("[data-settings-search] [data-keys] [data-key-help-row]")!;
+    expect([...first.querySelectorAll("kbd")].map((key) => key.textContent)).toEqual(["j", "k"]);
     press(document.body, "?");
     expect(document.querySelector("[data-settings-search] [data-keys]")).toBeNull();
+  });
+
+  it("hides its keys on Escape before the cursor", async () => {
+    await mount();
+    press(document.body, "j");
+    press(document.body, "?");
+    press(document.body, "Escape");
+    expect(document.querySelector("[data-settings-search] [data-keys]")).toBeNull();
+    expect(cursorText()).toBe("Appearance");
+    press(document.body, "Escape");
+    expect(cursorText()).toBeNull();
+  });
+
+  it("leaves Ctrl-L and Ctrl-H alone rather than switching lists", async () => {
+    await mount("/settings/appearance");
+    expect(press(document.body, "l", { ctrlKey: true })).toBe(true);
+    expect(cursorText()).toBeNull();
+    press(document.body, "l");
+    expect(cursorText()).toContain("Theme");
+    expect(press(document.body, "h", { ctrlKey: true })).toBe(true);
+    expect(cursorText()).toContain("Theme");
+  });
+
+  it("moves into the page's settings on Enter, unless a link has focus", async () => {
+    await mount("/settings/appearance");
+    const link = document.querySelector<HTMLAnchorElement>('[data-sidebar] a[href="/settings"]')!;
+    link.focus();
+    expect(press(link, "Enter")).toBe(true);
+    expect(cursorText()).toBeNull();
+    link.blur();
+    press(document.body, "Enter");
+    expect(cursorText()).toContain("Theme");
   });
 
   it("goes away with the settings sidebar and comes back with it", async () => {
@@ -292,5 +327,17 @@ describe("mountSettingsSearch", () => {
     expect(document.querySelector("[data-settings-search], [data-settings-search-results]")).toBeNull();
     expect(document.querySelector("[data-settings-search-active], [data-settings-search-nav]")).toBeNull();
     expect(document.querySelector("style[data-settings-search-style]")).toBeNull();
+  });
+});
+
+describe("keys", () => {
+  it("has no sequence that starts another", () => {
+    expect(keymapConflicts(SIDEBAR_KEYMAP)).toEqual([]);
+    expect(keymapConflicts(PAGE_KEYMAP)).toEqual([]);
+  });
+
+  it("lists only keys the lists or the search box bind", () => {
+    const searchBox = createPickerKeys({ length: () => 0, highlight: () => null, setHighlight() {}, pick() {} });
+    expect(unboundHelpKeys(KEY_HELP, [SIDEBAR_KEYMAP, PAGE_KEYMAP, searchBox.keymaps.filter])).toEqual([]);
   });
 });

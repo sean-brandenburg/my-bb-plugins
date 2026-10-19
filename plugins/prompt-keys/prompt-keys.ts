@@ -1,4 +1,14 @@
-import { ANY_OVERLAY, createKeyReader, isTextEntry, type Keymap, keyToken } from "bb-vim-keys";
+import {
+  ANY_OVERLAY,
+  bindKeys,
+  type KeyHelpSection,
+  type Keymap,
+  mapKeymap,
+  type Motion,
+  renderKeyHelp,
+  scrollPane,
+  stepIndex,
+} from "bb-vim-keys";
 
 export const OWNED_ATTRIBUTE = "data-prompt-keys";
 const PANEL_ATTRIBUTE = "data-prompt-keys-panel";
@@ -21,44 +31,75 @@ const COMPOSER = "[data-app-composer]";
 const PROMPT_EDITOR = '[data-promptbox] [contenteditable="true"]';
 const QUESTION_FORM = 'div[tabindex="-1"]';
 const CHOICES = "fieldset button[aria-pressed]";
-// While one of these is open, the keys belong to it.
-// Commands keep the names of the keys that type them.
-const BANNER_KEYMAP: Keymap<string> = {
-  j: "j",
-  k: "k",
-  h: "h",
-  l: "l",
-  gg: "gg",
-  G: "G",
-  x: "x",
-  i: "i",
-  "<CR>": "Enter",
-  "<Esc>": "Escape",
-  "?": "?",
-  "<C-d>": "C-d",
-  "<C-u>": "C-u",
+
+type BannerCommand =
+  /** Through a question's answers. */
+  | { kind: "choice"; motion: Motion }
+  | { kind: "scroll"; motion: Motion }
+  /** Between a question's tabs, or across a decision's buttons. */
+  | { kind: "step"; step: 1 | -1 }
+  | { kind: "toggle" }
+  | { kind: "own-answer" }
+  | { kind: "pick" }
+  | { kind: "escape" }
+  | { kind: "help" };
+
+const STEP_KEYS: Keymap<Motion> = { j: "down", k: "up", gg: "top", G: "bottom" };
+const HALF_PAGE: Keymap<Motion> = { "<C-d>": "halfDown", "<C-u>": "halfUp" };
+const scroll = (motion: Motion): BannerCommand => ({ kind: "scroll", motion });
+
+const SHARED_KEYMAP: Keymap<BannerCommand> = {
+  ...mapKeymap(HALF_PAGE, scroll),
+  h: { kind: "step", step: -1 },
+  l: { kind: "step", step: 1 },
+  "<Esc>": { kind: "escape" },
+  "?": { kind: "help" },
 };
 
-const QUESTION_KEYS: [string, string][] = [
-  ["j  k", "Next or previous answer"],
-  ["gg  G", "First or last answer"],
-  ["h  l", "Previous or next question"],
-  ["Enter", "Pick the answer and go on"],
-  ["Space  x", "Pick or toggle the answer"],
-  ["i", "Type your own answer"],
-  ["Ctrl-D Ctrl-U", "Scroll the question"],
-  ["Esc", "Back to the answers, then fold"],
-  ["?", "Show these keys"],
+export const QUESTION_KEYMAP: Keymap<BannerCommand> = {
+  ...SHARED_KEYMAP,
+  ...mapKeymap(STEP_KEYS, (motion): BannerCommand => ({ kind: "choice", motion })),
+  x: { kind: "toggle" },
+  i: { kind: "own-answer" },
+  "<CR>": { kind: "pick" },
+};
+
+// Enter stays with the focused button, which presses itself.
+export const DECISION_KEYMAP: Keymap<BannerCommand> = {
+  ...SHARED_KEYMAP,
+  ...mapKeymap(STEP_KEYS, scroll),
+};
+
+export const QUESTION_KEYS: KeyHelpSection[] = [
+  {
+    title: "",
+    keys: [
+      { keys: ["j", "k"], action: "Next or previous answer" },
+      { keys: ["gg", "G"], action: "First or last answer" },
+      { keys: ["h", "l"], action: "Previous or next question" },
+      { keys: ["Enter"], action: "Pick the answer and go on" },
+      { keys: ["Space", "x"], action: "Pick or toggle the answer" },
+      { keys: ["i"], action: "Type your own answer" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Scroll the question" },
+      { keys: ["Esc"], action: "Back to the answers, then fold" },
+      { keys: ["?"], action: "Show these keys" },
+    ],
+  },
 ];
 
-const DECISION_KEYS: [string, string][] = [
-  ["h  l", "Move across the buttons"],
-  ["Enter", "Press the button"],
-  ["j  k", "Scroll the details"],
-  ["Ctrl-D Ctrl-U", "Half a page down or up"],
-  ["gg  G", "Top or bottom"],
-  ["Esc", "Fold the banner"],
-  ["?", "Show these keys"],
+export const DECISION_KEYS: KeyHelpSection[] = [
+  {
+    title: "",
+    keys: [
+      { keys: ["h", "l"], action: "Move across the buttons" },
+      { keys: ["Enter"], action: "Press the button" },
+      { keys: ["j", "k"], action: "Scroll the details" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down or up" },
+      { keys: ["gg", "G"], action: "Top or bottom" },
+      { keys: ["Esc"], action: "Fold the banner" },
+      { keys: ["?"], action: "Show these keys" },
+    ],
+  },
 ];
 
 export const PROMPT_KEYS_CSS = `
@@ -83,16 +124,20 @@ export const PROMPT_KEYS_CSS = `
   color: var(--muted-foreground);
   pointer-events: none;
 }
-[${PANEL_ATTRIBUTE}] div {
+[${PANEL_ATTRIBUTE}] [data-key-help-row] {
   display: flex;
   gap: 8px;
   padding: 2px 0;
 }
-[${PANEL_ATTRIBUTE}] span:first-child {
+[${PANEL_ATTRIBUTE}] [data-key-help-row] > span:first-child {
+  display: flex;
   flex: 0 0 auto;
+  gap: 6px;
   min-width: 96px;
   color: var(--foreground);
-  white-space: pre;
+}
+[${PANEL_ATTRIBUTE}] kbd {
+  font: inherit;
 }
 `;
 
@@ -149,9 +194,9 @@ function decisionsOf(banner: Element): HTMLButtonElement[] {
   return [...footer.querySelectorAll<HTMLButtonElement>(":scope > button")].filter(enabled);
 }
 
-function scrollBy(banner: Element, amount: (content: HTMLElement) => number) {
+function scrollBanner(banner: Element, motion: Motion) {
   const content = contentOf(banner);
-  if (content) content.scrollTop += amount(content);
+  if (content) scrollPane(content, motion, { line: LINE_STEP_PX });
 }
 
 function reveal(element: HTMLElement, banner: Element) {
@@ -180,10 +225,12 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
   // Where focus was in a banner, so a bb re-render that drops the focused
   // node, or the banner going away, can put it back somewhere useful.
   let last: { banner: HTMLElement; element: Element; composer: Element | null } | null = null;
-  const reader = createKeyReader(BANNER_KEYMAP);
   let panel: { element: HTMLElement; banner: Element } | null = null;
   let scan = 0;
   let escapeAt = -Infinity;
+  // The banner the key being handled acts on, found by `accepts` before the
+  // keymap is picked and the command run.
+  let keyBanner: HTMLElement | null = null;
 
   const afterRender = (run: () => void) => win.requestAnimationFrame(() => run());
 
@@ -200,14 +247,7 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     element.setAttribute(PANEL_ATTRIBUTE, "");
     element.setAttribute("aria-hidden", "true");
     element.classList.add("bbm-rise-in", "bbm-near", "bbm-fast");
-    for (const [key, action] of isQuestion(banner) ? QUESTION_KEYS : DECISION_KEYS) {
-      const row = doc.createElement("div");
-      row.append(
-        Object.assign(doc.createElement("span"), { textContent: key }),
-        Object.assign(doc.createElement("span"), { textContent: action }),
-      );
-      element.append(row);
-    }
+    element.append(renderKeyHelp(doc, isQuestion(banner) ? QUESTION_KEYS : DECISION_KEYS));
     const rect = banner.getBoundingClientRect();
     element.style.left = `${rect.left}px`;
     element.style.bottom = `${win.innerHeight - rect.top + 8}px`;
@@ -250,45 +290,36 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     afterRender(() => formOf(banner)?.querySelector<HTMLElement>("fieldset textarea")?.focus());
   };
 
-  const questionKey = (banner: HTMLElement, key: string): boolean => {
-    if (["j", "k", "h", "l", "G", "gg", "x", "i"].includes(key) && unfold(banner, () => placeCursor(banner))) return true;
+  const questionCommand = (banner: HTMLElement, command: BannerCommand): boolean => {
+    const moves = command.kind === "choice" || command.kind === "step" || command.kind === "toggle" || command.kind === "own-answer";
+    if (moves && unfold(banner, () => placeCursor(banner))) return true;
     const form = formOf(banner);
     if (!form) return false;
     const choices = choicesOf(form);
-    const active = doc.activeElement;
-    const at = choices.findIndex((choice) => choice === active);
-    const step = (index: number) => focus(choices[Math.max(0, Math.min(choices.length - 1, index))], banner);
-    switch (key) {
-      case "j":
-        step(at < 0 ? 0 : at + 1);
+    const at = choices.findIndex((choice) => choice === doc.activeElement);
+    switch (command.kind) {
+      case "choice": {
+        const next = stepIndex(choices.length, at < 0 ? null : at, command.motion);
+        if (next !== null) focus(choices[next], banner);
         return true;
-      case "k":
-        step(at < 0 ? choices.length - 1 : at - 1);
-        return true;
-      case "gg":
-        step(0);
-        return true;
-      case "G":
-        step(choices.length - 1);
-        return true;
-      case "h":
-      case "l": {
+      }
+      case "step": {
         const tabs = tabsOf(form);
         const current = tabs.findIndex(pressed);
-        const next = tabs[current + (key === "l" ? 1 : -1)];
+        const next = tabs[current + command.step];
         if (current < 0 || !next) return false;
         next.click();
         afterRender(() => placeCursor(banner));
         return true;
       }
-      case "x":
+      case "toggle":
         if (at < 0) return false;
         choices[at]!.click();
         return true;
-      case "i":
+      case "own-answer":
         typeOwnAnswer(banner, form, choices);
         return true;
-      case "Enter": {
+      case "pick": {
         if (at < 0) return false;
         const choice = choices[at]!;
         if (choice === otherChoice(choices)) {
@@ -311,35 +342,23 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     }
   };
 
-  const decisionKey = (banner: HTMLElement, key: string): boolean => {
+  const decisionCommand = (banner: HTMLElement, command: BannerCommand): boolean => {
     const enterRow = (fromEnd: boolean) => {
       const decisions = decisionsOf(banner);
       focus(fromEnd ? decisions.at(-1) : decisions[0], banner);
     };
-    if (["h", "l"].includes(key) && unfold(banner, () => enterRow(key === "h"))) return true;
-    if (["j", "k", "gg", "G"].includes(key) && unfold(banner, () => {})) return true;
-    switch (key) {
-      case "h":
-      case "l": {
-        const decisions = decisionsOf(banner);
-        const at = decisions.findIndex((button) => button === doc.activeElement);
-        if (at < 0) enterRow(key === "h");
-        else focus(decisions[Math.max(0, Math.min(decisions.length - 1, at + (key === "l" ? 1 : -1)))], banner);
-        return true;
-      }
-      case "j":
-      case "k":
-        scrollBy(banner, () => (key === "j" ? LINE_STEP_PX : -LINE_STEP_PX));
-        return true;
-      case "gg":
-        scrollBy(banner, (content) => -content.scrollTop);
-        return true;
-      case "G":
-        scrollBy(banner, (content) => content.scrollHeight);
-        return true;
-      default:
-        return false;
+    if (command.kind === "step" && unfold(banner, () => enterRow(command.step < 0))) return true;
+    if (command.kind === "scroll" && unfold(banner, () => {})) return true;
+    if (command.kind === "scroll") {
+      scrollBanner(banner, command.motion);
+      return true;
     }
+    if (command.kind !== "step") return false;
+    const decisions = decisionsOf(banner);
+    const at = decisions.findIndex((button) => button === doc.activeElement);
+    if (at < 0) enterRow(command.step < 0);
+    else focus(decisions[Math.max(0, Math.min(decisions.length - 1, at + command.step))], banner);
+    return true;
   };
 
   /** The banner a key with nothing focused goes to: the one last used, or the only one. */
@@ -349,60 +368,6 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
     return banners.length === 1 ? banners[0]! : null;
   };
 
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") escapeAt = win.performance.now();
-    if (event.defaultPrevented || event.isComposing || event.metaKey || event.altKey) return;
-    const target = event.target;
-    let banner = target instanceof Element ? target.closest<HTMLElement>(BANNER) : null;
-    if (!banner) {
-      if (target !== doc.body && target !== doc.documentElement) return;
-      if (doc.querySelector(ANY_OVERLAY)) return;
-      banner = fallbackBanner();
-      if (!banner) return;
-    }
-    if (target instanceof HTMLElement && isTextEntry(target)) {
-      // Escape leaves "Other…" for the answers instead of folding the banner.
-      const plain = !event.ctrlKey && !event.shiftKey;
-      if (event.key !== "Escape" || !plain || !isQuestion(banner) || !target.matches("fieldset textarea")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const form = formOf(banner);
-      const choices = form ? choicesOf(form) : [];
-      focus(otherChoice(choices) ?? form, banner);
-      return;
-    }
-    const token = keyToken(event);
-    if (token === null) return;
-    const read = reader.read(token, event.timeStamp);
-    if (read.kind === "pending") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    if (read.kind === "none") {
-      closePanel();
-      return;
-    }
-    const key = read.command;
-    let handled: boolean;
-    if (key === "Escape" && panel) {
-      closePanel();
-      handled = true;
-    } else if (key === "?") {
-      togglePanel(banner);
-      handled = true;
-    } else if (key === "C-d" || key === "C-u") {
-      const sign = key === "C-d" ? 1 : -1;
-      scrollBy(banner, (content) => (sign * content.clientHeight) / 2);
-      handled = true;
-    } else {
-      closePanel();
-      handled = isQuestion(banner) ? questionKey(banner, key) : decisionKey(banner, key);
-    }
-    if (!handled) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  };
 
   const onFocusIn = (event: FocusEvent) => {
     const target = event.target;
@@ -459,14 +424,53 @@ export function mountPromptKeys(doc: Document, win: Window): () => void {
   observer.observe(doc.body, { childList: true, subtree: true });
   check();
 
-  win.addEventListener("keydown", onKeyDown, true);
+  const unbindKeys = bindKeys<BannerCommand>(win, {
+    capture: true,
+    // The focusout below needs to know an Escape was pressed even when vim-mode or bb took it.
+    observe: (event) => {
+      if (event.key === "Escape") escapeAt = win.performance.now();
+    },
+    // Enter on a focused answer picks it and goes on, rather than pressing it.
+    leaveToPressables: false,
+    accepts: (element) => {
+      keyBanner = element ? element.closest<HTMLElement>(BANNER) : doc.querySelector(ANY_OVERLAY) ? null : fallbackBanner();
+      return keyBanner !== null;
+    },
+    keymap: () => (keyBanner !== null && isQuestion(keyBanner) ? QUESTION_KEYMAP : DECISION_KEYMAP),
+    // Escape leaves "Other…" for the answers instead of folding the banner.
+    onTextEscape: (field, event) => {
+      if (event.shiftKey || !keyBanner || !isQuestion(keyBanner) || !field.matches("fieldset textarea")) return false;
+      const form = formOf(keyBanner);
+      focus(otherChoice(form ? choicesOf(form) : []) ?? form, keyBanner);
+    },
+    onUnbound: closePanel,
+    onCommand: (command) => {
+      const banner = keyBanner!;
+      if (command.kind === "escape") {
+        if (!panel) return false;
+        closePanel();
+        return;
+      }
+      if (command.kind === "help") {
+        togglePanel(banner);
+        return;
+      }
+      if (command.kind === "scroll" && (command.motion === "halfDown" || command.motion === "halfUp")) {
+        scrollBanner(banner, command.motion);
+        return;
+      }
+      closePanel();
+      return isQuestion(banner) ? questionCommand(banner, command) : decisionCommand(banner, command);
+    },
+  });
+
   doc.addEventListener("focusin", onFocusIn, true);
   doc.addEventListener("focusout", onFocusOut, true);
 
   return () => {
     observer.disconnect();
     if (scan !== 0) win.cancelAnimationFrame(scan);
-    win.removeEventListener("keydown", onKeyDown, true);
+    unbindKeys();
     doc.removeEventListener("focusin", onFocusIn, true);
     doc.removeEventListener("focusout", onFocusOut, true);
     closePanel();

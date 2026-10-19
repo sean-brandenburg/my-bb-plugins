@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { createKeyHandler, type KeyHandler, keymapConflicts } from "bb-vim-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPageCursor, CURSOR_ATTRIBUTE, type PageCursor } from "./page-cursor.js";
+import { createPageCursor, CURSOR_ATTRIBUTE, PAGE_CURSOR_KEYMAP, type PageCursor } from "./page-cursor.js";
 
 const setting = (label: string, control: string) => `
   <div data-control-placement="inline">
@@ -31,23 +32,30 @@ const GENERAL = `
   ${setting("Followup", '<button aria-label="Followup">Steer</button>')}`;
 
 const press = (key: string, init: KeyboardEventInit = {}) =>
-  cursor.handleKey(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
+  keys.handle(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
 const marked = () => document.querySelector(`[${CURSOR_ATTRIBUTE}]`);
 const markedLabel = () => marked()?.querySelector("p, a")?.textContent ?? null;
 
 let cursor: PageCursor;
+let keys: KeyHandler;
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   cursor = createPageCursor(document, window);
+  keys = createKeyHandler({ keymap: PAGE_CURSOR_KEYMAP, onCommand: (command) => cursor.run(command) });
 });
 
 afterEach(() => {
+  keys.dispose();
   cursor.dispose();
   document.body.innerHTML = "";
 });
 
 describe("page cursor", () => {
+  it("has no sequence that starts another", () => {
+    expect(keymapConflicts(PAGE_CURSOR_KEYMAP)).toEqual([]);
+  });
+
   it("steps through the page's settings with j and k, stopping at the ends", () => {
     render(GENERAL);
     expect(marked()).toBeNull();
