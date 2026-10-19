@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findingTallies, type Finding, type Review, type ReviewReport } from "../../shared/review";
-import { applyFindingEdits, earlierFindings, effectiveSelection, pendingFindings, selectedFindingsBody, standingReviews, summarize } from "./findings";
+import { applyFindingEdits, earlierFindings, earlierNotCovered, effectiveSelection, pendingFindings, selectedFindingsBody, standingReviews, summarize } from "./findings";
 
 function finding(id: string, severity: Finding["severity"], overrides: Partial<Finding> = {}): Finding {
   return {
@@ -18,12 +18,13 @@ function finding(id: string, severity: Finding["severity"], overrides: Partial<F
     confidence: null,
     preExisting: false,
     verification: null,
+    class: null,
     ...overrides,
   };
 }
 
 function report(findings: Finding[]): ReviewReport {
-  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings, filtered: [], carriesForward: false, resolved: [] };
+  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings, filtered: [], notCovered: [], carriesForward: false, resolved: [] };
 }
 
 function review(body: string | null, reviewReport: ReviewReport | null, selection: Record<string, boolean>, overrides: Partial<Review> = {}): Review {
@@ -63,6 +64,7 @@ describe("selectedFindingsBody", () => {
         scopeFit: 4,
         confidence: 100,
         fix: "Guard the null",
+        class: "unchecked null",
         locations: [
           { file: "b.ts", startLine: null, endLine: null },
           { file: "c.ts", startLine: 10, endLine: 12 },
@@ -76,7 +78,8 @@ describe("selectedFindingsBody", () => {
     expect(body).toContain("2 of 3 findings were selected on the Kanban board");
     expect(body).not.toContain("### Important");
     expect(body.indexOf("### Critical (Must Fix)")).toBeLessThan(body.indexOf("### Minor (Nice to Fix)"));
-    expect(body).toContain("- **C1** (importance 5, scope 4, confidence 100) `b.ts`, `c.ts:10-12`, `d.ts:7` — Title C1. Description C1 — Guard the null (flagged by: correctness)");
+    expect(body).toContain("- **C1** (importance 5, scope 4, confidence 100) `b.ts`, `c.ts:10-12`, `d.ts:7` — Title C1. Description C1 — Guard the null (class: unchecked null) (flagged by: correctness)");
+    expect(body).toContain("A finding's locations are every instance of its bug class; fix them all.");
     expect(body).toContain("- **M1** `a.ts:3` — Title M1. Description M1 (flagged by: correctness)");
     const block = /```json review-findings\n([\s\S]*)\n```$/u.exec(body);
     expect((JSON.parse(block![1]!) as ReviewReport).findings.map((entry) => entry.id)).toEqual(["M1", "C1"]);
@@ -179,5 +182,15 @@ describe("earlierFindings", () => {
     expect(earlierFindings([unapplied])[0]).not.toHaveProperty("carriedFrom");
     const verified = review(null, report([finding("F1", "minor", { confidence: 90, preExisting: true, verification: "Read it" })]), {}, { id: "r3" });
     expect(earlierFindings([verified])[0]).toMatchObject({ handle: "r3/F1", confidence: 90, preExisting: true, verification: "Read it" });
+    const classed = review(null, report([finding("F1", "minor", { class: "magic number" })]), {}, { id: "r4" });
+    expect(earlierFindings([classed])[0]).toMatchObject({ handle: "r4/F1", class: "magic number" });
+  });
+});
+
+describe("earlierNotCovered", () => {
+  it("gathers the standing reviews' not-covered lists once each, oldest first", () => {
+    const first = review(null, { ...report([]), notCovered: ["UI only: the drag preview", "Untested: the retry path"] }, {}, { id: "r1" });
+    const second = review(null, { ...report([]), notCovered: ["Untested: the retry path", "Unverified: the migration on a large board"] }, {}, { id: "r2" });
+    expect(earlierNotCovered([first, review(null, null, {}, { id: "r0" }), second])).toEqual(["UI only: the drag preview", "Untested: the retry path", "Unverified: the migration on a large board"]);
   });
 });

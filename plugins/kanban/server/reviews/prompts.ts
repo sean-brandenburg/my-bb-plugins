@@ -1,7 +1,7 @@
 import type { Ticket } from "../../shared/board";
 import type { PrReviewSubject, Review, ReviewSubject } from "../../shared/review";
 import { finishSteps } from "../apply-steps";
-import { earlierFindings } from "./findings";
+import { earlierFindings, earlierNotCovered } from "./findings";
 
 /** How a review prompt names its subject, gets the subject's code into the worktree, and what a full review covers. */
 interface ReviewSetup {
@@ -94,11 +94,12 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
 function incrementalSteps(range: string, fullRange: string, reviewStep: number): string[] {
   return [
     `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\` and the pre-existing range \`${fullRange}\`, so a finding in lines this change touched in an earlier commit is not tagged pre-existing. Let it spawn its reviewers, verify their findings and compile them; that report is an intermediate result, not your final message.`,
-    `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem no longer exists) or open (still present; give its current locations, since lines may have moved). Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check.`,
+    `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem is gone at every instance) or open (some instance is still present; give the current locations of every one left, since lines may have moved). It also checks each earlier not-covered entry, if any, and says which a check at HEAD now covers. Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check.`,
     `${reviewStep + 2}. Compile one merged report in the code-review skill's exact format (the markdown sections, the \`Reviewed commit:\` and \`Range:\` lines, and the trailing \`\`\`json review-findings block), with these additions:`,
     `   - \`findings\` holds the new findings from step ${reviewStep} plus every open earlier finding, merged into one where a new finding is the same problem as an earlier one, ordered by severity and renumbered \`F1\`, \`F2\`, ….`,
-    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy and category unless the new commits made them inaccurate, takes its locations at HEAD, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
+    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category and class unless the new commits made them inaccurate, takes every instance still present at HEAD as its locations, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
     `   - \`"filtered"\` holds only the findings step ${reviewStep} filtered out; earlier reviews' filtered findings are neither re-checked nor carried.`,
+    `   - \`"notCovered"\` holds step ${reviewStep}'s list plus each earlier entry below that still holds at HEAD, once each.`,
     '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`.',
     `   - \`"range"\` is \`${range}\` and \`"reviewers"\` lists only the reviewers step ${reviewStep} ran (none when nothing changed).`,
     "",
@@ -109,8 +110,10 @@ function incrementalSteps(range: string, fullRange: string, reviewStep: number):
 function earlierFindingsSection(standing: Review[]): string[] {
   const findings = earlierFindings(standing);
   const freeForm = standing.filter((review) => review.report === null && review.body !== null && review.body.trim() !== "");
+  const notCovered = earlierNotCovered(standing);
+  const notCoveredLines = notCovered.length === 0 ? [] : ["", "### Not covered by the earlier reviews", "", ...notCovered.map((entry) => `- ${entry}`)];
   const lines = ["## Earlier findings", ""];
-  if (findings.length === 0 && freeForm.length === 0) return [...lines, "The earlier reviews left no open findings, so `resolved` is empty and every finding is new."];
+  if (findings.length === 0 && freeForm.length === 0) return [...lines, "The earlier reviews left no open findings, so `resolved` is empty and every finding is new.", ...notCoveredLines];
   if (findings.length > 0) {
     lines.push(
       "Each is keyed by its `handle`; `applyRound` says what the board's apply round did with it.",
@@ -121,7 +124,7 @@ function earlierFindingsSection(standing: Review[]): string[] {
     );
   }
   for (const review of freeForm) lines.push("", `### Free-form review ${review.id}`, "", review.body!.trim());
-  return lines;
+  return [...lines, ...notCoveredLines];
 }
 
 const APPLY_AS_GIVEN =

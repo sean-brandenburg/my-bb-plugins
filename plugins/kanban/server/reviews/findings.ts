@@ -131,6 +131,11 @@ export function earlierFindings(standing: Review[]): Array<Omit<Finding, "id" | 
   );
 }
 
+/** What the standing reviews said their checks don't cover, each entry once, for a re-review to re-check. */
+export function earlierNotCovered(standing: Review[]): string[] {
+  return [...new Set(standing.flatMap((review) => review.report?.notCovered ?? []))];
+}
+
 /** The review body trimmed to the selected findings, so the apply round never sees deselected ones. */
 export function selectedFindingsBody(review: Review): { body: string; findingIds: string[] | null } {
   const { report } = review;
@@ -147,6 +152,7 @@ export function selectedFindingsBody(review: Review): { body: string; findingIds
   const lines: string[] = ["## Change Summary", report.summary, "", "## Selected findings", ""];
   lines.push(
     `${selected.length} of ${report.findings.length} findings were selected on the Kanban board; the rest were deliberately left out or fixed by an earlier apply round. Apply only these.`,
+    "A finding's locations are every instance of its bug class; fix them all.",
     "",
   );
   for (const { severity, findings } of bySeverity) {
@@ -158,8 +164,9 @@ export function selectedFindingsBody(review: Review): { body: string; findingIds
       ];
       const where = finding.locations.map((location) => `\`${locationLabel(location)}\``).join(", ");
       const fix = finding.fix === null || finding.fix === "" ? "" : ` — ${finding.fix}`;
+      const bugClass = finding.class === null || finding.class === "" ? "" : ` (class: ${finding.class})`;
       lines.push(
-        `- **${finding.id}**${scores.length === 0 ? "" : ` (${scores.join(", ")})`} ${where} — ${finding.title}. ${finding.description}${fix} (flagged by: ${finding.flaggedBy.join(", ")})`,
+        `- **${finding.id}**${scores.length === 0 ? "" : ` (${scores.join(", ")})`} ${where} — ${finding.title}. ${finding.description}${fix}${bugClass} (flagged by: ${finding.flaggedBy.join(", ")})`,
       );
     }
     lines.push("");

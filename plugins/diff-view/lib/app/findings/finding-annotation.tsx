@@ -66,6 +66,8 @@ export function FindingAnnotation({
     SEVERITY_LABEL[finding.severity],
     finding.importance !== null && finding.scopeFit !== null ? `importance ${finding.importance}/5 · scope fit ${finding.scopeFit}/5` : null,
     finding.confidence != null ? `confidence ${finding.confidence}` : null,
+    finding.class != null && finding.class !== "" ? `class: ${finding.class}` : null,
+    finding.locations.length > 1 ? `${finding.locations.length} instances` : null,
     item.carriedFrom !== null ? `still open from ${item.carriedFrom}` : null,
     item.edited ? "reworded by you" : null,
     item.overridden ? (item.selected ? "included by you" : "excluded by you") : null,

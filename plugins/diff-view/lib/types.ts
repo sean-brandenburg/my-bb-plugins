@@ -165,6 +165,8 @@ export interface Finding {
   preExisting?: boolean;
   /** The verifier's reason for its confidence. */
   verification?: string | null;
+  /** The kind of mistake, so one fix covers it everywhere; `locations` lists every instance. */
+  class?: string | null;
 }
 
 export interface FindingEdit {

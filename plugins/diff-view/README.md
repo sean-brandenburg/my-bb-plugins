@@ -31,7 +31,9 @@ plugins embed.
 - **Review findings** (hosts with reviews, such as kanban) show as one line
   each under their line: severity, title and the apply-round checkbox. A
   finding opens to its description, fix and scores on click, Enter, or while
-  the keyboard cursor is on it. The findings chip above the diff, or `F`,
+  the keyboard cursor is on it. A finding with several locations (instances
+  of one bug class) shows at each of them, and its scores line names the
+  class and the instance count. The findings chip above the diff, or `F`,
   cycles which show: all, important and up (the default), critical only, or
   none; the chip counts the ones hidden. Findings a host marks pre-existing
   (already in the code before the change) stay out of the diff, and those its

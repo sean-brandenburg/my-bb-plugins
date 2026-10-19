@@ -937,16 +937,39 @@ describe("parseReviewReport", () => {
 
   it("parses a report the code-review skill compiled with its verify pass", async () => {
     const report = parseReviewReport(await readFile(join(import.meta.dirname, "server/reviews/fixtures/verified-review.md"), "utf8"))!;
-    expect(report).toMatchObject({ version: 2, findings: [] });
+    expect(report).toMatchObject({ version: 2, findings: [], notCovered: [] });
     expect(report.filtered).toHaveLength(1);
+    expect(report.filtered[0]!.class).toBeNull();
     expect(report.filtered[0]).toMatchObject({ id: "X1", confidence: 50, preExisting: true, importance: null });
     expect(report.filtered[0]!.verification).toContain("matter of taste");
   });
 
   it("reads a stored report from before verification as unverified, introduced and unfiltered", () => {
     const report = parseReviewReport(["```json review-findings", JSON.stringify({ version: 1, findings: [{ id: "F1", severity: "important", title: "Bug" }] }), "```"].join("\n"))!;
-    expect(report.findings[0]).toMatchObject({ confidence: null, preExisting: false, verification: null });
+    expect(report.findings[0]).toMatchObject({ confidence: null, preExisting: false, verification: null, class: null });
     expect(report.filtered).toEqual([]);
+    expect(report.notCovered).toEqual([]);
+  });
+
+  it("reads each finding's bug class with every instance, and the report's not-covered list", () => {
+    const instances = [
+      { file: "a.ts", startLine: 3, endLine: 3 },
+      { file: "b.ts", startLine: 9, endLine: 12 },
+    ];
+    const body = [
+      "```json review-findings",
+      JSON.stringify({
+        version: 3,
+        findings: [{ id: "F1", severity: "important", title: "Unquoted path in shell command", class: "unquoted shell argument", locations: instances, confidence: 90 }],
+        filtered: [{ id: "X1", severity: "minor", title: "Maybe", class: "naming", confidence: 25 }],
+        notCovered: ["Untested: the retry path in `sync.ts` when the fetch times out", "UI only: the board's drag preview"],
+      }),
+      "```",
+    ].join("\n");
+    const report = parseReviewReport(body)!;
+    expect(report.findings[0]).toMatchObject({ class: "unquoted shell argument", locations: instances });
+    expect(report.filtered[0]!.class).toBe("naming");
+    expect(report.notCovered).toEqual(["Untested: the retry path in `sync.ts` when the fetch times out", "UI only: the board's drag preview"]);
   });
 });
 
@@ -1353,7 +1376,7 @@ describe("persisted reviews", () => {
       commit: sha,
       findings: [
         { id: "F1", severity: "minor", title: "Nit", locations: [{ file: "a.go", startLine: 1 }], confidence: 90 },
-        { id: "F2", severity: "critical", title: "Old race", description: "Two writers interleave.", fix: "Take the lock", locations: [{ file: "store.go", startLine: 40, endLine: 52 }, { file: "cache.go" }], confidence: 85, preExisting: true },
+        { id: "F2", severity: "critical", title: "Old race", description: "Two writers interleave.", fix: "Take the lock", class: "unlocked shared write", locations: [{ file: "store.go", startLine: 40, endLine: 52 }, { file: "cache.go" }], confidence: 85, preExisting: true },
       ],
       filtered: [{ id: "X1", severity: "important", title: "Misread", confidence: 10 }],
     };
@@ -1374,6 +1397,7 @@ describe("persisted reviews", () => {
     expect(made.ticket.description).toContain("Take the lock");
     expect(made.ticket.description).toContain("`store.go:40-52`");
     expect(made.ticket.description).toContain("`cache.go`");
+    expect(made.ticket.description).toContain("**Bug class:** unlocked shared write");
     expect(made.ticket.description).toContain(`(finding ${reviewId}/F2)`);
     expect((await board()).tickets.map((ticket) => ticket.title).sort()).toEqual(["Old race", "Refactor"]);
 

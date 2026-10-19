@@ -337,6 +337,7 @@ export function createReviews(
     const description = [
       finding.description,
       finding.fix === null || finding.fix === "" ? null : `**Suggested fix:** ${finding.fix}`,
+      finding.class === null || finding.class === "" ? null : `**Bug class:** ${finding.class}`,
       finding.locations.length === 0 ? null : ["**Where:**", ...finding.locations.map((location) => `- \`${locationLabel(location)}\``)].join("\n"),
       finding.preExisting
         ? `Already in the code before “${source.title}”; its code review found it ${provenance}.`

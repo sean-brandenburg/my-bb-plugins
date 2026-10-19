@@ -119,10 +119,36 @@ describe("review prompt", () => {
   it("judges a re-review's new findings pre-existing against the whole change, and keeps carried findings' verification", () => {
     const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()]);
     expect(prompt).toContain(`invoke the \`code-review\` skill with the range \`${since}..HEAD\` and the pre-existing range \`main...HEAD\``);
-    expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy and category");
+    expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category and class");
     expect(prompt).toContain('`"filtered"` holds only the findings step 3 filtered out');
     const pr = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()]);
     expect(pr).toContain(`with the range \`${since}..HEAD\` and the pre-existing range \`origin/$BASE...HEAD\``);
+  });
+
+  it("carries a finding forward while any instance of its bug class is left, and keeps what the checks still do not cover", () => {
+    const earlier = review({
+      body: "x",
+      report: {
+        version: 3,
+        summary: "",
+        commit: null,
+        range: null,
+        reviewers: [],
+        skippedReviewers: [],
+        skippedFiles: [],
+        findings: [],
+        filtered: [],
+        notCovered: ["UI only: the drag preview"],
+        carriesForward: false,
+        resolved: [],
+      },
+    });
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), earlier, [earlier]);
+    expect(prompt).toContain("addressed (the problem is gone at every instance)");
+    expect(prompt).toContain("takes every instance still present at HEAD as its locations");
+    expect(prompt).toContain('`"notCovered"` holds step 3\'s list plus each earlier entry below that still holds at HEAD');
+    expect(prompt).toContain("### Not covered by the earlier reviews\n\n- UI only: the drag preview");
+    expect(reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()])).not.toContain("Not covered by the earlier reviews");
   });
 
   it("numbers a PR re-review's steps after its four setup steps", () => {

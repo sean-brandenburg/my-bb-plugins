@@ -70,6 +70,7 @@ function ListedRow({ entry, index, onMakeCard }: { entry: ListedFinding; index: 
       {open ? (
         <div className={cn("flex flex-col gap-1 py-1 pl-5 text-sm", enter.rise, FAST)}>
           {finding.verification != null && finding.verification !== "" ? <p className="text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
+          {finding.class != null && finding.class !== "" ? <p className="text-xs text-muted-foreground">Class: {finding.class}</p> : null}
           {finding.description !== "" ? <Markdown content={finding.description} /> : <p className="text-xs text-muted-foreground">No description.</p>}
           {finding.fix !== null && finding.fix !== "" ? (
             <div className="flex gap-1.5">

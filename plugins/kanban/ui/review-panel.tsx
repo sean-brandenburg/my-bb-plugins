@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { CHEVRON, OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
-import { CONFIDENCE_BAR, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
+import { CONFIDENCE_BAR, NOT_COVERED_REPORT_VERSION, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -144,8 +144,17 @@ function FindingCard({
 }
 
 function FindingDetails({ finding }: { finding: Finding }) {
+  const instances = finding.locations.length;
   return (
     <>
+      {finding.class !== null && finding.class !== "" ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span title="Bug class: the kind of mistake, so one fix covers every instance">{finding.class}</span>
+          {instances > 1 ? <span className="tabular-nums"> · {instances} instances</span> : null}
+        </p>
+      ) : instances > 1 ? (
+        <p className="mt-1 text-xs tabular-nums text-muted-foreground">{instances} instances</p>
+      ) : null}
       {finding.locations.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-1">
           {finding.locations.map((location) => (
@@ -348,6 +357,28 @@ function StructuredReview({
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+      {report.version >= NOT_COVERED_REPORT_VERSION ? (
+        <section aria-label="Not covered">
+          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Not covered <span className="font-normal tabular-nums">{report.notCovered.length}</span>
+          </h3>
+          {report.notCovered.length === 0 ? (
+            <p className="text-xs text-muted-foreground">The review found nothing the checks miss.</p>
+          ) : (
+            <>
+              <p className="mb-1 text-xs text-muted-foreground">Neither the checks nor the review could confirm these; look at them yourself.</p>
+              <ul className="flex flex-col gap-1 text-sm">
+                {report.notCovered.map((entry) => (
+                  <li key={entry} className="flex gap-1.5">
+                    <Icon name="Circle" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <Markdown content={entry} className="min-w-0 flex-1" />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       ) : null}
       {report.skippedFiles.length > 0 ? (

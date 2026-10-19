@@ -185,6 +185,15 @@ its PR is reviewed and its review findings and comments are handed to agents.
   finds that card instead of making another). Each finding shows its
   "confidence N", or "unverified" when the verifier gave no verdict. Reviews
   from before verification show as they did.
+- **Bug classes and what isn't covered**: each finding names its bug class
+  (the kind of mistake) and lists every instance as a location, so one fix
+  covers them all; the card shows the class and "N instances", the changes
+  view puts the finding at each instance, and the apply round is told to fix
+  every one. Style and code-smell findings are kept, as minor. Each review
+  ends with a "Not covered" list: changed paths no test exercises, behaviour
+  only visible in the UI, and anything the reviewers couldn't verify; an
+  empty list says the review found nothing the checks miss. A re-review keeps
+  the earlier entries that still hold.
 - **Changes view**: "View changes" on a card (or the diff icon on hover)
   opens a full-page diff at `/plugins/kanban/board/diff/<id>`: every file in
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a

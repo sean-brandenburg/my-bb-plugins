@@ -35,6 +35,8 @@ export type FindingSeverity = z.infer<typeof findingSeveritySchema>;
 export const CONFIDENCE_BAR = 80;
 /** The first report version whose findings went through the verify pass, so a missing confidence means unverified. */
 export const VERIFIED_REPORT_VERSION = 2;
+/** The first report version that says what the checks don't cover, so an empty list there means nothing, not unknown. */
+export const NOT_COVERED_REPORT_VERSION = 3;
 
 export const findingSchema = z.object({
   id: z.string(),
@@ -69,6 +71,8 @@ export const findingSchema = z.object({
     .transform((value) => value ?? false),
   /** The verifier's one-line reason for its confidence. */
   verification: z.string().nullable().default(null),
+  /** The kind of mistake, named so one fix covers it everywhere: `locations` lists every instance of it. */
+  class: z.string().nullable().default(null),
 });
 export type Finding = z.infer<typeof findingSchema>;
 
@@ -94,6 +98,8 @@ export const reviewReportSchema = z.object({
   findings: z.array(findingSchema),
   /** Findings the verifier scored below the confidence bar; kept for a look, never selected or applied. */
   filtered: z.array(findingSchema).default([]),
+  /** What neither the project's checks nor the review could check: untested paths, behaviour only visible in the UI, anything left unverified. */
+  notCovered: z.array(z.string()).default([]),
   /** Set by re-reviews: `findings` also holds every earlier finding still open, so older reviews are superseded. */
   carriesForward: z.boolean().default(false),
   /** Earlier findings (`<reviewId>/<findingId>`) a re-review found addressed at the reviewed commit. */

@@ -30,7 +30,8 @@ A kanban board where every card is a BB thread.
   `apply-review` (a local card's own thread applies them). Every finding is
   verified first: doubtful ones fold under "N filtered", and ones already in
   the code before the change are listed apart, each a click from a Backlog
-  card of its own. Synced PR comments
+  card of its own. Findings name their bug class with every instance, and each
+  review lists what its checks don't cover. Synced PR comments
   (and your local ones) go to an `apply-pr-comments` thread. Findings and PR
   comment threads render inline in the diff.
 - **Monitored cards**: flag a card and the board runs the loop for it. Its
