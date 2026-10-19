@@ -3,7 +3,7 @@ Narrows bb's sidebar to its icon rail, so no thread list sits beside it.
 ## What you get
 
 - Only bb's icon rail on the left: Home, your navigation items, and More (hidden items and Customize rail). bb's own tooltips name each icon. Use the Project switcher for threads.
-- The footer's icons (Provider usage, More footer actions, update badges) stack in the rail above Settings instead of hiding with the thread list.
+- The footer's icons (Provider usage, More footer actions, update badges) stack in the rail above Settings instead of hiding with the thread list. Clicking Provider usage, or More footer actions → Customize footer, opens its panel as a card beside the rail.
 - Cmd+\ hides the rail completely and brings it back.
 - Cmd+1 through Cmd+9 (Ctrl elsewhere) open the rail's first nine items in order, Home first. Hold Cmd and each one shows its number in a pill. Cmd+0 returns to the last thread you had open, or from a thread to the one before it. bb keeps a plugin's default off any key one of its own shortcuts holds, even one that only acts in a split, so clear its jump-to-thread and focus-pane-by-number shortcuts once: `for n in 1 2 3 4 5 6 7 8 9; do bb settings keyboard set thread.jump.$n disabled; done; for n in 1 2 3 4 5 6 7 8; do bb settings keyboard set pane.focus.$n disabled; done`. Rebind the "Open sidebar item N" and "Return to the last thread" commands in Settings → Keyboard if you want other keys (the pills keep showing the defaults).
 - The Settings, Plugins, and Skills pages keep their list beside the rail.

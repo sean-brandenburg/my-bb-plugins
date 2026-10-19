@@ -39,6 +39,11 @@ const OWN_LIST = ["settings", "plugins", "skills"]
 export const SLIM = `${SIDEBAR}:has(${RAIL}):not(:has(${OWN_LIST}))`;
 const FOOTER_ROW = '[data-testid="sidebar-footer-row"]';
 const FOOTER_BODY = `${FOOTER_ROW} > [data-sidebar="collapsible-body"]`;
+// A footer icon's disclosure (Provider usage) and More → Customize footer open
+// at the bottom of the thread list, which the slim sidebar hides.
+const FOOTER_PANEL_CONTENT =
+  ':is([data-testid^="plugin-sidebar-footer-disclosure-"], [data-testid="sidebar-footer-customize-inline"])';
+export const FOOTER_PANEL = `${SLIM}[data-state="expanded"] [data-testid="app-sidebar-body"] > div:has(${FOOTER_PANEL_CONTENT})`;
 const RAIL_COLUMN = "(var(--bb-sidebar-control-size) + 2 * var(--bb-sidebar-rail-padding))";
 // On macOS bb frames the page below a title bar holding back, forward, the
 // sidebar toggle, and the right panel toggle.
@@ -198,6 +203,28 @@ export const SLIM_SIDEBAR_CSS = `
   ${SLIM} [data-testid="sidebar-updates-badge-providers"] > span {
     flex-wrap: wrap;
     justify-content: center;
+  }
+  /* So it floats as a card beside the rail, above the footer. The list's
+     clip-path would clip it even though it is fixed. */
+  ${FOOTER_PANEL} {
+    visibility: visible;
+    position: fixed;
+    left: calc(var(--sidebar-rail-width) + 4px);
+    bottom: 8px;
+    width: 280px;
+    padding: 0 !important;
+    overflow: hidden;
+    border: 1px solid var(--sidebar-border);
+    border-radius: 0.5rem;
+    background: var(--sidebar);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  }
+  ${FOOTER_PANEL} [data-testid^="plugin-sidebar-footer-disclosure-"] {
+    border: 0;
+    border-radius: 0;
+  }
+  ${SLIM}:has(${FOOTER_PANEL_CONTENT}) [data-testid="nav-rail-sidebar-body"] {
+    clip-path: none !important;
   }
 }
 ${RAIL} [${SLOT_ATTRIBUTE}] {

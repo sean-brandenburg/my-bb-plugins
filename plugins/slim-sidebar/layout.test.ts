@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   arrangeHeaders,
+  FOOTER_PANEL,
   headerClearance,
   HELD_ATTRIBUTE,
   labelRail,
@@ -67,6 +68,33 @@ describe("SLIM", () => {
   it("leaves a sidebar without bb's rail alone", () => {
     document.body.innerHTML = '<div id="sidebar" data-side="left" data-variant="sidebar"></div>';
     expect(byId("sidebar").matches(SLIM)).toBe(false);
+  });
+});
+
+describe("FOOTER_PANEL", () => {
+  const listWith = (panel: string) => `
+    <div data-testid="app-sidebar-body">
+      <div id="list"></div>
+      <div id="panel">${panel}</div>
+    </div>`;
+
+  it("matches the list's footer slot while a footer icon's disclosure or Customize footer is open", () => {
+    for (const panel of [
+      '<section data-testid="plugin-sidebar-footer-disclosure-bb--provider-usage-usage"></section>',
+      '<div><div data-testid="sidebar-footer-customize-inline"></div></div>',
+    ]) {
+      renderSidebar(listWith(panel));
+      expect(byId("panel").matches(FOOTER_PANEL)).toBe(true);
+      expect(byId("list").matches(FOOTER_PANEL)).toBe(false);
+    }
+  });
+
+  it("matches nothing while the slot is empty or the rail is hidden", () => {
+    renderSidebar(listWith(""));
+    expect(byId("panel").matches(FOOTER_PANEL)).toBe(false);
+    renderSidebar(listWith('<section data-testid="plugin-sidebar-footer-disclosure-bb--provider-usage-usage"></section>'));
+    byId("sidebar").setAttribute("data-state", "collapsed");
+    expect(byId("panel").matches(FOOTER_PANEL)).toBe(false);
   });
 });
 
