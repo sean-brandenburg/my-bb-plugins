@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
-import { type Caret, editField, isTextEntry, NAV_ROW, useKeyScope } from "bb-vim-keys/react";
-import { type ClientCommand, KEYMAP } from "./client-nav";
+import { type Caret, editField, focusRow, isTextEntry, type KeyContext, NAV_ROW, returnToRow, stepIndex, useKeyHandler, useKeyScope } from "bb-vim-keys/react";
+import { type ClientCommand, KEYMAP, LIST_SEARCH_KEYMAP, PANEL_KEYMAP, PANEL_SELECT_KEYMAP, PANEL_TEXT_BOX_KEYMAP } from "./client-nav";
 
-export { editField, focusRow, isTextEntry, isToolbar, NAV_ROW, pageCursor, readRows, toolbarButtons } from "bb-vim-keys";
+export { editField, focusRow, isTextEntry, NAV_ROW, readRows, returnToRow } from "bb-vim-keys";
 
 /**
  * Vim-style client keys. Keys count only when they come from the view (or nowhere in particular),
@@ -11,15 +11,21 @@ export { editField, focusRow, isTextEntry, isToolbar, NAV_ROW, pageCursor, readR
  * and as a thread panel; a key with no focused target goes to whichever the user last touched.
  * `onCommand` returns false when the key did nothing, so it keeps its default.
  */
-export function useClientKeys(root: HTMLElement | null, enabled: boolean, onCommand: (command: ClientCommand) => boolean | void): void {
+export function useClientKeys(
+  root: HTMLElement | null,
+  enabled: boolean,
+  onCommand: (command: ClientCommand, context: KeyContext) => boolean | void,
+  onTextEscape: (field: HTMLElement) => void,
+): void {
   useKeyScope(root, enabled, {
     keymap: KEYMAP,
     group: "grpc",
+    counts: true,
     // Arriving from the sidebar leaves focus on its link, where client keys would be ignored.
     takeFocus: true,
     onCommand,
     // vim-mode swallows Escape in text boxes unless it is set to let Escape leave them.
-    onTextEscape: () => onCommand({ kind: "escape", fromField: true }),
+    onTextEscape,
   });
 }
 
@@ -37,26 +43,58 @@ export function usePanelKeys(panel: RefObject<HTMLElement | null>, open: boolean
     initial?.focus({ preventScroll: true });
   }, [panel, open]);
 
-  return (event) => {
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-    const node = panel.current;
-    const target = event.target as Element;
-    if (node === null) return;
-    // A select's arrows change its value, but j and k still leave it.
-    const select = target instanceof HTMLSelectElement;
-    const typing = isTextEntry(target) && !select;
-    const down = (event.key === "ArrowDown" && !select) || (event.key === "j" && !typing);
-    const up = (event.key === "ArrowUp" && !select) || (event.key === "k" && !typing);
-    const step = down ? 1 : up ? -1 : 0;
-    if (step === 0) return;
-    const stops = [...node.querySelectorAll<HTMLElement>(PANEL_STOPS)].filter((stop) => stop.getClientRects().length > 0);
-    const index = stops.findIndex((stop) => stop === target || stop.contains(target));
-    const next = stops[index === -1 ? 0 : Math.min(Math.max(index + step, 0), stops.length - 1)];
-    if (next === undefined) return;
-    event.preventDefault();
-    next.focus({ preventScroll: true });
-    next.scrollIntoView({ block: "nearest" });
-  };
+  return useKeyHandler({
+    keymap: (target) => {
+      if (target instanceof HTMLSelectElement) return PANEL_SELECT_KEYMAP;
+      return isTextEntry(target) ? PANEL_TEXT_BOX_KEYMAP : PANEL_KEYMAP;
+    },
+    // The keymap leaves text boxes their typing; it is picked by the control the key came from instead.
+    isText: () => false,
+    onCommand: (motion, { target, count }) => {
+      const node = panel.current;
+      if (node === null) return false;
+      const stops = [...node.querySelectorAll<HTMLElement>(PANEL_STOPS)].filter((stop) => stop.getClientRects().length > 0);
+      const index = stops.findIndex((stop) => target !== null && (stop === target || stop.contains(target)));
+      const next = stops[stepIndex(stops.length, index === -1 ? null : index, motion, { count }) ?? -1];
+      if (next === undefined) return false;
+      next.focus({ preventScroll: true });
+      next.scrollIntoView({ block: "nearest" });
+    },
+  });
+}
+
+/** Marks the method and call-history search boxes, so `/` can wait for whichever the list shows. */
+export const LIST_SEARCH = "[data-list-search]";
+
+/**
+ * Keys for the list's search box: Escape clears the query, or with none goes back to the
+ * cursor's row (the open one, else the first); ↓ goes to the first row; Enter opens the first
+ * match and leaves the cursor on it, so j/k carry on through the rest.
+ */
+export function useListSearchKeys(options: { rows: () => HTMLElement[]; query: string; clear: () => void; openFirst: () => boolean }) {
+  return useKeyHandler({
+    keymap: LIST_SEARCH_KEYMAP,
+    isText: () => false,
+    // The box is an input, which would otherwise keep its Enter.
+    leaveToPressables: false,
+    onCommand: (command, { target }) => {
+      const rows = options.rows();
+      switch (command) {
+        case "escape":
+          if (options.query !== "") options.clear();
+          else if (target !== null) returnToRow(target, rows.find((row) => row.getAttribute("aria-current") === "true") ?? rows[0]);
+          return;
+        case "rows":
+          if (rows[0] === undefined) return false;
+          focusRow(rows[0]);
+          return;
+        case "openFirst":
+          if (!options.openFirst()) return false;
+          if (rows[0] !== undefined) focusRow(rows[0]);
+          return;
+      }
+    },
+  });
 }
 
 /** Makes an element a stop for the request form's field cursor; pair it with FOCUS_RING. */

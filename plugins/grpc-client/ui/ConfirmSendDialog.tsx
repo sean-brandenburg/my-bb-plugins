@@ -1,12 +1,12 @@
 import { useRef } from "react";
-import type { KeyboardEvent } from "react";
+import { stepIndex, useKeyHandler } from "bb-vim-keys/react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CONFIRM_KEYMAP } from "./client-nav";
 
-const STEPS: Record<string, number> = { h: -1, k: -1, ArrowLeft: -1, ArrowUp: -1, l: 1, j: 1, ArrowRight: 1, ArrowDown: 1 };
 const CHOICE = "[data-confirm-choice]";
 
-/** Asks before a call to a protected endpoint. h/l (or j/k) move between the buttons; focus starts on Cancel. */
+/** Asks before a call to a protected endpoint. h/l (or j/k, or the arrows) move between the buttons; focus starts on Cancel. */
 export function ConfirmSendDialog({
   open,
   onOpenChange,
@@ -24,17 +24,16 @@ export function ConfirmSendDialog({
 }) {
   const content = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const step = STEPS[event.key];
-    if (step === undefined || content.current === null) return;
-    const choices = [...content.current.querySelectorAll<HTMLButtonElement>(CHOICE)];
-    const index = choices.findIndex((choice) => choice === document.activeElement);
-    const next = choices[index === -1 ? 0 : Math.min(Math.max(index + step, 0), choices.length - 1)];
-    if (next === undefined) return;
-    event.preventDefault();
-    next.focus();
-  };
+  const onKeyDown = useKeyHandler({
+    keymap: CONFIRM_KEYMAP,
+    onCommand: (motion) => {
+      const choices = [...(content.current?.querySelectorAll<HTMLButtonElement>(CHOICE) ?? [])];
+      const index = choices.findIndex((choice) => choice === document.activeElement);
+      const next = choices[stepIndex(choices.length, index === -1 ? null : index, motion) ?? -1];
+      if (next === undefined) return false;
+      next.focus();
+    },
+  });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
+import { bindKeys } from "bb-vim-keys";
 import type { rpcContract } from "../server/rpc-contract";
 import { errorMessage } from "../shared/common";
 import type { DescriptorState, MethodInfo, ServiceInfo, TypeClosure } from "../shared/schema";
+import { DISMISS_KEYMAP } from "./client-nav";
 
 /** Width of an element that may mount after the first render (hence a callback ref). */
 export function useWidth(): [(node: HTMLDivElement | null) => void, number, HTMLDivElement | null] {
@@ -19,21 +21,23 @@ export function useWidth(): [(node: HTMLDivElement | null) => void, number, HTML
   return [setNode, width, node];
 }
 
-/** Closes an open panel on a pointer press outside `root`, or on Escape. */
+/** Closes an open panel on a pointer press outside `root`, or on an Escape nothing nearer took. */
 export function useDismiss(root: RefObject<HTMLElement | null>, open: boolean, onOpenChange: (open: boolean) => void): void {
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) onOpenChange(false);
     };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
     document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
+    const unbindKeys = bindKeys(document, {
+      keymap: DISMISS_KEYMAP,
+      // Escape from the panel's own boxes (a select, a search box) closes it too.
+      isText: () => false,
+      onCommand: () => onOpenChange(false),
+    });
     return () => {
       document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
+      unbindKeys();
     };
   }, [root, open, onOpenChange]);
 }

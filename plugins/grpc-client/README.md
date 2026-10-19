@@ -9,7 +9,7 @@ trailers. Call history is shared between the UI and `bb grpc`.
 
 Outside text boxes the view takes vim-style keys, with one cursor that moves
 through the method list (or call history) and the request's fields. `j`/`k`
-move it, `gg`/`G` jump to the ends, and `k` from the list's top row reaches
+move it (`5j` moves five), `gg`/`G` jump to the ends, and `k` from the list's top row reaches
 the endpoint, history, and collapse (or close) buttons above it, which `h`/`l` step across
 and `o` or Enter presses. Elsewhere `l` goes deeper: it expands a service,
 opens a method and carries the cursor into its fields, steps into a section,
@@ -19,13 +19,14 @@ response. `h` goes back out: it steps back from those buttons, collapses a
 section or service, climbs to the enclosing one, and goes from the response
 to the fields and from a top-level field to the method list. In the response,
 `j`/`k` scroll a line, `gg`/`G` jump to its ends, and `y` copies it. `/`
-searches it as you type (smartcase: a capital makes it case-sensitive); Enter
+searches it as you type (smartcase: a capital makes it case-sensitive; regex
+syntax and vim's `\<` `\>` work, and a query that isn't a valid regex matches literally); Enter
 keeps the matches and `n`/`N` step through them, Escape in the box cancels and
 scrolls back, and Escape afterwards clears the highlights.
 `o` or Enter opens the row under the cursor; `i`/`I` edit the field under it
 with the caret at the start and `a`/`A` with it at the end, and Escape stops
 editing and puts the cursor back on that field. Editing an enum, bool, or
-oneof field opens its list: `j`/`k` move, `g`/`G` jump to the ends, Enter or
+oneof field opens its list: `j`/`k` move, `gg`/`G` jump to the ends, Enter or
 Space picks, and Escape closes it unchanged. `/` filters the list as you type
 (every word must match); Enter picks the highlighted match, and Escape leaves
 the filter box with the matches still shown, so `j`/`k` keep going. `dd` removes a

@@ -5,7 +5,8 @@ import { cx, enter, exit, speed, usePresence } from "bb-motion";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { NAV_ROW } from "./client-keys";
+import { returnToRow, usePickerKeys, visibleRowCount } from "bb-vim-keys/react";
+import { CHOICE_KEYMAP } from "./client-nav";
 import { matchesQuery } from "./filter";
 import { useInertWhileClosing } from "./hooks";
 
@@ -39,7 +40,7 @@ function listPosition(trigger: HTMLElement): CSSProperties {
 
 /**
  * A select whose open list takes vim keys, which a native select's popup never sees: j/k or the
- * arrows move, g/G jump to the ends, Enter or Space picks, / filters, and Escape closes without
+ * arrows move, gg/G jump to the ends, Enter or Space picks, / filters, and Escape closes without
  * changing it. Closing from the keyboard hands the cursor back to the field row.
  */
 export function ChoiceSelect({
@@ -63,6 +64,7 @@ export function ChoiceSelect({
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const filterInput = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const presence = usePresence(open);
   useInertWhileClosing(root, panel, presence.exiting);
   const listId = useId();
@@ -102,9 +104,8 @@ export function ChoiceSelect({
   };
   const close = (backToRow: boolean) => {
     setOpen(false);
-    const row = trigger.current?.parentElement?.closest<HTMLElement>(NAV_ROW);
-    if (backToRow && row != null) row.focus({ preventScroll: true });
-    else trigger.current?.focus({ preventScroll: true });
+    const box = trigger.current;
+    if (box !== null && !(backToRow && returnToRow(box))) box.focus({ preventScroll: true });
   };
   const pick = (index: number, backToRow: boolean) => {
     const option = visible[index];
@@ -117,59 +118,36 @@ export function ChoiceSelect({
     requestAnimationFrame(() => filterInput.current?.select());
   };
 
-  /** Keys both the box and the filter take; returns whether the key was one. */
-  const listKey = (key: string): boolean => {
-    const last = visible.length - 1;
-    const moves: Record<string, () => void> = {
-      ArrowDown: () => setHighlight(Math.min(highlight + 1, last)),
-      ArrowUp: () => setHighlight(Math.max(highlight - 1, 0)),
-      Home: () => setHighlight(0),
-      End: () => setHighlight(last),
-      Enter: () => pick(highlight, true),
-    };
-    moves[key]?.();
-    return moves[key] !== undefined;
-  };
+  const { onListKeyDown, onFilterKeyDown } = usePickerKeys({
+    length: () => visible.length,
+    highlight: () => (visible.length === 0 ? null : highlight),
+    setHighlight,
+    pick: (index) => pick(index, true),
+    pageSize: () => (list.current === null ? 10 : visibleRowCount(list.current, list.current.querySelector('[role="option"]'))),
+    openFilter: startFilter,
+    onListEscape: () => close(true),
+    // Leaves the box with the filter applied, so j/k carry on through the matches.
+    onFilterEscape: () => trigger.current?.focus({ preventScroll: true }),
+    keymap: CHOICE_KEYMAP,
+    onCommand: () => pick(highlight, true),
+  });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!open || event.metaKey || event.ctrlKey || event.altKey) return;
-    const last = visible.length - 1;
-    const moves: Record<string, () => void> = {
-      j: () => setHighlight(Math.min(highlight + 1, last)),
-      k: () => setHighlight(Math.max(highlight - 1, 0)),
-      g: () => setHighlight(0),
-      G: () => setHighlight(last),
-      " ": () => pick(highlight, true),
-      "/": startFilter,
-      Escape: () => close(true),
-    };
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!open) return;
     if (event.key === "Tab") {
       setOpen(false);
       return;
     }
-    const move = moves[event.key];
-    if (move === undefined && !["ArrowDown", "ArrowUp", "Home", "End", "Enter"].includes(event.key)) return;
-    event.preventDefault();
     // Escape and the motions would also reach the view's keys; this list owns them while open.
-    event.stopPropagation();
-    if (move !== undefined) move();
-    else listKey(event.key);
+    onListKeyDown(event);
   };
 
-  const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.metaKey || event.altKey) return;
-    if (event.key === "Escape") {
-      // Leaves the box with the filter applied, so j/k carry on through the matches.
-      event.preventDefault();
-      event.stopPropagation();
-      trigger.current?.focus({ preventScroll: true });
-      return;
-    }
+  const onFilterBoxKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Tab") {
       setOpen(false);
       return;
     }
-    if (listKey(event.key)) event.preventDefault();
+    onFilterKeyDown(event);
   };
 
   return (
@@ -222,14 +200,14 @@ export function ChoiceSelect({
                         setFilter(event.target.value);
                         setHighlight(0);
                       }}
-                      onKeyDown={onFilterKeyDown}
+                      onKeyDown={onFilterBoxKeyDown}
                     />
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       {visible.length}/{choices.length}
                     </span>
                   </div>
                 ) : null}
-                <div id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
+                <div ref={list} id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
                   {visible.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No matches</p> : null}
                   {visible.map((option, index) => (
                     <div

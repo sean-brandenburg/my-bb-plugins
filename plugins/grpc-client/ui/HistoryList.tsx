@@ -7,7 +7,7 @@ import type { HistoryEntry, rpcContract } from "../server/rpc-contract";
 import { CHANGED_CHANNEL, errorMessage } from "../shared/common";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { focusRow, NAV_ROW } from "./client-keys";
+import { readRows, useListSearchKeys } from "./client-keys";
 import { FOCUS_RING } from "./controls";
 import { matchesQuery } from "./filter";
 import { PresenceRow } from "./presence";
@@ -26,8 +26,6 @@ function searchText(entry: HistoryEntry): string {
 }
 
 export interface HistoryListHandle {
-  /** False while the list has no search box yet (it is loading, or empty). */
-  focusSearch: () => boolean;
   /** Clears the search; false when there was none. */
   clearSearch: () => boolean;
 }
@@ -44,14 +42,8 @@ export function HistoryList({
   const rpc = useRpc<typeof rpcContract>();
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [query, setQuery] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   useImperativeHandle(handle, () => ({
-    focusSearch: () => {
-      // Like vim's /, typing starts a new search instead of extending the last one.
-      searchRef.current?.select();
-      return searchRef.current !== null;
-    },
     clearSearch: () => {
       if (query === "") return false;
       setQuery("");
@@ -87,46 +79,37 @@ export function HistoryList({
     });
   };
   const presence = usePresenceList(entries ?? [], (entry) => String(entry.id));
+  const matches = (entry: HistoryEntry) => query === "" || matchesQuery(searchText(entry), query);
+  const onSearchKeyDown = useListSearchKeys({
+    rows: () => (listRef.current === null ? [] : readRows(listRef.current).elements.filter((row) => row.dataset.navKey?.startsWith("history:"))),
+    query,
+    clear: () => setQuery(""),
+    openFirst: () => {
+      const first = presence.entries.find(({ item, exiting }) => !exiting && matches(item))?.item;
+      if (first === undefined) return false;
+      onOpen(first);
+      return true;
+    },
+  });
   if (entries === null) return <p className="p-4 text-sm text-muted-foreground" data-nav-loading="">Loading…</p>;
   if (presence.entries.length === 0) return <p className={cx("p-4 text-sm text-muted-foreground", enter.fade)}>Calls you make here or with `bb grpc call` appear here.</p>;
   // Calls the search hides just go; only deleted ones play their exit.
-  const shown = query === "" ? presence.entries : presence.entries.filter(({ item, exiting }) => exiting || matchesQuery(searchText(item), query));
-  const callRows = () => [...(listRef.current?.querySelectorAll<HTMLElement>(`${NAV_ROW}[data-nav-key^="history:"]`) ?? [])];
+  const shown = presence.entries.filter(({ item, exiting }) => exiting || matches(item));
   return (
     <EntranceScope>
       <div className="px-2 pt-2">
         <div className="relative">
           <Icon name="Search" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            ref={searchRef}
             className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-7 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             placeholder={`Search ${entries.length} calls`}
             value={query}
             spellCheck={false}
+            data-list-search=""
             // A filter box, like a palette's: vim editing would take its Escape and arrows.
             data-vim-ignore=""
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              const rows = callRows();
-              if (event.key === "Escape") {
-                event.preventDefault();
-                if (query !== "") setQuery("");
-                else {
-                  const cursor = rows.find((row) => row.getAttribute("aria-current") === "true") ?? rows[0];
-                  if (cursor) focusRow(cursor);
-                }
-              }
-              if (event.key === "ArrowDown" && rows[0]) {
-                event.preventDefault();
-                focusRow(rows[0]);
-              }
-              const first = shown.find(({ exiting }) => !exiting)?.item;
-              if (event.key === "Enter" && first !== undefined) {
-                onOpen(first);
-                // Leaves the search with the cursor on the match, so j/k carry on through the rest.
-                if (rows[0]) focusRow(rows[0]);
-              }
-            }}
+            onKeyDown={onSearchKeyDown}
           />
           {query !== "" ? (
             <button

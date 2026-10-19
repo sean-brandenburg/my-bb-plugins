@@ -2,16 +2,18 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "r
 import type { ReactNode, RefObject } from "react";
 import { toast } from "sonner";
 import { cx, enter, NUDGE, OPACITY_TRANSITION, PRESS, speed, stagger, STAGGER, useFlag } from "bb-motion";
+import { useSearchBoxKeys, useTextSearch } from "bb-vim-keys/react";
 import type { CallResult } from "../contract";
 import { formatResponse } from "../shared/common";
 import { FOCUS_RING } from "./controls";
-import { useTextSearch } from "./text-search";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
 export type ResponseTab = "response" | "headers" | "trailers" | "sent";
 
 export const RESPONSE_TABS: readonly ResponseTab[] = ["response", "headers", "trailers", "sent"];
+
+const SEARCH_STYLE = { match: "background-color: rgb(245 158 11 / 0.3);", current: "background-color: rgb(245 158 11 / 0.8); color: black;" };
 
 const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
 
@@ -144,7 +146,7 @@ function formatSize(text: string): string {
 export interface ResponseSearchHandle {
   /** Opens the search box; false when there is no response to search. */
   startSearch: () => boolean;
-  next: (step: 1 | -1) => boolean;
+  next: (step: 1 | -1, count?: number | null) => boolean;
   /** Clears the matches; false when there were none. */
   clear: () => boolean;
 }
@@ -168,7 +170,7 @@ export function ResponseView({
   const arrivedId = useArrivedId(id, sending);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const scroller = useCallback(() => scrollerRef.current, []);
-  const search = useTextSearch(scroller, `${id}:${tab}`);
+  const search = useTextSearch(scroller, `${id}:${tab}`, { name: "grpc-client-search", style: SEARCH_STYLE });
   useImperativeHandle(searchHandle, () => ({
     startSearch: () => {
       if (result === null) return false;
@@ -179,6 +181,16 @@ export function ResponseView({
     clear: search.clear,
   }));
   const backToPane = () => scrollerRef.current?.focus({ preventScroll: true });
+  const onSearchBoxKeyDown = useSearchBoxKeys({
+    commit: () => {
+      search.commit();
+      backToPane();
+    },
+    cancel: () => {
+      search.cancel();
+      backToPane();
+    },
+  });
   if (result === null) {
     return (
       <div key={sending ? "sending" : "idle"} className={cx("flex h-full flex-col items-center justify-center gap-2 p-6 text-center", enter.fade)}>
@@ -291,18 +303,7 @@ export function ResponseView({
               data-vim-ignore=""
               onFocus={(event) => event.currentTarget.select()}
               onChange={(event) => search.setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  search.commit();
-                  backToPane();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  search.cancel();
-                  backToPane();
-                }
-              }}
+              onKeyDown={onSearchBoxKeyDown}
             />
           ) : (
             <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">{search.query}</span>

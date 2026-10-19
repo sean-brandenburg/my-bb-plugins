@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { toast } from "sonner";
 import { cx, enter, exit, PRESS, speed, usePresence } from "bb-motion";
@@ -10,8 +10,8 @@ import type { MethodInfo } from "../shared/schema";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, isToolbar, pageCursor, rowCells, isTextEntry, NAV_ROW, readRows, toolbarButtons, useClientKeys } from "./client-keys";
-import { type Caret, cycle, listAction, type ListMotion } from "bb-vim-keys";
+import { activateRow, deleteRow, editField, FIELD_ROW, focusRow, isTextEntry, LIST_SEARCH, NAV_ROW, readRows, returnToRow, rowCells, useClientKeys } from "./client-keys";
+import { type Caret, cycle, focusWhenShown, isToolbar, type KeyContext, type ListMotion, runListMotion, runListScroll, scrollPane } from "bb-vim-keys";
 import type { ClientCommand } from "./client-nav";
 import { Centered, FOCUS_RING, MenuItem, Segmented, Tabs } from "./controls";
 import { EndpointSwitcher } from "./EndpointSwitcher";
@@ -46,9 +46,9 @@ const NO_OVERRIDES: Record<string, string> = {};
 const REQUEST_TABS = ["body", "metadata", "options"] as const;
 /** Where hjkl and the scroll keys act. */
 type Pane = "list" | "fields" | "response";
-/** A key's focus request that waits for its panel to mount; older ones are dropped. */
+type FocusTarget = "cursor" | "fields" | "response" | "search" | "filters";
+/** How long a key's focus request waits for its panel to mount. */
 const PENDING_FOCUS_MS = 2000;
-const PENDING_FOCUS_RETRY_MS = 50;
 const REQUEST_FIELDS = "input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled)";
 
 function EmptyConfig({ errors }: { errors: string[] }) {
@@ -256,8 +256,9 @@ export function ClientView() {
   const lastFieldRow = useRef<HTMLElement | null>(null);
   /** Where hjkl go when focus is in neither pane. */
   const lastPane = useRef<Pane>("list");
-  const [pendingFocus, setPendingFocus] = useState<{ target: "cursor" | "fields" | "response" | "search" | "filters"; at: number } | null>(null);
-  const [, retryPendingFocus] = useReducer((count: number) => count + 1, 0);
+  /** A new object per request, so asking for the same target again starts over. */
+  const [pendingFocus, setPendingFocus] = useState<{ target: FocusTarget } | null>(null);
+  const requestFocus = (target: FocusTarget) => setPendingFocus({ target });
   const listShown = overlayList ? listOpen : !listCollapsed;
 
   const showList = () => {
@@ -269,18 +270,22 @@ export function ClientView() {
   };
   const revealList = (target: "cursor" | "search" | "filters") => {
     if (!listShown) showList();
-    setPendingFocus({ target, at: Date.now() });
+    requestFocus(target);
   };
-  /** Resumes on the list's last or open row; the toolbar above it only once the list has loaded with no rows. */
-  const landCursor = (list: HTMLElement): boolean => {
-    const all = [...list.querySelectorAll<HTMLElement>(NAV_ROW)];
+  /** Where the list cursor resumes: its last or open row; the toolbar above it only once the list has loaded with no rows. */
+  const listResumeRow = (list: HTMLElement): HTMLElement | null => {
+    const all = readRows(list).elements;
     const rows = all.filter((candidate) => !isToolbar(candidate));
-    const row =
+    return (
       rows.find((candidate) => candidate.dataset.navKey === lastRowKey.current) ??
       rows.find((candidate) => candidate.getAttribute("aria-current") === "true") ??
       rows[0] ??
-      (list.querySelector("[data-nav-loading]") === null ? all[0] : undefined);
-    if (row === undefined) return false;
+      (list.querySelector("[data-nav-loading]") === null ? (all[0] ?? null) : null)
+    );
+  };
+  const landCursor = (list: HTMLElement): boolean => {
+    const row = listResumeRow(list);
+    if (row === null) return false;
     focusRow(row);
     return true;
   };
@@ -288,45 +293,42 @@ export function ClientView() {
     const row = lastFieldRow.current;
     return row !== null && row.isConnected && requestPaneRef.current?.contains(row) === true ? row : null;
   };
-  /** Lands on the last or first field; a request with none (or in JSON) puts the cursor on the pane itself. */
-  const landFieldCursor = (): boolean => {
+  /** The last or first field; a request with none (or in JSON) puts the cursor on the pane itself. */
+  const fieldResumeTarget = (): HTMLElement | null => {
     const pane = requestPaneRef.current;
-    if (pane === null) return false;
-    const row = savedFieldRow() ?? readRows(pane).elements[0];
-    if (row !== undefined) {
-      focusRow(row);
-      return true;
-    }
-    if (pane.querySelector("[data-nav-loading]") !== null) return false;
-    pane.focus({ preventScroll: true });
+    if (pane === null) return null;
+    return savedFieldRow() ?? readRows(pane).elements[0] ?? (pane.querySelector("[data-nav-loading]") === null ? pane : null);
+  };
+  const focusField = (target: HTMLElement) => {
+    if (target === requestPaneRef.current) target.focus({ preventScroll: true });
+    else focusRow(target);
+  };
+  const landFieldCursor = (): boolean => {
+    const target = fieldResumeTarget();
+    if (target === null) return false;
+    focusField(target);
     return true;
   };
+  /** Where a row cursor with none yet lands in `elements`: on `row`, else the first. */
+  const startAt = (row: HTMLElement | null) => (elements: HTMLElement[]) => Math.max(0, row === null ? 0 : elements.indexOf(row));
+  // After the render that asked, since a key's focus often waits on the panel it just opened.
   useEffect(() => {
     if (pendingFocus === null) return;
-    if (Date.now() - pendingFocus.at > PENDING_FOCUS_MS) {
-      setPendingFocus(null);
-      return;
+    const options = { timeoutMs: PENDING_FOCUS_MS };
+    switch (pendingFocus.target) {
+      case "cursor":
+        return focusWhenShown(() => (listRef.current === null ? null : listResumeRow(listRef.current)), { ...options, focus: focusRow });
+      case "fields":
+        return focusWhenShown(fieldResumeTarget, { ...options, focus: focusField });
+      case "response":
+        return focusWhenShown(responseScroller, { ...options, focus: () => focusResponse() });
+      case "search":
+        // Like vim's /, typing starts a new search instead of extending the last one.
+        return focusWhenShown(() => listRef.current?.querySelector<HTMLInputElement>(LIST_SEARCH) ?? null, { ...options, focus: (box) => (box as HTMLInputElement).select() });
+      case "filters":
+        return focusWhenShown(() => (methodListRef.current === null ? null : listRef.current), { ...options, focus: () => methodListRef.current?.openFilters() });
     }
-    const handle = methodListRef.current;
-    const landed =
-      pendingFocus.target === "cursor"
-        ? listRef.current !== null && landCursor(listRef.current)
-        : pendingFocus.target === "fields"
-          ? landFieldCursor()
-          : pendingFocus.target === "response"
-            ? focusResponse()
-            : pendingFocus.target === "search" && leftTab === "history"
-              ? (historyListRef.current?.focusSearch() ?? false)
-              : handle !== null;
-    if (!landed) {
-      // Rows can arrive in a child's own render (call history loads itself), which doesn't re-run this.
-      const timer = setTimeout(retryPendingFocus, PENDING_FOCUS_RETRY_MS);
-      return () => clearTimeout(timer);
-    }
-    if (pendingFocus.target === "search" && leftTab !== "history") handle?.focusSearch();
-    if (pendingFocus.target === "filters") handle?.openFilters();
-    setPendingFocus(null);
-  });
+  }, [pendingFocus]);
 
   const focusedRow = (container: HTMLElement | null): HTMLElement | null => {
     const row = document.activeElement?.closest<HTMLElement>(NAV_ROW) ?? null;
@@ -353,19 +355,16 @@ export function ClientView() {
   };
 
   /** The response has no cursor: j/k scroll it a line, gg/G to its ends, and h goes back to the fields. */
-  const moveResponse = (motion: ListMotion) => {
+  const moveResponse = (motion: ListMotion, count: number | null) => {
     const scroller = responseScroller();
-    if (scroller === null) {
+    if (scroller === null || motion === "left") {
       backToFields();
       return;
     }
     scroller.focus({ preventScroll: true });
+    if (motion !== "down" && motion !== "up" && motion !== "top" && motion !== "bottom") return;
     const line = parseFloat(getComputedStyle(scroller.querySelector("pre") ?? scroller).lineHeight) || 20;
-    if (motion === "down") scroller.scrollBy({ top: line });
-    if (motion === "up") scroller.scrollBy({ top: -line });
-    if (motion === "top") scroller.scrollTo({ top: 0 });
-    if (motion === "bottom") scroller.scrollTo({ top: scroller.scrollHeight });
-    if (motion === "left") backToFields();
+    scrollPane(scroller, motion, { line, count });
   };
   const backToList = () => {
     lastPane.current = "list";
@@ -373,56 +372,43 @@ export function ClientView() {
     else revealList("cursor");
   };
 
-  const moveListCursor = (motion: ListMotion) => {
+  const moveListCursor = (motion: ListMotion, count: number | null) => {
     const list = listRef.current;
     if (!listShown || list === null) {
       revealList("cursor");
       return;
     }
-    const { elements, rows } = readRows(list);
-    const focused = focusedRow(list);
-    let current = focused === null ? -1 : elements.indexOf(focused);
-    if (current === -1) current = elements.findIndex((element) => element.dataset.navKey === lastRowKey.current);
-    const row = elements[current];
-    if (row !== undefined && isToolbar(row) && (motion === "left" || motion === "right" || motion === "open")) {
-      const buttons = toolbarButtons(row);
-      const at = buttons.findIndex((button) => button === document.activeElement);
-      if (motion === "open") (buttons[at] ?? buttons[0])?.click();
-      else buttons[at + (motion === "right" ? 1 : -1)]?.focus({ preventScroll: true });
-      return;
-    }
-    const open = elements.findIndex((element) => element.getAttribute("aria-current") === "true");
-    const start = open !== -1 ? open : Math.max(0, elements.findIndex((element) => !isToolbar(element)));
-    const action = listAction(rows, current === -1 ? null : current, motion, start);
-    if (action === null) return;
-    const element = elements[action.index]!;
-    focusRow(element);
-    if (action.kind !== "activate") return;
-    element.click();
-    // Opening a method from the keyboard carries the cursor on into its request fields.
-    if (element.dataset.navKey?.startsWith("method:")) {
-      lastPane.current = "fields";
-      setPendingFocus({ target: "fields", at: Date.now() });
-    }
+    const moved = runListMotion(list, motion, {
+      count,
+      start: startAt(listResumeRow(list)),
+      onActivate: (row) => {
+        row.click();
+        // Opening a method from the keyboard carries the cursor on into its request fields.
+        if (row.dataset.navKey?.startsWith("method:")) {
+          lastPane.current = "fields";
+          requestFocus("fields");
+        }
+      },
+    });
+    // h and l with no cursor in the list yet land it, as the other keys do.
+    if (!moved && focusedRow(list) === null) landCursor(list);
   };
 
-  const moveFieldCursor = (motion: ListMotion) => {
+  const moveFieldCursor = (motion: ListMotion, count: number | null) => {
     const pane = requestPaneRef.current;
     if (pane === null) {
       backToList();
       return;
     }
-    const { elements, rows } = readRows(pane);
-    const cursor = focusedRow(pane) ?? savedFieldRow();
-    const current = cursor === null ? -1 : elements.indexOf(cursor);
+    const cursor = focusedRow(pane);
     // A form without fields (JSON mode) still leads on to the response.
-    if (motion === "right" && elements.length === 0) {
+    if (motion === "right" && readRows(pane).elements.length === 0) {
       focusResponse();
       return;
     }
     // On a field, l and h step across the buttons beside its box instead of editing it, and l
     // past the last one moves on to the response.
-    if (cursor !== null && rows[current]?.kind === "item" && (motion === "right" || (motion === "left" && !(cursor instanceof HTMLButtonElement)))) {
+    if (cursor !== null && cursor.dataset.navRow !== "group" && (motion === "right" || (motion === "left" && !(cursor instanceof HTMLButtonElement)))) {
       const cells = rowCells(cursor);
       const at = cells.indexOf(document.activeElement as HTMLElement);
       if (motion === "right") {
@@ -436,14 +422,18 @@ export function ClientView() {
         return;
       }
     }
-    const action = listAction(rows, current === -1 ? null : current, motion, 0);
-    if (action === null) {
-      if (motion === "left") backToList();
-      return;
-    }
-    const element = elements[action.index]!;
-    focusRow(element);
-    if (action.kind === "activate") activateFieldRow(element);
+    const moved = runListMotion(pane, motion, {
+      count,
+      start: startAt(savedFieldRow()),
+      onActivate: (row) => {
+        focusRow(row);
+        activateFieldRow(row);
+      },
+    });
+    if (moved) return;
+    if (motion === "left") backToList();
+    // h and l with no cursor in the fields yet land it, as the other keys do.
+    else if (cursor === null) landFieldCursor();
   };
 
   /** Edits a field row, or presses its button; a "Set" button swaps the row for a section, which keeps the cursor. */
@@ -494,18 +484,18 @@ export function ClientView() {
     return true;
   };
 
-  const runCommand = (command: ClientCommand): boolean | void => {
+  const runCommand = (command: ClientCommand, { count }: KeyContext): boolean | void => {
     const hasMethod = endpoint !== null && method !== null;
     switch (command.kind) {
       case "list": {
         const pane = currentPane();
-        if (pane === "fields") moveFieldCursor(command.motion);
-        else if (pane === "response") moveResponse(command.motion);
-        else moveListCursor(command.motion);
+        if (pane === "fields") moveFieldCursor(command.motion, count);
+        else if (pane === "response") moveResponse(command.motion, count);
+        else moveListCursor(command.motion, count);
         return;
       }
       case "searchNext":
-        return currentPane() === "response" && (responseSearchRef.current?.next(command.step) ?? false);
+        return currentPane() === "response" && (responseSearchRef.current?.next(command.step, count) ?? false);
       case "search":
         if (currentPane() === "response" && responseSearchRef.current?.startSearch()) return;
         // Searches whichever the list shows: methods or call history.
@@ -553,7 +543,7 @@ export function ClientView() {
         if (results[resultKey] === undefined) return false;
         setResponseTab(cycle(RESPONSE_TABS, responseTab, command.step));
         // The new tab's scroller replaces the focused one.
-        if (currentPane() === "response") setPendingFocus({ target: "response", at: Date.now() });
+        if (currentPane() === "response") requestFocus("response");
         return;
       case "mode":
         if (!hasMethod) return false;
@@ -574,24 +564,19 @@ export function ClientView() {
         return;
       }
       case "scroll": {
-        const share = command.amount === "half" ? 0.5 : 1;
         const pane = currentPane();
         if (pane === "response") {
           const scroller = responseScroller();
           if (scroller === null) return false;
-          scroller.scrollBy({ top: command.step * share * scroller.clientHeight });
+          scrollPane(scroller, command.motion, { count, page: 1 });
           return;
         }
         const container = pane === "fields" ? requestPaneRef.current : listShown ? listRef.current : null;
         if (container === null) return false;
-        const { elements } = readRows(container);
-        const cursor = focusedRow(container) ?? (pane === "fields" ? savedFieldRow() : (elements.find((element) => element.dataset.navKey === lastRowKey.current) ?? null));
-        if (cursor === null) {
-          if (pane === "fields") landFieldCursor();
-          else landCursor(container);
-          return;
-        }
-        pageCursor(elements, cursor, command.step, share);
+        const step = command.motion === "halfDown" || command.motion === "pageDown" ? 1 : -1;
+        const share = command.motion === "halfDown" || command.motion === "halfUp" ? 0.5 : 1;
+        const start = startAt(pane === "fields" ? savedFieldRow() : listResumeRow(container));
+        if (!runListScroll(container, step, share, { start, count }) && pane === "fields") landFieldCursor();
         return;
       }
       case "delete": {
@@ -599,12 +584,6 @@ export function ClientView() {
         return pane === "fields" ? deleteField() : pane === "list" && deleteHistoryRow();
       }
       case "escape":
-        if (command.fromField) {
-          const row = document.activeElement?.parentElement?.closest<HTMLElement>(NAV_ROW);
-          if (row != null && requestPaneRef.current?.contains(row)) focusRow(row);
-          else root?.focus({ preventScroll: true });
-          return;
-        }
         if (currentPane() === "response" && responseSearchRef.current?.clear()) return;
         {
           // From a button beside a field's box, Escape goes back to the field.
@@ -634,7 +613,10 @@ export function ClientView() {
         return;
     }
   };
-  useClientKeys(root, overview !== null && endpoint !== null, runCommand);
+  const leaveField = (field: HTMLElement) => {
+    if (!returnToRow(field)) root?.focus({ preventScroll: true });
+  };
+  useClientKeys(root, overview !== null && endpoint !== null, runCommand, leaveField);
 
   if (overview === null) {
     return <Centered>{overviewError === null ? "Loading…" : <span className="text-destructive">{overviewError}</span>}</Centered>;

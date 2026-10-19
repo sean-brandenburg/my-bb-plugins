@@ -4,7 +4,7 @@ import { CHEVRON, cx, enter, PRESS, REVEAL, REVEAL_HOST, speed, stagger, STAGGER
 import type { MethodInfo, ServiceInfo } from "../shared/schema";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { focusRow, NAV_ROW } from "./client-keys";
+import { readRows, useListSearchKeys } from "./client-keys";
 import { FOCUS_RING } from "./controls";
 import { Popover } from "./Popover";
 import { shortName } from "./proto-json";
@@ -214,7 +214,6 @@ function MethodRow({
 }
 
 export interface MethodListHandle {
-  focusSearch: () => void;
   openFilters: () => void;
   /** Clears the search; false when there was none. */
   clearSearch: () => boolean;
@@ -243,10 +242,7 @@ export function MethodList({
     return new Set(open === undefined ? [] : [open.typeName]);
   });
   const listRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(handle, () => ({
-    // Like vim's /, typing starts a new search instead of extending the last one.
-    focusSearch: () => searchRef.current?.select(),
     openFilters: () => setFiltersOpen(true),
     clearSearch: () => {
       if (query === "") return false;
@@ -304,6 +300,18 @@ export function MethodList({
       return next;
     });
 
+  const onSearchKeyDown = useListSearchKeys({
+    rows: () => (listRef.current === null ? [] : readRows(listRef.current).elements),
+    query,
+    clear: () => setQuery(""),
+    openFirst: () => {
+      const first = results?.[0];
+      if (first === undefined) return false;
+      onSelect(first);
+      return true;
+    },
+  });
+
   const summary = [
     ...filters.auth.map(label),
     ...(scope.length === 1 ? [shortName(scope[0]!)] : scope.length > 1 ? [`${scope.length} APIs`] : []),
@@ -317,34 +325,15 @@ export function MethodList({
           <div className="relative min-w-0 flex-1">
             <Icon name="Search" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
-              ref={searchRef}
               className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-7 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               placeholder={active ? `Search ${visibleCount} of ${total} methods` : `Search ${total} methods`}
               value={query}
               spellCheck={false}
+              data-list-search=""
               // A filter box, like a palette's: vim editing would take its Escape and arrows.
               data-vim-ignore=""
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                const rows = listRef.current?.querySelectorAll<HTMLElement>(NAV_ROW);
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  if (query !== "") setQuery("");
-                  else {
-                    const cursor = listRef.current?.querySelector<HTMLElement>(`${NAV_ROW}[aria-current="true"]`) ?? rows?.[0];
-                    if (cursor) focusRow(cursor);
-                  }
-                }
-                if (event.key === "ArrowDown" && rows?.[0]) {
-                  event.preventDefault();
-                  focusRow(rows[0]);
-                }
-                if (event.key === "Enter" && results?.length) {
-                  onSelect(results[0]!);
-                  // Leaves the search with the cursor on the match, so j/k carry on through the rest.
-                  if (rows?.[0]) focusRow(rows[0]);
-                }
-              }}
+              onKeyDown={onSearchKeyDown}
             />
             {query !== "" ? (
               <button
