@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cursorAfter, movePlacement, placementIndex, spatialStep } from "./board-nav";
+import { cursorAfter, movePlacement, placementIndex } from "./board-nav";
 
 const layout = [["a1", "a2", "a3"], [], ["c1"], ["d1", "d2"]];
 
@@ -65,36 +65,5 @@ describe("placementIndex", () => {
   it("places it last when it goes after every visible card", () => {
     expect(placementIndex(column, visible, 3)).toBe(5);
     expect(placementIndex([], [], 0)).toBe(0);
-  });
-});
-
-describe("spatialStep", () => {
-  const box = (top: number, left: number, width = 20, height = 20) => ({ top, bottom: top + height, left, right: left + width });
-  // A full-width title, a row of three buttons, then two rows with one control each on the left.
-  const boxes = [box(0, 0, 300), box(30, 0, 100), box(30, 200), box(30, 260), box(60, 0, 100), box(90, 250)];
-
-  it("moves left and right within a row and stops at its ends", () => {
-    expect(spatialStep(boxes, 1, "right")).toBe(2);
-    expect(spatialStep(boxes, 3, "left")).toBe(2);
-    expect(spatialStep(boxes, 3, "right")).toBeNull();
-    expect(spatialStep(boxes, 1, "left")).toBeNull();
-    expect(spatialStep(boxes, 0, "left")).toBeNull();
-  });
-
-  it("moves between rows to the stop that lines up, or else the nearest", () => {
-    expect(spatialStep(boxes, 0, "down")).toBe(1);
-    expect(spatialStep(boxes, 3, "up")).toBe(0);
-    expect(spatialStep(boxes, 3, "down")).toBe(4);
-    expect(spatialStep(boxes, 4, "down")).toBe(5);
-    expect(spatialStep(boxes, 5, "up")).toBe(4);
-    expect(spatialStep(boxes, 4, "up")).toBe(1);
-    expect(spatialStep(boxes, 5, "down")).toBeNull();
-    expect(spatialStep(boxes, 0, "up")).toBeNull();
-  });
-
-  it("orders a row by position, not document order, and starts from the first stop", () => {
-    expect(spatialStep([box(0, 100), box(0, 0)], 1, "right")).toBe(0);
-    expect(spatialStep(boxes, -1, "down")).toBe(0);
-    expect(spatialStep([], -1, "down")).toBeNull();
   });
 });

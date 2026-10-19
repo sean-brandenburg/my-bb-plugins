@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, STAGGER, enter, exit, speed, stagger, type Arrival, useArrivals, useEntrance, usePopOnChange, usePresenceList } from "bb-motion";
+import { Kbd } from "bb-vim-keys/react";
 import { scrollKeepingCursor } from "bb-vim-keys";
 import type { Board, Column, Ticket } from "../shared/board";
 import { doneColumnId, todoColumnId } from "../shared/columns";
@@ -12,12 +13,19 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { localDay, parseQuickAdd } from "./format";
 import { type Rpc, useNow } from "./data";
-import { Kbd, ThreadStatusDot } from "./primitives";
+import { ThreadStatusDot } from "./primitives";
 import { tagTone, TagBadges } from "./tags";
 import { PrBadges, JiraBadges, ReviewBadge, DueBadge } from "./badges";
 import { toastError } from "./actions";
 import type { BoardCommand } from "./board-nav";
 import { focusStop, focusedStop, moveAlongBand, nearestStop, pressStop } from "./stops";
+
+/** What the page's key scope hands the todo list while it shows. */
+export interface TodoKeys {
+  run: (command: BoardCommand) => void;
+  /** Escape in the quick-add box: back to the row the cursor left, else the first. */
+  leaveInput: () => boolean;
+}
 
 export function TodoView({
   commandRef,
@@ -28,8 +36,7 @@ export function TodoView({
   onOpenThread,
   refetch,
 }: {
-  /** Where the page's key handler sends board commands while the todo list shows. */
-  commandRef: MutableRefObject<((command: BoardCommand) => void) | null>;
+  commandRef: MutableRefObject<TodoKeys | null>;
   board: Board;
   threads: ReadonlyMap<string, PluginSidebarThread>;
   rpc: Rpc;
@@ -79,7 +86,13 @@ export function TodoView({
     if (filter !== null) focusStop(filter);
     else if (first !== undefined) focusRow(first);
   };
-  commandRef.current = (command) => {
+  const leaveInput = () => {
+    const row = rowFor(lastRowId.current) ?? rowElements()[0];
+    if (row !== undefined) focusRow(row);
+    else listRef.current?.closest<HTMLElement>("[data-kanban-keys]")?.focus({ preventScroll: true });
+    return true;
+  };
+  const run = (command: BoardCommand) => {
     const at = focusedStop();
     const rows = rowElements();
     const row = (document.activeElement?.closest<HTMLElement>("[data-todo-row]") ?? null);
@@ -141,6 +154,7 @@ export function TodoView({
         return;
     }
   };
+  commandRef.current = { run, leaveInput };
   const toggleDone = async (ticket: Ticket) => {
     const target = ticket.columnId === doneId ? todoId : doneId;
     if (target === null) return;
@@ -176,14 +190,6 @@ export function TodoView({
           ref={inputRef}
           value={quick}
           onChange={(event) => setQuick(event.target.value)}
-          onKeyDown={(event) => {
-            // With vim-mode, this is the second Escape: the first only entered vim's normal mode.
-            if (event.key !== "Escape" || event.defaultPrevented) return;
-            event.preventDefault();
-            const row = rowFor(lastRowId.current) ?? rowElements()[0];
-            if (row !== undefined) focusRow(row);
-            else listRef.current?.closest<HTMLElement>("[data-kanban-keys]")?.focus({ preventScroll: true });
-          }}
           placeholder="Add a todo… use #tag for tags"
           aria-label="New todo"
         />
@@ -243,7 +249,7 @@ export function TodoView({
         {TODO_HINTS.map(({ keys, action }) => (
           <span key={action} className="inline-flex items-center gap-1.5">
             {keys.map((key) => (
-              <Kbd key={key} className="min-w-5 px-1 py-0 text-[11px]">
+              <Kbd key={key} size="small">
                 {key}
               </Kbd>
             ))}

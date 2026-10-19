@@ -1,9 +1,8 @@
-import type { KeyHelpSection, Keymap } from "bb-vim-keys";
+import type { Direction, KeyHelpSection, Keymap } from "bb-vim-keys";
 
 /** Ticket ids per column, left to right, top to bottom, as the board shows them. */
 export type BoardLayout = readonly (readonly string[])[];
 
-export type Direction = "left" | "right" | "up" | "down";
 export type Motion = Direction | "top" | "bottom" | "first-column" | "last-column";
 
 export type BoardCommand =
@@ -54,6 +53,41 @@ export const KEYMAP: Keymap<BoardCommand> = {
   "<C-u>": { kind: "scroll", direction: -1 },
 };
 
+export type CardCommand =
+  | { kind: "step"; direction: Direction }
+  | { kind: "first" }
+  | { kind: "last" }
+  | { kind: "press" }
+  | { kind: "type" }
+  | { kind: "thread" }
+  | { kind: "diff" }
+  | { kind: "help" }
+  | { kind: "close" }
+  | { kind: "scroll"; direction: 1 | -1 };
+
+/** Keys inside an open card, which take them before the board does. */
+export const CARD_KEYMAP: Keymap<CardCommand> = {
+  j: { kind: "step", direction: "down" },
+  "<Down>": { kind: "step", direction: "down" },
+  k: { kind: "step", direction: "up" },
+  "<Up>": { kind: "step", direction: "up" },
+  l: { kind: "step", direction: "right" },
+  "<Right>": { kind: "step", direction: "right" },
+  h: { kind: "step", direction: "left" },
+  "<Left>": { kind: "step", direction: "left" },
+  gg: { kind: "first" },
+  G: { kind: "last" },
+  "<CR>": { kind: "press" },
+  "<Space>": { kind: "press" },
+  i: { kind: "type" },
+  t: { kind: "thread" },
+  D: { kind: "diff" },
+  "?": { kind: "help" },
+  "<Esc>": { kind: "close" },
+  "<C-d>": { kind: "scroll", direction: 1 },
+  "<C-u>": { kind: "scroll", direction: -1 },
+};
+
 /** What the shortcuts dialog lists, in display order. */
 export const KEY_HELP: readonly KeyHelpSection[] = [
   {
@@ -97,7 +131,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["0", "$"], action: "First / last button" },
       { keys: ["j", "k"], action: "Down to the cards / up to the top bar" },
       { keys: ["o", "Enter", "Space"], action: "Press the button" },
-      { keys: ["j", "k"], action: "Inside the settings menu: next / previous item" },
+      { keys: ["j", "k"], action: "Inside a menu: next / previous item" },
     ],
   },
   {
@@ -113,58 +147,18 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["t", "D"], action: "Open the card's thread / changes" },
     ],
   },
+  {
+    title: "Open project list",
+    keys: [
+      { keys: ["j", "k"], action: "Next / previous project" },
+      { keys: ["gg", "G"], action: "First / last project" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a list down / up" },
+      { keys: ["Enter"], action: "Pick the project" },
+      { keys: ["/", "i"], action: "Filter; Esc returns to the list with the filter kept" },
+      { keys: ["Esc"], action: "Close the list" },
+    ],
+  },
 ];
-
-export interface Box {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-}
-
-/** Groups stops, given in document order, into visual rows sorted left to right; a stop joins a row it overlaps vertically. */
-function rowsOf(boxes: readonly Box[]): number[][] {
-  const rows: number[][] = [];
-  let top = 0;
-  let bottom = 0;
-  boxes.forEach((box, index) => {
-    const row = rows[rows.length - 1];
-    if (row !== undefined && box.top < bottom && box.bottom > top) {
-      row.push(index);
-      top = Math.min(top, box.top);
-      bottom = Math.max(bottom, box.bottom);
-    } else {
-      rows.push([index]);
-      top = box.top;
-      bottom = box.bottom;
-    }
-  });
-  return rows.map((row) => row.sort((a, b) => boxes[a]!.left - boxes[b]!.left));
-}
-
-function horizontalGap(a: Box, b: Box): number {
-  return Math.max(0, a.left - b.right, b.left - a.right);
-}
-
-/**
- * The stop a cursor at `index` moves to: left and right within its row, up and down to the
- * neighbouring row's stop nearest horizontally (the leftmost of those it lines up with). Null at
- * an edge. From no stop (-1), any direction lands on the first.
- */
-export function spatialStep(boxes: readonly Box[], index: number, direction: Direction): number | null {
-  if (boxes.length === 0) return null;
-  if (index === -1) return 0;
-  const rows = rowsOf(boxes);
-  const rowIndex = rows.findIndex((row) => row.includes(index));
-  const row = rows[rowIndex]!;
-  const at = row.indexOf(index);
-  if (direction === "left") return row[at - 1] ?? null;
-  if (direction === "right") return row[at + 1] ?? null;
-  const target = rows[rowIndex + (direction === "down" ? 1 : -1)];
-  if (target === undefined) return null;
-  const from = boxes[index]!;
-  return target.reduce((best, candidate) => (horizontalGap(boxes[candidate]!, from) < horizontalGap(boxes[best]!, from) ? candidate : best));
-}
 
 function locate(layout: BoardLayout, id: string): { column: number; row: number } | null {
   for (let column = 0; column < layout.length; column += 1) {

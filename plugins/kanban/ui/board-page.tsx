@@ -16,7 +16,7 @@ import { NewTicketDialog } from "./new-ticket-dialog";
 import { TicketDialog } from "./ticket-details";
 import { ColumnsDialog } from "./columns-dialog";
 import { SourcesDialog } from "./sources-dialog";
-import { TodoView } from "./todo-view";
+import { type TodoKeys, TodoView } from "./todo-view";
 import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
 import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
@@ -162,7 +162,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
     refetch();
   };
 
-  const todoCommand = useRef<((command: BoardCommand) => void) | null>(null);
+  const todoKeys = useRef<TodoKeys | null>(null);
   const todoRef = useRef<HTMLDivElement>(null);
   const columnCards = (columnId: string | undefined) => layout[board?.columns.findIndex((column) => column.id === columnId) ?? -1] ?? [];
 
@@ -181,7 +181,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
       return;
     }
     if (view === "todo") {
-      todoCommand.current?.(command);
+      todoKeys.current?.run(command);
       return;
     }
     const at = focusedStop();
@@ -259,7 +259,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
         return;
     }
   };
-  useBoardKeys(view === "todo" ? todoRef : boardRef, diffTicketId === null && !proposalsList && proposalId === null && board !== null, runCommand);
+  useBoardKeys(view === "todo" ? todoRef : boardRef, diffTicketId === null && !proposalsList && proposalId === null && board !== null, runCommand, () => view === "todo" && (todoKeys.current?.leaveInput() ?? false));
 
   if (diffTicketId !== null) {
     return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} />;
@@ -319,7 +319,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
       {view === "todo" && board !== null ? (
         <div ref={todoRef} tabIndex={-1} data-kanban-keys="" className={cn("min-h-0 flex-1 overflow-y-auto outline-none", enter.fade, speed.fast)}>
           <TodoView
-            commandRef={todoCommand}
+            commandRef={todoKeys}
             board={board}
             threads={threads}
             rpc={rpc}

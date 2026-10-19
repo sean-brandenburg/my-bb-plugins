@@ -41,6 +41,7 @@ function TicketDetails({
   tickets,
   onOpenTicket,
   onBack,
+  onEscape,
   focusOnMount = false,
 }: {
   ticket: Ticket;
@@ -58,6 +59,8 @@ function TicketDetails({
   onOpenTicket: (ticketId: string) => void;
   /** Back to the board with the card left open. */
   onBack?: () => void;
+  /** Escape from the card's keys, outside a text box. */
+  onEscape?: () => void;
   focusOnMount?: boolean;
 }) {
   const [title, setTitle] = useState("");
@@ -113,6 +116,7 @@ function TicketDetails({
     },
     onHelp: () => pageUi.set({ dialog: "keys" }),
     onBack,
+    onEscape,
   });
   // Moving to a subtask or parent from the keyboard keeps the keyboard in the card.
   const openTicket = (ticketId: string) => {
@@ -470,21 +474,6 @@ export function TicketTab() {
   const navigate = useBbNavigate();
   const appPanel = useAppPanel();
   const ticket = target === null ? null : (board?.tickets.find((entry) => entry.id === target.target.ticketId) ?? null);
-  // Escape clears the card like closing a dialog would. Radix dialogs (new card, columns, sources)
-  // take precedence: while one is open, Escape belongs to it.
-  useEffect(() => {
-    if (target === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (document.querySelector('[role="dialog"][data-state="open"]') !== null) return;
-      event.preventDefault();
-      target.clear();
-      collapseRightPanel();
-      focusBoard(target.target.ticketId);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [target]);
   if (target === null || ticket === null) {
     return (
       <p className={cn("rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground", enter.fade)}>
@@ -512,6 +501,11 @@ export function TicketTab() {
         {...detailProps}
         ticket={ticket}
         onBack={() => focusBoard(ticket.id)}
+        onEscape={() => {
+          target.clear();
+          collapseRightPanel();
+          focusBoard(ticket.id);
+        }}
         onClose={() => {
           target.clear();
           collapseRightPanel();

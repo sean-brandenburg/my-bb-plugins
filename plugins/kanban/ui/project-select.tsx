@@ -1,15 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { toast } from "sonner";
 import { POPOVER_MOTION } from "bb-motion";
+import { usePickerKeys, visibleRowCount } from "bb-vim-keys/react";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { toastError } from "./actions";
 import { type ProjectOption, useCreateProjectFromFolder } from "./data";
 
-const PREFIX_TIMEOUT_MS = 500;
 const NONE_LABEL = "No project (no thread)";
 
 type Row = { kind: "none" } | { kind: "project"; project: ProjectOption } | { kind: "new" };
@@ -47,7 +46,6 @@ export function ProjectSelect({
   const [highlight, setHighlight] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   const filterInput = useRef<HTMLInputElement>(null);
-  const pendingG = useRef(0);
   const listId = useId();
   const portalScope = usePortalScopeProps();
 
@@ -95,79 +93,19 @@ export function ProjectSelect({
     else if (row.project.id !== value) onChange(row.project.id);
   };
 
-  const halfPage = () => {
-    const node = list.current;
-    const item = node?.querySelector<HTMLElement>('[role="option"]');
-    if (node == null || item == null || item.offsetHeight === 0) return 1;
-    return Math.max(1, Math.floor(node.clientHeight / item.offsetHeight / 2));
-  };
-
-  /** Keys the list and the filter box both take; returns whether the key was one. */
-  const sharedKey = (key: string): boolean => {
-    const last = rows.length - 1;
-    const moves: Record<string, () => void> = {
-      ArrowDown: () => setHighlight(Math.min(active + 1, last)),
-      ArrowUp: () => setHighlight(Math.max(active - 1, 0)),
-      Enter: () => pick(rows[active]),
-    };
-    moves[key]?.();
-    return moves[key] !== undefined;
-  };
-
-  const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
-    const last = rows.length - 1;
-    let handled = true;
-    if (event.ctrlKey) {
-      if (event.key === "d") setHighlight(Math.min(active + halfPage(), last));
-      else if (event.key === "u") setHighlight(Math.max(active - halfPage(), 0));
-      else handled = false;
-    } else if (event.key === "g") {
-      if (event.timeStamp - pendingG.current <= PREFIX_TIMEOUT_MS) {
-        pendingG.current = 0;
-        setHighlight(0);
-      } else {
-        pendingG.current = event.timeStamp;
-      }
-    } else {
-      pendingG.current = 0;
-      switch (event.key) {
-        case "j":
-          setHighlight(Math.min(active + 1, last));
-          break;
-        case "k":
-          setHighlight(Math.max(active - 1, 0));
-          break;
-        case "G":
-        case "End":
-          setHighlight(last);
-          break;
-        case "Home":
-          setHighlight(0);
-          break;
-        case "/":
-        case "i":
-          setFilter(filter ?? "");
-          // The box mounts with this render when it is new.
-          requestAnimationFrame(() => filterInput.current?.select());
-          break;
-        default:
-          handled = sharedKey(event.key);
-      }
-    }
-    if (!handled) return;
-    event.preventDefault();
-    // The card panel and the board would also act on these motions; the open list owns them.
-    event.stopPropagation();
-  };
-
-  const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
-    if (sharedKey(event.key)) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
+  // Taken keys stop at the list or the box: the card panel and the board would also act on these motions.
+  const { onListKeyDown, onFilterKeyDown } = usePickerKeys({
+    length: () => rows.length,
+    highlight: () => active,
+    setHighlight,
+    pick: (index) => pick(rows[index]),
+    pageSize: () => (list.current === null ? 1 : visibleRowCount(list.current, list.current.querySelector('[role="option"]'))),
+    openFilter: () => {
+      setFilter(filter ?? "");
+      // The box mounts with this render when it is new.
+      requestAnimationFrame(() => filterInput.current?.select());
+    },
+  });
 
   return (
     <Popover.Root open={open} onOpenChange={show}>

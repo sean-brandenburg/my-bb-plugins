@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { shortSha } from "./format";
 import { type Rpc, usePushPreference, useReviewUnavailableReason } from "./data";
-import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
+import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_ITEM_CLASS, menuVimKeys } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
@@ -303,7 +303,7 @@ export function ReviewPanel({
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content {...usePortalScopeProps()} align="end" sideOffset={4} className={cn("z-50 min-w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}>
+        <DropdownMenu.Content {...usePortalScopeProps()} align="end" sideOffset={4} className={cn("z-50 min-w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION, KANBAN_MENU)} onKeyDown={menuVimKeys}>
           {review.apply !== null ? (
             <>
               <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => onOpenThread(review.apply!.threadId)}>

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { PRESS, enter, exit, speed, type Arrival, useArrivals, useEntrance, usePresenceList, POPOVER_MOTION } from "bb-motion";
+import { usePickerKeys } from "bb-vim-keys/react";
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { type Rpc } from "./data";
 import type { RunAction } from "./actions";
-import {  } from "./primitives";
 
 const TAG_TONES = [
   { chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", dot: "bg-sky-500" },
@@ -119,6 +119,12 @@ function TagPicker({ applied, suggestions, onChange }: { applied: readonly strin
     }
     toggle(row.tag);
   };
+  const { onFilterKeyDown } = usePickerKeys({
+    length: () => rows.length,
+    highlight: () => active,
+    setHighlight,
+    pick: (index) => choose(rows[index]!),
+  });
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
@@ -168,25 +174,15 @@ function TagPicker({ applied, suggestions, onChange }: { applied: readonly strin
                 setHighlight(0);
               }}
               onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setHighlight(Math.min(rows.length - 1, active + 1));
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setHighlight(Math.max(0, active - 1));
-                } else if (event.key === "Enter") {
-                  event.preventDefault();
-                  const row = rows[active];
-                  if (row !== undefined) choose(row);
-                } else if (event.key === "Backspace" && query === "" && applied.length > 0) {
-                  onChange(applied.slice(0, -1));
-                }
+                if (onFilterKeyDown(event)) return;
+                if (event.key === "Backspace" && query === "" && applied.length > 0) onChange(applied.slice(0, -1));
               }}
               placeholder={suggestions.length > 0 ? "Search or create a tag" : "Create a tag"}
               aria-label="Search tags"
               role="combobox"
               aria-expanded="true"
               aria-controls="kanban-tag-options"
+              data-vim-ignore=""
               className="h-9 min-w-0 flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-none"
             />
           </div>

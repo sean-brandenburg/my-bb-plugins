@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { parseQuickAdd } from "./format";
 import { type Rpc } from "./data";
-import { Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
+import { Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_ITEM_CLASS, menuVimKeys } from "./primitives";
 import type { RunAction } from "./actions";
 
 function SubtaskProgress({ ticket }: { ticket: Ticket }) {
@@ -173,7 +173,7 @@ export function SubtasksGroup({
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content {...usePortalScopeProps()} align="start" sideOffset={4} className={cn("z-50 min-w-64 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION)}>
+              <DropdownMenu.Content {...usePortalScopeProps()} align="start" sideOffset={4} className={cn("z-50 min-w-64 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION, KANBAN_MENU)} onKeyDown={menuVimKeys}>
                 <DropdownMenu.Item
                   className={cn(MENU_ITEM_CLASS, "items-start")}
                   disabled={unstarted.length === 0}
