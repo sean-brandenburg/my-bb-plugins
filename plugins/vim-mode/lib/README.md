@@ -104,8 +104,11 @@ It is layers, not a framework. Use the highest layer that fits and drop a level 
 - Text boxes keep their keys (`isText`, default `isTextEntry`), except Escape when `onTextEscape` is set. A search
   box's own handler passes `isText: () => false`.
 - Enter and Space stay with a focused button or link unless `leaveToPressables: false`.
-- `intercept` sees every key first, `onUnbound` sees keys nothing bound, `onPending` the half-typed sequence for a mode
-  label, and `counts` enables `5j`.
+- `keymap` as a function gets the key's target and event, so a select can keep its arrows while j/k leave it.
+- Taps: `observe` sees every keydown before any check, even one vim-mode or bb already took (to note when Escape was
+  pressed); `intercept` sees keys first and may take them; `onKey` sees each key the handler accepted, before it is read
+  (to cancel work any key interrupts); `onUnbound` sees keys nothing bound; `onPending` the half-typed sequence for a
+  mode label. `counts` enables `5j`.
 - `bindKeys(target, options)` puts a handler on the window, a document or an element, with `capture` to run before bb
   and vim-mode and keep taken keys from them. It is for content scripts over bb's own DOM, which have no root of their
   own: resolve the surface at key time in `accepts`.
@@ -134,12 +137,14 @@ overlay (default: open dialogs) over the root.
 - **Rows with focus**: `ROW_KEYS` is the keymap fragment. Mark rows `data-nav-row="item" | "group" | "toolbar" | "field"`, groups' wrappers
   `data-nav-group`, and call `runListMotion(container, motion, { count, start, onActivate })` and `runListScroll`. h and
   l walk trees, a toolbar row steps across its buttons, a field row starts typing on l, o or Enter. `listAction` is the
-  pure version, `returnToRow(field, fallback)` the Escape out of a field, and `pageCursor`/`scrollKeepingCursor` the
-  Ctrl-d/u pieces.
+  pure version, `returnToRow(field, fallback)` the Escape out of a field (`returnToRowAfterFrame` when the box blurs
+  itself a frame later), and `pageCursor`/`scrollKeepingCursor` the Ctrl-d/u pieces. Rows may nest (a message holding
+  its fields); the cursor is the innermost row around focus.
 - **A highlighted index** (focus stays put, as with `aria-activedescendant`): `stepIndex(length, current, motion,
   { count, pageSize, wrap })`, with `visibleRowCount(list)` for the page size. `stepWrapping` is n/N.
 - **Things laid out in two dimensions**: `spatialStep(boxes, index, direction)`.
-- **A pane with no cursor**: `scrollPane(pane, motion, { line, count, scrollBy })`.
+- **A pane with no cursor**: `scrollPane(pane, motion, { line, count, extent, scrollBy })`; `extent` is the height
+  pages are measured against when something covers part of the pane.
 - **Focus that waits for a mount**: `focusWhenShown(find, { timeoutMs })`.
 
 ## Widgets
@@ -148,18 +153,23 @@ overlay (default: open dialogs) over the root.
   `list` takes j/k/gg/G/Ctrl-d/u, counts, Enter, `/` and `i` (with `openFilter`), Escape (`onListEscape`), plus the
   surface's own `keymap`. `filter` takes arrows and Ctrl-n/p, Enter, and Escape (`onFilterEscape`: clear the query, or
   go back to the list with it applied); everything else is typing. Put `data-vim-ignore` on the filter box so vim-mode
-  leaves it alone. `keys.keymaps` is there for the tests.
-- `createMenuKeys()` on a Radix menu's content takes j/k/gg/G before Radix's typeahead; `stepMenu(menu, step)` is the
+  leaves it alone. `keys.keymaps` is there for the tests. A Radix popover listens for Escape on the document in capture,
+  before any React handler, so inside one its `onEscapeKeyDown` decides whether Escape closes it. For a picker with
+  several cursors (columns, a preview), use `useKeyHandler` with a keymap function and `stepIndex` instead.
+- `createMenuKeys()` (React: `useMenuKeys()`) on a Radix menu's content takes j/k/gg/G before Radix's typeahead; `stepMenu(menu, step)` is the
   same for a menu opened with focus left elsewhere.
-- `createSearchBoxKeys({ commit, cancel, step })` for the box `/` opens.
+- `createSearchBoxKeys({ commit, cancel, step, cancelOnEmptyBackspace })` (React: `useSearchBoxKeys`) for the box `/`
+  opens.
 - `compileSearch` (smartcase, `\<` `\>`, regex with a literal fallback), `matchOffsets`, `textRanges` (matches across
   element boundaries), `createSearchHighlights` (CSS highlights named per instance) and `revealRange` are the pieces;
   `useTextSearch(scroller, content)` puts them together for a pane.
 
 ## Help
 
-- `KeyHelp sections` (React) is the `?` dialog's grid; put it in the plugin's own `Dialog`, with `useFocusReturn(open)`
-  for `onAfterCloseAutoFocus`, since a dialog a key opened has no trigger to give focus back to.
+- `KeyHelp sections` (React) is the `?` dialog's grid (`className` replaces its two-column layout for a narrow
+  container); put it in the plugin's own `Dialog`, with `useFocusReturn(open)` for `onAfterCloseAutoFocus`, since a
+  dialog a key opened has no trigger to give focus back to. `Kbd` is one key cap, `size="small"` inside hint text.
+- `keysFor(keymap, match)` is the key bound to a command, for a hint strip that can't drift from the keymap.
 - `renderKeyHelp(document, sections)` is the same list as plain DOM for content scripts.
 - `unboundHelpKeys(sections, keymaps, elsewhere)` takes one keymap or several (a board and the card inside it).
 
@@ -173,3 +183,11 @@ overlay (default: open dialogs) over the root.
   scroll mode is active (a thread page) unless its own surface holds focus.
 - Don't take keys bb or vim-mode already use: ⌘ chords, Ctrl-o/Ctrl-i (bb's back and forward), and Escape in bb's
   composer.
+
+## Testing
+
+- jsdom lays nothing out, so every row looks hidden: stub `Element.prototype.getClientRects` to return one rect, and
+  `scrollIntoView` to do nothing. It has no `Element.scrollBy` either; `scrollPane` falls back to `scrollTop`.
+- Test keymaps in node without React: keep them in a module that imports only `bb-vim-keys` (not `/react`), and assert
+  `keymapConflicts` and `unboundHelpKeys` there. A picker's keymaps are on `createPickerKeys(...).keys.keymaps`.
+- The library's own tests are `plugins/vim-mode/test/keys-lib*.test.ts`.

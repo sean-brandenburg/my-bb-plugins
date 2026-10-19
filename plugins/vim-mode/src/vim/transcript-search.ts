@@ -10,25 +10,6 @@ export function comparePositions(a: MatchPosition, b: MatchPosition): number {
   return a.row - b.row || a.ordinal - b.ordinal;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Compiles a `/` pattern. JavaScript regex syntax plus vim's `\<` and `\>`
- * word boundaries; a pattern that does not compile is searched literally.
- * Like vim's smartcase, an all-lowercase pattern ignores case.
- */
-export function compilePattern(source: string): RegExp | null {
-  if (!source) return null;
-  const flags = /[A-Z]/.test(source) ? "g" : "gi";
-  try {
-    return new RegExp(source.replace(/\\[<>]/g, "\\b"), flags);
-  } catch {
-    return new RegExp(escapeRegExp(source), flags);
-  }
-}
-
 /** The conversation's own rows, keyed by their index in the whole conversation. */
 export function realizedRows(viewport: Element): Map<number, Element> {
   const rows = new Map<number, Element>();

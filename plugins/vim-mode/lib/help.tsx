@@ -1,8 +1,10 @@
 import { type ReactNode, useRef } from "react";
 import type { KeyHelpSection } from "./reader.ts";
 
-export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
-  return <kbd className={`min-w-6 rounded border border-border bg-muted px-1.5 py-0.5 text-center font-mono text-xs${className === undefined ? "" : ` ${className}`}`}>{children}</kbd>;
+/** A key cap. `small` fits one inside a line of hint text. */
+export function Kbd({ children, className, size = "normal" }: { children: ReactNode; className?: string; size?: "normal" | "small" }) {
+  const sizing = size === "small" ? "min-w-5 px-1 py-0 text-[11px]" : "min-w-6 px-1.5 py-0.5 text-xs";
+  return <kbd className={`${sizing} rounded border border-border bg-muted text-center font-mono${className === undefined ? "" : ` ${className}`}`}>{children}</kbd>;
 }
 
 function KeyList({ keys }: { keys: KeyHelpSection["keys"] }) {
@@ -22,11 +24,15 @@ function KeyList({ keys }: { keys: KeyHelpSection["keys"] }) {
   );
 }
 
-/** A shortcuts list for a `?` dialog: titled sections in two columns, or one plain list when there's a single untitled section. */
-export function KeyHelp({ sections }: { sections: readonly KeyHelpSection[] }) {
+/**
+ * A shortcuts list for a `?` dialog: titled sections in two columns, or one plain list when
+ * there's a single untitled section. `className` replaces the sections' grid layout, for a
+ * container narrower than the viewport.
+ */
+export function KeyHelp({ sections, className = "grid gap-6 sm:grid-cols-2" }: { sections: readonly KeyHelpSection[]; className?: string }) {
   if (sections.length === 1 && sections[0]!.title === "") return <KeyList keys={sections[0]!.keys} />;
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    <div className={className}>
       {sections.map((section) => (
         <section key={section.title} className="flex flex-col gap-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.title}</h3>

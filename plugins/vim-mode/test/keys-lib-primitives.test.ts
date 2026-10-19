@@ -8,6 +8,7 @@ import {
   createPickerKeys,
   createSearchBoxKeys,
   keymapConflicts,
+  keysFor,
   listAction,
   mapKeymap,
   matchOffsets,
@@ -15,6 +16,7 @@ import {
   type NavRow,
   renderKeyHelp,
   returnToRow,
+  runListMotion,
   scrollPane,
   spatialStep,
   stepIndex,
@@ -335,5 +337,75 @@ describe("menus, spatial steps, help and rows", () => {
     const loose = mount(`<input />`).querySelector("input")!;
     expect(returnToRow(loose, host.querySelector<HTMLElement>("#fallback"))).toBe(true);
     expect(document.activeElement?.id).toBe("fallback");
+  });
+});
+
+describe("handler taps and widget options", () => {
+  it("observes keys others took, and taps each accepted key before reading it", () => {
+    const observed: string[] = [];
+    const tapped: string[] = [];
+    unbinds.push(
+      bindKeys(window, {
+        keymap: { j: "down" },
+        observe: (event) => void observed.push(event.key),
+        onKey: (_event, token) => void tapped.push(token),
+        accepts: (target) => target === null,
+        onCommand: () => {},
+      }),
+    );
+    const taken = key("Escape");
+    taken.preventDefault();
+    document.body.dispatchEvent(taken);
+    press(document.body, "x");
+    press(mount(`<p tabindex="-1"></p>`).firstElementChild!, "j");
+    expect(observed).toEqual(["Escape", "x", "j"]);
+    expect(tapped).toEqual(["x"]);
+  });
+
+  it("cancels a search box on Backspace only when it is empty", () => {
+    const log: string[] = [];
+    const keys = createSearchBoxKeys({ commit: () => {}, cancel: () => void log.push("cancel"), cancelOnEmptyBackspace: true });
+    const input = mount(`<input value="a" />`).querySelector("input")!;
+    input.addEventListener("keydown", (event) => keys.handle(event as KeyboardEvent));
+    expect(press(input, "Backspace").defaultPrevented).toBe(false);
+    input.value = "";
+    expect(press(input, "Backspace").defaultPrevented).toBe(true);
+    expect(log).toEqual(["cancel"]);
+  });
+
+  it("measures pages against a pane's own extent, and takes Escape when the picker's callback returns nothing", () => {
+    const pane = mount(`<div></div>`).firstElementChild as HTMLElement;
+    Object.defineProperty(pane, "clientHeight", { value: 400 });
+    scrollPane(pane, "halfDown", { extent: () => 100 });
+    expect(pane.scrollTop).toBe(50);
+    const keys = createPickerKeys({ length: () => 1, highlight: () => 0, setHighlight: () => {}, pick: () => {}, onFilterEscape: () => {} });
+    const input = mount(`<input />`).querySelector("input")!;
+    input.addEventListener("keydown", (event) => keys.filter(event as KeyboardEvent));
+    expect(press(input, "Escape").defaultPrevented).toBe(true);
+  });
+
+  it("finds the key bound to a command, as a hint strip writes it", () => {
+    expect(keysFor({ j: "down", "<C-d>": "half" }, (command) => command === "half")).toBe("Ctrl-d");
+    expect(keysFor({ j: "down" }, (command) => command === "up")).toBeUndefined();
+  });
+});
+
+describe("nested rows and dialog toolbars", () => {
+  it("puts the cursor on the innermost row around focus", () => {
+    const host = mount(`
+      <div data-nav-row="group" data-nav-fixed tabindex="-1" id="message">
+        <div data-nav-row="item" tabindex="-1" id="a">a</div>
+        <div data-nav-row="item" tabindex="-1" id="b">b</div>
+      </div>`);
+    host.querySelector<HTMLElement>("#a")!.focus();
+    expect(runListMotion(host, "down")).toBe(true);
+    expect(document.activeElement?.id).toBe("b");
+  });
+
+  it("steps along a toolbar that sits inside a dialog", () => {
+    const host = mount(`<div role="dialog"><div data-nav-row="toolbar"><button>one</button><button>two</button></div></div>`);
+    host.querySelector("button")!.focus();
+    expect(runListMotion(host, "right")).toBe(true);
+    expect(document.activeElement?.textContent).toBe("two");
   });
 });

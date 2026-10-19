@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "vitest";
-import { compilePattern, isClipped, realizedRows, rowMatches } from "../src/vim/transcript-search";
+import { compileSearch } from "../lib/index.ts";
+import { isClipped, realizedRows, rowMatches } from "../src/vim/transcript-search";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -13,7 +14,7 @@ function row(html: string): HTMLElement {
 }
 
 function matches(html: string, source: string): string[] {
-  return rowMatches(row(html), compilePattern(source)!).map((range) => range.toString());
+  return rowMatches(row(html), compileSearch(source)!).map((range) => range.toString());
 }
 
 test("lowercase patterns ignore case and patterns with capitals do not", () => {
@@ -25,7 +26,7 @@ test("patterns are regexes with vim word boundaries, and broken regexes match li
   expect(matches("cat concat cats", "\\<cat\\>")).toEqual(["cat"]);
   expect(matches("a(b a(b", "a(b")).toEqual(["a(b", "a(b"]);
   expect(matches("ab", "x*")).toEqual([]);
-  expect(compilePattern("")).toBeNull();
+  expect(compileSearch("")).toBeNull();
 });
 
 test("matches span inline formatting but not separate blocks", () => {
@@ -56,7 +57,7 @@ test("a match cut off by an overflow-hidden ancestor counts as clipped", () => {
   const element = row('<div style="overflow: hidden">visible <span>hidden</span></div>');
   const clip = element.firstElementChild as HTMLElement;
   clip.getBoundingClientRect = () => new DOMRect(0, 0, 100, 20);
-  const [shown, cut] = rowMatches(element, compilePattern("visible|hidden")!);
+  const [shown, cut] = rowMatches(element, compileSearch("visible|hidden")!);
   shown!.getBoundingClientRect = () => new DOMRect(0, 0, 50, 20);
   cut!.getBoundingClientRect = () => new DOMRect(120, 0, 50, 20);
   expect(isClipped(shown!, element)).toBe(false);

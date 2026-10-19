@@ -1,8 +1,10 @@
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { keymapConflicts } from "../lib/index.ts";
 import { mountVimMode } from "../src/vim/controller";
 import { DEFAULT_OPTIONS } from "../src/vim/options";
+import { SCROLL_KEYS } from "../src/vim/scroll-mode";
 import { installLayoutStubs } from "./harness";
 
 installLayoutStubs();
@@ -157,6 +159,39 @@ test("scroll mode keys move the conversation and announce each move to bb", asyn
   document.removeEventListener("keydown", outer);
   expect(reached).toEqual([]);
   expect(page.wheel).toEqual([1, -1, 1, -1, 1, -1]);
+});
+
+test("no scroll mode key waits on a timeout to tell it from a longer one", () => {
+  expect(keymapConflicts(SCROLL_KEYS)).toEqual([]);
+});
+
+test("gg survives Shift between its keys but not a second's pause, and shows the waiting g", async () => {
+  mount();
+  const page = threadPage(Array.from({ length: 30 }, (_, index) => `row ${index}`));
+  await enterScrollMode(page);
+  const pending = () => document.querySelector(".bb-vim-keys:not([hidden])")?.textContent ?? "";
+  press(document.body, "G", { shiftKey: true });
+  const bottom = page.viewport.scrollTop;
+
+  press(document.body, "g");
+  expect(pending()).toBe("g");
+  press(document.body, "Shift", { shiftKey: true });
+  press(document.body, "g");
+  expect(page.viewport.scrollTop).toBe(0);
+  expect(pending()).toBe("");
+
+  press(document.body, "G", { shiftKey: true });
+  vi.useFakeTimers();
+  try {
+    press(document.body, "g");
+    vi.advanceTimersByTime(1001);
+    expect(pending()).toBe("");
+    press(document.body, "g");
+    expect(page.viewport.scrollTop).toBe(bottom);
+    expect(pending()).toBe("g");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("keys scroll mode does not use still reach bb", async () => {
@@ -329,6 +364,24 @@ test("/ finds matches in order, n wraps at the bottom, and N goes back", async (
   press(document.body, "N", { shiftKey: true });
   await waitFor(() => message() !== "");
   expect(message()).toBe("search hit TOP, continuing at BOTTOM");
+});
+
+test("Escape, or Backspace in an empty search line, closes it without searching", async () => {
+  mount();
+  const page = threadPage(["alpha", "the needle"]);
+  await enterScrollMode(page);
+  const line = () => document.querySelector<HTMLInputElement>(".bb-vim-prompt input");
+  press(document.body, "/");
+  line()!.value = "needle";
+  expect(press(line()!, "Backspace").defaultPrevented).toBe(false);
+  expect(press(line()!, "Escape").defaultPrevented).toBe(true);
+  expect(line()).toBeNull();
+  press(document.body, "/");
+  expect(press(line()!, "Backspace").defaultPrevented).toBe(true);
+  expect(line()).toBeNull();
+  await settle();
+  expect(message()).toBe("");
+  expect(badge()).toBe("SCROLL");
 });
 
 test("a search with no match reports it and leaves the scroll position alone", async () => {

@@ -11,8 +11,11 @@ export interface KeyContext {
 }
 
 export interface KeyHandlerOptions<C> {
-  /** A function picks the map by state (a pane, a picker column, a mode); switching maps drops a half-typed sequence. */
-  keymap: Keymap<C> | (() => Keymap<C>);
+  /**
+   * A function picks the map by state (a pane, a picker column, a mode) or by where the key came
+   * from (a select keeps its arrows); switching maps drops a half-typed sequence.
+   */
+  keymap: Keymap<C> | ((target: Element | null, event: KeyboardEvent) => Keymap<C>);
   /** Runs a command; false leaves the key to the page, as if unbound. */
   onCommand: (command: C, context: KeyContext) => boolean | void;
   /** Whether the handler is live at all, checked before `intercept`: say, while its surface is shown. */
@@ -31,9 +34,16 @@ export interface KeyHandlerOptions<C> {
   /** Enter and Space stay with a focused button or link unless this is false. */
   leaveToPressables?: boolean;
   /** The element the keys belong to, such as a scope's root; focus on it is never a button's. */
-  self?: Element;
+  self?: Element | (() => Element | null);
+  /**
+   * Sees every keydown before any check, even one another listener already took (vim-mode's
+   * Escape out of a text box): for passive taps, such as noting when Escape was last pressed.
+   */
+  observe?: (event: KeyboardEvent) => void;
   /** Sees every key before the checks on where it came from. True takes it. */
   intercept?: (event: KeyboardEvent, token: KeyToken) => boolean;
+  /** Sees each key the handler accepts, bound or not, before it is read: for work any key interrupts. */
+  onKey?: (event: KeyboardEvent, token: KeyToken) => void;
   /** A key that is neither bound nor the rest of a sequence; it is left to the page. */
   onUnbound?: (event: KeyboardEvent, token: KeyToken) => void;
   /** Told the count and keys waiting for the rest of a sequence, and "" when the wait ends. */
@@ -106,7 +116,10 @@ export function createKeyHandler<C>(options: KeyHandlerOptions<C>): KeyHandler {
     return true;
   };
 
+  const selfElement = () => (typeof options.self === "function" ? options.self() : (options.self ?? null));
+
   const handle = (event: KeyboardEvent): boolean => {
+    options.observe?.(event);
     if (event.defaultPrevented) return false;
     const token = keyToken(event);
     if (token === null) return false;
@@ -125,14 +138,16 @@ export function createKeyHandler<C>(options: KeyHandlerOptions<C>): KeyHandler {
     if (target !== null && (options.isText ?? isTextEntry)(target)) {
       if (token !== "<Esc>" || options.onTextEscape === undefined) return false;
       const field = target instanceof HTMLElement ? target : target.closest<HTMLElement>("[contenteditable]");
-      const box = field ?? (options.self instanceof HTMLElement ? options.self : null);
+      const self = selfElement();
+      const box = field ?? (self instanceof HTMLElement ? self : null);
       if (box === null || options.onTextEscape(box, event) === false) return false;
       return take(event);
     }
-    if (options.leaveToPressables !== false && (token === "<CR>" || token === "<Space>") && target !== null && target !== options.self && target !== event.currentTarget && target.closest(PRESSABLE) !== null) {
+    if (options.leaveToPressables !== false && (token === "<CR>" || token === "<Space>") && target !== null && target !== selfElement() && target !== event.currentTarget && target.closest(PRESSABLE) !== null) {
       return false;
     }
-    const keymap = typeof options.keymap === "function" ? options.keymap() : options.keymap;
+    options.onKey?.(event, token);
+    const keymap = typeof options.keymap === "function" ? options.keymap(target, event) : options.keymap;
     const read = readerFor(keymap).read(token, event.timeStamp);
     publish();
     if (read.kind === "none") {

@@ -16,11 +16,11 @@ export interface PickerKeysOptions<C = never> {
   wrap?: boolean;
   /** `/` and `i` in the list: show or focus the filter box. Unbound without it. */
   openFilter?: () => void;
-  /** Escape in the list; false (or no callback) leaves it to the popover, which closes. */
+  /** Escape in the list. Without it, or when it returns false, Escape is left to the popover, which closes. */
   onListEscape?: () => boolean | void;
   /**
    * Escape in the filter box: say, clear the query, or go back to the list with the filter
-   * still applied. False (or no callback) leaves it to the popover.
+   * still applied. Without it, or when it returns false, Escape is left to the popover.
    */
   onFilterEscape?: () => boolean | void;
   /** More keys for the list, such as `p` to pin or `dd` to remove; they win over the built-in ones. */
@@ -80,7 +80,8 @@ export function createPickerKeys<C = never>(options: PickerKeysOptions<C>): Pick
         options.openFilter?.();
         return;
       case "escape":
-        return (from === "list" ? options.onListEscape : options.onFilterEscape)?.() ?? false;
+        const escape = from === "list" ? options.onListEscape : options.onFilterEscape;
+        return escape === undefined ? false : escape();
       case "own":
         return options.onCommand?.(command.command, context);
     }

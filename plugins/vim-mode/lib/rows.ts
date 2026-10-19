@@ -105,22 +105,25 @@ export function readRows(container: Element): { elements: HTMLElement[]; rows: N
   return { elements, rows };
 }
 
-/** The row holding focus, if focus is on or in one of `elements`. */
+/** The row holding focus, if focus is on or in one of `elements`: the innermost, when rows nest (a message's fields). */
 export function cursorIndex(elements: readonly HTMLElement[]): number | null {
-  const active = elements[0]?.ownerDocument.activeElement ?? null;
-  const index = elements.findIndex((element) => element === active || (active !== null && element.contains(active)));
-  return index === -1 ? null : index;
+  for (let node = elements[0]?.ownerDocument.activeElement ?? null; node !== null; node = node.parentElement) {
+    const index = elements.indexOf(node as HTMLElement);
+    if (index !== -1) return index;
+  }
+  return null;
 }
 
 export function isToolbar(row: HTMLElement): boolean {
   return row.dataset.navRow === "toolbar";
 }
 
-/** A toolbar row's buttons; a panel that opens from one of them is not part of the row. */
+/** A toolbar row's buttons; a panel that opens from one of them is not part of the row, but a dialog around the row is fine. */
 export function toolbarButtons(row: HTMLElement): HTMLButtonElement[] {
-  return Array.from(row.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")).filter(
-    (button) => button.closest('[role="dialog"]') === null && button.getClientRects().length > 0,
-  );
+  return Array.from(row.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")).filter((button) => {
+    const panel = button.closest('[role="dialog"]');
+    return (panel === null || !row.contains(panel)) && button.getClientRects().length > 0;
+  });
 }
 
 /** Puts the cursor on a row; a toolbar row keeps it on the button it is on, else takes it on its first. */
@@ -153,14 +156,32 @@ export function fieldInput(row: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Escape out of a text box onto the keys: focus goes to the row holding the box (any
- * `[data-nav-row]`), else `fallback`. False when there was nowhere to go.
+ * Escape out of a text box onto the keys: the cursor goes to the row holding the box (any
+ * `[data-nav-row]`), else focus goes to `fallback` (the surface's root) without scrolling. False
+ * when there was nowhere to go.
  */
 export function returnToRow(field: Element, fallback?: HTMLElement | null): boolean {
-  const row = field.parentElement?.closest<HTMLElement>(NAV_ROW) ?? fallback ?? null;
-  if (row === null) return false;
-  focusRow(row);
+  const row = field.parentElement?.closest<HTMLElement>(NAV_ROW);
+  if (row != null) {
+    focusRow(row);
+    return true;
+  }
+  if (fallback == null) return false;
+  fallback.focus({ preventScroll: true });
   return true;
+}
+
+/**
+ * `returnToRow` once the box has finished with its own Escape, which may blur it a frame later
+ * (a title that commits on blur): only if focus is still on the box or the page body by then.
+ */
+export function returnToRowAfterFrame(field: Element, fallback?: () => HTMLElement | null): void {
+  const doc = field.ownerDocument;
+  (doc.defaultView ?? window).requestAnimationFrame(() => {
+    const active = doc.activeElement;
+    if (active !== field && active !== doc.body && active !== null) return;
+    returnToRow(field, fallback?.());
+  });
 }
 
 /** The field row around a text box, so Escape from typing leaves the cursor on it. */
@@ -254,12 +275,15 @@ export function runListMotion(container: Element, motion: ListMotion, options: L
   return true;
 }
 
-/** Ctrl-d/u/f/b over a row list: pages the cursor, or puts it on the start row if it has none. False with no rows. */
-export function runListScroll(container: Element, step: 1 | -1, share: number, options: Pick<ListCommandOptions, "start"> = {}): boolean {
+/**
+ * Ctrl-d/u/f/b over a row list: pages the cursor (`count` pages), or puts it on the start row if
+ * it has none. False with no rows.
+ */
+export function runListScroll(container: Element, step: 1 | -1, share: number, options: Pick<ListCommandOptions, "start" | "count"> = {}): boolean {
   const { elements } = readRows(container);
   if (elements.length === 0) return false;
   const current = cursorIndex(elements);
   if (current === null) focusRow(elements[Math.min(Math.max(options.start?.(elements) ?? 0, 0), elements.length - 1)]!);
-  else pageCursor(elements, elements[current]!, step, share);
+  else pageCursor(elements, elements[current]!, step, share * (options.count ?? 1));
   return true;
 }

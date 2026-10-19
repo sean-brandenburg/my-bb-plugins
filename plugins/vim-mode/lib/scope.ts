@@ -6,7 +6,7 @@ import { inWidgetWithin, isShown, isTextEntry, OPEN_DIALOG, OWN_KEYS, overlayOve
 export type { KeyContext } from "./handler.ts";
 
 export interface KeyScopeOptions<C> {
-  keymap: Keymap<C> | (() => Keymap<C>);
+  keymap: Keymap<C> | ((target: Element | null, event: KeyboardEvent) => Keymap<C>);
   /** Runs a command; false leaves the key to the page, as if unbound. */
   onCommand: (command: C, context: KeyContext) => boolean | void;
   /**

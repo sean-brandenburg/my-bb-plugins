@@ -1,8 +1,9 @@
 import { type KeyboardEvent as ReactKeyboardEvent, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createKeyHandler, type KeyHandlerOptions } from "./handler.ts";
+import { createMenuKeys } from "./menu.ts";
 import { createPickerKeys, type PickerKeys, type PickerKeysOptions } from "./picker.ts";
 import { bindKeyScope, type KeyScopeOptions } from "./scope.ts";
-import { compileSearch, createSearchHighlights, revealRange, type SearchHighlights, textRanges } from "./search.ts";
+import { compileSearch, createSearchBoxKeys, createSearchHighlights, revealRange, type SearchBoxKeysOptions, type SearchHighlights, textRanges } from "./search.ts";
 import { isTextEntry } from "./targets.ts";
 
 export * from "./index.ts";
@@ -18,13 +19,13 @@ export function useKeyScope<C>(root: HTMLElement | null | RefObject<HTMLElement 
   const latest = useRef(options);
   latest.current = options;
   const bound = useRef<{ node: HTMLElement; deps: readonly unknown[]; unbind: () => void } | null>(null);
-  const { keymap, group, primary, alsoWithin, blockedBy, counts, timeoutMs, capture, takeFocus } = options;
+  const { keymap, group, primary, alsoWithin, blockedBy, counts, timeoutMs, capture, takeFocus, listenOn } = options;
   const hasTextEscape = options.onTextEscape !== undefined;
   const hasIntercept = options.intercept !== undefined;
 
   useEffect(() => {
     const node = enabled ? (root !== null && "current" in root ? root.current : root) : null;
-    const deps = [keymap, group, primary, alsoWithin, blockedBy, counts, timeoutMs, capture, takeFocus, hasTextEscape, hasIntercept];
+    const deps = [keymap, group, primary, alsoWithin, blockedBy, counts, timeoutMs, capture, takeFocus, listenOn, hasTextEscape, hasIntercept];
     const current = bound.current;
     if (current !== null && current.node === node && current.deps.every((dep, index) => Object.is(dep, deps[index]))) return;
     current?.unbind();
@@ -40,6 +41,7 @@ export function useKeyScope<C>(root: HTMLElement | null | RefObject<HTMLElement 
       timeoutMs,
       capture,
       takeFocus,
+      listenOn,
       onCommand: (command, context) => latest.current.onCommand(command, context),
       onTextEscape: hasTextEscape ? (field, event) => latest.current.onTextEscape?.(field, event) : undefined,
       intercept: hasIntercept ? (event, token) => latest.current.intercept?.(event, token) === true : undefined,
@@ -82,9 +84,9 @@ export function useKeyHandler<C>(options: KeyHandlerOptions<C>): (event: AnyKeyb
   latest.current = options;
   const [handler] = useState(() =>
     createKeyHandler<C>({
-      keymap: () => {
+      keymap: (target, event) => {
         const current = latest.current.keymap;
-        return typeof current === "function" ? current() : current;
+        return typeof current === "function" ? current(target, event) : current;
       },
       onCommand: (command, context) => latest.current.onCommand(command, context),
       accepts: (target, event) => latest.current.accepts?.(target, event) ?? true,
@@ -93,13 +95,16 @@ export function useKeyHandler<C>(options: KeyHandlerOptions<C>): (event: AnyKeyb
       isText: (element) => (latest.current.isText ?? isTextEntry)(element),
       onTextEscape: (field, event) => (latest.current.onTextEscape === undefined ? false : latest.current.onTextEscape(field, event)),
       intercept: (event, token) => latest.current.intercept?.(event, token) === true,
+      observe: (event) => latest.current.observe?.(event),
+      onKey: (event, token) => latest.current.onKey?.(event, token),
       onUnbound: (event, token) => latest.current.onUnbound?.(event, token),
       onPending: (keys) => latest.current.onPending?.(keys),
       get leaveToPressables() {
         return latest.current.leaveToPressables;
       },
-      get self() {
-        return latest.current.self;
+      self: () => {
+        const self = latest.current.self;
+        return typeof self === "function" ? self() : (self ?? null);
       },
       counts: options.counts,
       timeoutMs: options.timeoutMs,
@@ -133,13 +138,41 @@ export function usePickerKeys<C = never>(options: PickerKeysOptions<C>): {
         return latest.current.wrap;
       },
       ...(options.openFilter === undefined ? {} : { openFilter: () => latest.current.openFilter?.() }),
-      onListEscape: () => latest.current.onListEscape?.() ?? false,
-      onFilterEscape: () => latest.current.onFilterEscape?.() ?? false,
+      onListEscape: () => (latest.current.onListEscape === undefined ? false : latest.current.onListEscape()),
+      onFilterEscape: () => (latest.current.onFilterEscape === undefined ? false : latest.current.onFilterEscape()),
       ...(options.keymap === undefined ? {} : { keymap: options.keymap }),
       onCommand: (command, context) => latest.current.onCommand?.(command, context),
     }),
   );
   return useMemo(() => ({ onListKeyDown: reactKeyDown(keys.list), onFilterKeyDown: reactKeyDown(keys.filter), keys }), [keys]);
+}
+
+/** `createSearchBoxKeys` for the `onKeyDown` of the box `/` opens; options are read on every key. Taken keys stop there. */
+export function useSearchBoxKeys(options: SearchBoxKeysOptions): (event: AnyKeyboardEvent) => boolean {
+  const latest = useRef(options);
+  latest.current = options;
+  const [keys] = useState(() =>
+    createSearchBoxKeys({
+      commit: (event) => latest.current.commit(event),
+      cancel: (event) => latest.current.cancel(event),
+      ...(options.step === undefined ? {} : { step: (step: 1 | -1) => latest.current.step?.(step) }),
+      cancelOnEmptyBackspace: options.cancelOnEmptyBackspace,
+    }),
+  );
+  useEffect(() => () => keys.dispose(), [keys]);
+  return useMemo(() => reactKeyDown(keys.handle), [keys]);
+}
+
+/** `createMenuKeys` for a Radix menu content's `onKeyDown`: j/k/gg/G claimed before its typeahead. */
+export function useMenuKeys(menu?: (event: KeyboardEvent) => Element | null): (event: AnyKeyboardEvent) => boolean {
+  const latest = useRef(menu);
+  latest.current = menu;
+  const [keys] = useState(() => createMenuKeys((event) => (latest.current ?? defaultMenu)(event)));
+  return useMemo(() => reactKeyDown(keys.handle), [keys]);
+}
+
+function defaultMenu(event: KeyboardEvent): Element | null {
+  return event.target instanceof Element ? event.target.closest('[role="menu"]') : null;
 }
 
 export interface TextSearch {

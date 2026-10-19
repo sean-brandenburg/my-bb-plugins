@@ -1,5 +1,5 @@
 export { displaySequence, displayToken, type KeyToken, keyToken, tokenize } from "./keys.ts";
-export { createKeyReader, type KeyHelpSection, type Keymap, keymapConflicts, type KeyRead, type KeyReader, type KeyReaderOptions, SEQUENCE_TIMEOUT_MS, unboundHelpKeys } from "./reader.ts";
+export { createKeyReader, type KeyHelpSection, type Keymap, keymapConflicts, type KeyRead, keysFor, type KeyReader, type KeyReaderOptions, SEQUENCE_TIMEOUT_MS, unboundHelpKeys } from "./reader.ts";
 export {
   type Caret,
   cursorIndex,
@@ -19,6 +19,7 @@ export {
   pageCursor,
   readRows,
   returnToRow,
+  returnToRowAfterFrame,
   ROW_KEYS,
   runListMotion,
   runListScroll,

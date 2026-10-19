@@ -66,9 +66,12 @@ export function stepIndex(length: number, current: number | null, motion: Motion
   return clamp(current + delta);
 }
 
-/** How many rows of a list fit in its visible height, for half and page motions: at least 1. */
-export function visibleRowCount(list: Element, row: Element | null = list.firstElementChild): number {
-  const height = row instanceof HTMLElement ? row.offsetHeight : 0;
+/**
+ * How many rows of a list fit in its visible height, for half and page motions: at least 1.
+ * `fallbackRowHeight` stands in while the row has no height yet (or none to measure).
+ */
+export function visibleRowCount(list: Element, row: Element | null = list.firstElementChild, fallbackRowHeight = 0): number {
+  const height = (row instanceof HTMLElement ? row.offsetHeight : 0) || fallbackRowHeight;
   if (height === 0) return 1;
   return Math.max(1, Math.floor(list.clientHeight / height));
 }
@@ -80,6 +83,8 @@ export interface PaneScrollOptions {
   /** Share of the pane's height Ctrl-d/u scroll; Ctrl-f/b scroll `page`. */
   half?: number;
   page?: number;
+  /** The height half and full pages are shares of, when something covers part of the pane: defaults to its clientHeight. */
+  extent?: (pane: HTMLElement) => number;
   /** How the pane scrolls, for one that must first tell its owner (bb unpins a thread on a wheel event). */
   scrollBy?: (pane: HTMLElement, top: number) => void;
 }
@@ -87,14 +92,16 @@ export interface PaneScrollOptions {
 /** Scrolls a pane that has no cursor by a motion: j/k a line, Ctrl-d/u half a page, gg/G to the ends. */
 export function scrollPane(pane: HTMLElement, motion: Motion, options: PaneScrollOptions = {}): void {
   const count = options.count ?? 1;
-  const height = pane.clientHeight;
+  const height = options.extent?.(pane) ?? pane.clientHeight;
   let top: number;
   if (motion === "top") top = -pane.scrollTop;
-  else if (motion === "bottom") top = pane.scrollHeight - height - pane.scrollTop;
+  else if (motion === "bottom") top = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
   else {
     const size = motion === "down" || motion === "up" ? (options.line ?? 40) : height * (motion === "halfDown" || motion === "halfUp" ? (options.half ?? 0.5) : (options.page ?? 0.9));
     top = (forward(motion) ? 1 : -1) * size * count;
   }
   if (options.scrollBy !== undefined) options.scrollBy(pane, top);
-  else pane.scrollBy({ top, behavior: "instant" });
+  // jsdom has no scrollBy.
+  else if (typeof pane.scrollBy === "function") pane.scrollBy({ top, behavior: "instant" });
+  else pane.scrollTop += top;
 }

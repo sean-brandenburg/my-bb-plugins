@@ -134,9 +134,11 @@ export interface SearchBoxKeysOptions {
   cancel: (event: KeyboardEvent) => boolean | void;
   /** Arrows and Ctrl-n/p, to step through matches while typing; unbound without it. */
   step?: (step: 1 | -1) => void;
+  /** Backspace in an empty box cancels, as in vim's `/` and `:` lines. */
+  cancelOnEmptyBackspace?: boolean;
 }
 
-type SearchBoxCommand = "commit" | "cancel" | "next" | "previous";
+type SearchBoxCommand = "commit" | "cancel" | "next" | "previous" | "backspace";
 
 /**
  * Keys for the box `/` opens: Enter commits, Escape cancels, and with `step`, arrows and
@@ -148,12 +150,18 @@ export function createSearchBoxKeys(options: SearchBoxKeysOptions): KeyHandler {
     "<CR>": "commit",
     "<Esc>": "cancel",
     ...(options.step === undefined ? {} : { "<Down>": "next", "<C-n>": "next", "<Up>": "previous", "<C-p>": "previous" }),
+    ...(options.cancelOnEmptyBackspace === true ? { "<BS>": "backspace" as const } : {}),
   };
   return createKeyHandler<SearchBoxCommand>({
     keymap,
     isText: () => false,
     leaveToPressables: false,
     onCommand: (command, { event }) => {
+      if (command === "backspace") {
+        const box = event.target;
+        if (!(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) || box.value !== "") return false;
+        return options.cancel(event);
+      }
       if (command === "commit") options.commit(event);
       else if (command === "cancel") return options.cancel(event);
       else options.step?.(command === "next" ? 1 : -1);

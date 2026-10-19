@@ -110,3 +110,12 @@ export function unboundHelpKeys(sections: readonly KeyHelpSection[], keymap: Key
   const bound = new Set([...keymaps.flatMap((map) => Object.keys(map).map(displaySequence)), ...elsewhere]);
   return sections.flatMap((section) => section.keys.flatMap(({ keys }) => keys.filter((key) => !bound.has(key))));
 }
+
+/**
+ * The first sequence in `keymap` whose command `match` accepts, as a shortcuts strip writes it
+ * (`displaySequence`): so a hint shows the key that is really bound.
+ */
+export function keysFor<C>(keymap: Keymap<C>, match: (command: C) => boolean): string | undefined {
+  const found = Object.entries(keymap).find(([, command]) => match(command));
+  return found === undefined ? undefined : displaySequence(found[0]);
+}

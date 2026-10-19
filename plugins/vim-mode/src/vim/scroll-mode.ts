@@ -1,3 +1,14 @@
+import {
+  compileSearch,
+  createKeyHandler,
+  createSearchBoxKeys,
+  type KeyHandler,
+  type Keymap,
+  mapKeymap,
+  type Motion,
+  MOTION_KEYS,
+  scrollPane,
+} from "../../lib/index.ts";
 import type { Rect } from "./host";
 import { logError } from "./log";
 import {
@@ -11,7 +22,6 @@ import {
 } from "./selectors";
 import {
   comparePositions,
-  compilePattern,
   isClipped,
   realizedRows,
   rowMatches,
@@ -27,7 +37,27 @@ const REALIZE_FRAMES = 4;
 /** A safety cap only; a search ends when scrolling stops making progress. */
 const MAX_SEARCH_STEPS = 1000;
 
-const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn"]);
+type ScrollCommand =
+  | { kind: "scroll"; motion: Motion }
+  | { kind: "search"; prefix: "/" | "?" }
+  | { kind: "repeat"; reverse: boolean }
+  | { kind: "insert" }
+  | { kind: "clear" };
+
+function pick<C>(keymap: Keymap<C>, keys: readonly string[]): Keymap<C> {
+  return Object.fromEntries(keys.map((key) => [key, keymap[key]!]));
+}
+
+export const SCROLL_KEYS: Keymap<ScrollCommand> = {
+  // Only vim's own keys: the arrows and Ctrl-f/b keep the page's and bb's meaning.
+  ...mapKeymap(pick(MOTION_KEYS, ["j", "k", "gg", "G", "<C-d>", "<C-u>"]), (motion): ScrollCommand => ({ kind: "scroll", motion })),
+  "/": { kind: "search", prefix: "/" },
+  "?": { kind: "search", prefix: "?" },
+  n: { kind: "repeat", reverse: false },
+  N: { kind: "repeat", reverse: true },
+  i: { kind: "insert" },
+  "<Esc>": { kind: "clear" },
+};
 
 /** The thread page scroller holding `from`, or else the first one on the page. */
 export function threadViewport(from?: Element | null): HTMLElement | null {
@@ -61,7 +91,8 @@ const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 export class ScrollMode {
   private active = false;
   private anchor: Element | null = null;
-  private pendingG = false;
+  private pendingKeys = "";
+  private readonly keys: KeyHandler;
   private search: Search | null = null;
   private current: CurrentMatch | null = null;
   private highlighting = false;
@@ -93,6 +124,24 @@ export class ScrollMode {
     this.bar.className = "bb-vim-bar bbm-rise-in bbm-fast bbm-near";
     this.bar.setAttribute(UI_ATTRIBUTE, "");
     this.bar.hidden = true;
+
+    this.keys = createKeyHandler({
+      keymap: SCROLL_KEYS,
+      active: () => this.active,
+      accepts: (target) => this.keepsFocus(target),
+      isText: isEditable,
+      stopImmediate: true,
+      // Any key aimed at the page interrupts a running search and clears its message.
+      onKey: () => {
+        this.searchToken++;
+        if (!this.prompt) this.clearMessage();
+      },
+      onPending: (keys) => {
+        this.pendingKeys = keys;
+        this.render();
+      },
+      onCommand: (command) => this.run(command),
+    });
   }
 
   get isActive(): boolean {
@@ -104,7 +153,7 @@ export class ScrollMode {
     this.anchor = anchor;
     if (this.active) return;
     this.active = true;
-    this.pendingG = false;
+    this.keys.reset();
     document.body.append(this.indicator, this.bar);
     this.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener("scroll", this.onScroll, true);
@@ -117,6 +166,7 @@ export class ScrollMode {
   exit(): void {
     if (!this.active) return;
     this.active = false;
+    this.keys.reset();
     this.searchToken++;
     this.closePrompt();
     this.setHighlighting(false);
@@ -150,69 +200,36 @@ export class ScrollMode {
 
   /** Handles one keydown aimed at the page; returns true when it was a scroll mode key. */
   handleKey(event: KeyboardEvent): boolean {
-    if (!this.active || event.defaultPrevented || event.isComposing || event.metaKey || event.altKey) return false;
-    if (MODIFIER_KEYS.has(event.key)) return false;
-    if (!this.keepsFocus(event.target)) return false;
+    if (!this.active) return false;
+    const handled = this.keys.handle(event);
+    this.render();
+    return handled;
+  }
+
+  private run(command: ScrollCommand): boolean {
     const viewport = this.viewport();
     if (!viewport) {
       this.exit();
       return false;
     }
-    this.searchToken++;
-    if (!this.prompt) this.clearMessage();
-    const key = event.ctrlKey ? (event.key === "d" || event.key === "u" ? `C-${event.key}` : null) : event.key;
-    const pendingG = this.pendingG;
-    this.pendingG = false;
-    const handled = key !== null && this.run(key, pendingG, viewport);
-    if (handled) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-    this.render();
-    return handled;
-  }
-
-  private run(key: string, pendingG: boolean, viewport: HTMLElement): boolean {
-    const visible = visibleBox(viewport);
-    const page = visible.bottom - visible.top;
-    switch (key) {
-      case "j":
-        scrollViewport(viewport, viewport.scrollTop + LINE_STEP);
+    switch (command.kind) {
+      case "scroll":
+        scrollThread(viewport, command.motion);
         return true;
-      case "k":
-        scrollViewport(viewport, viewport.scrollTop - LINE_STEP);
+      case "search":
+        this.openPrompt(command.prefix);
         return true;
-      case "C-d":
-        scrollViewport(viewport, viewport.scrollTop + page / 2);
+      case "repeat":
+        this.repeatSearch(command.reverse);
         return true;
-      case "C-u":
-        scrollViewport(viewport, viewport.scrollTop - page / 2);
-        return true;
-      case "g":
-        if (pendingG) scrollViewport(viewport, 0);
-        else this.pendingG = true;
-        return true;
-      case "G":
-        scrollViewport(viewport, viewport.scrollHeight);
-        return true;
-      case "/":
-      case "?":
-        this.openPrompt(key);
-        return true;
-      case "n":
-      case "N":
-        this.repeatSearch(key === "N");
-        return true;
-      case "i":
+      case "insert":
         this.exit();
         this.returnToTextBox(viewport);
         return true;
-      case "Escape":
+      case "clear":
         if (!this.highlighting) return false;
         this.setHighlighting(false);
         return true;
-      default:
-        return false;
     }
   }
 
@@ -231,19 +248,17 @@ export class ScrollMode {
     input.autocomplete = "off";
     input.spellcheck = false;
     label.append(input);
-    input.addEventListener("keydown", (event) => {
-      if (event.isComposing) return;
-      const backspaceOut = event.key === "Backspace" && !input.value;
-      if (event.key !== "Enter" && event.key !== "Escape" && !backspaceOut) {
-        event.stopPropagation();
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
+    const close = (search: boolean) => {
       const source = input.value;
       this.closePrompt();
-      if (event.key === "Enter") this.startSearch(source, prefix === "?");
+      if (search) this.startSearch(source, prefix === "?");
       this.render();
+    };
+    const keys = createSearchBoxKeys({ commit: () => close(true), cancel: () => close(false), cancelOnEmptyBackspace: true });
+    input.addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
+      keys.handle(event);
+      event.stopPropagation();
     });
     input.addEventListener("blur", () => {
       if (this.prompt === input) {
@@ -284,7 +299,7 @@ export class ScrollMode {
 
   private startSearch(source: string, backward: boolean): void {
     // An empty pattern repeats the last one, as in vim.
-    const pattern = source ? compilePattern(source) : (this.search?.pattern ?? null);
+    const pattern = source ? compileSearch(source) : (this.search?.pattern ?? null);
     if (!pattern) {
       this.showMessage("E35: No previous regular expression", true);
       return;
@@ -457,9 +472,8 @@ export class ScrollMode {
     }
     this.renderHighlights(viewport);
     // Rewriting even the same text is a mutation, which would schedule another render.
-    const keys = this.pendingG ? "g" : "";
-    if (this.keysNode.textContent !== keys) this.keysNode.textContent = keys;
-    this.keysNode.hidden = !this.pendingG;
+    if (this.keysNode.textContent !== this.pendingKeys) this.keysNode.textContent = this.pendingKeys;
+    this.keysNode.hidden = !this.pendingKeys;
     const form = viewport.querySelector(PROMPTBOX);
     const toolbar = form ? promptToolbarRow(form) : null;
     const box = visibleBox(viewport);
@@ -490,6 +504,7 @@ export class ScrollMode {
 
   dispose(): void {
     this.exit();
+    this.keys.dispose();
   }
 }
 
@@ -518,6 +533,18 @@ function scrollViewport(viewport: HTMLElement, top: number): void {
   if (target === viewport.scrollTop) return;
   viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: target - viewport.scrollTop }));
   viewport.scrollTop = target;
+}
+
+/** Scrolls the conversation by a motion; half and whole pages are of the part above the composer. */
+function scrollThread(viewport: HTMLElement, motion: Motion): void {
+  scrollPane(viewport, motion, {
+    line: LINE_STEP,
+    extent: (pane) => {
+      const visible = visibleBox(pane);
+      return visible.bottom - visible.top;
+    },
+    scrollBy: (pane, delta) => scrollViewport(pane, pane.scrollTop + delta),
+  });
 }
 
 /** The part of the viewport the conversation shows through, above the pinned composer. */
