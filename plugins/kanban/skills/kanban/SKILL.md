@@ -23,7 +23,8 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban add "<title>" [--tag <tag>] [--description <md>] [--column <id>] [--project <id>] [--start-thread]` | Add a card. Inside a thread it is linked to that thread unless `--no-link`, `--project`, or `--start-thread` is passed. |
 | `bb kanban review [--ticket <id>] [--project <id>] [--full] [--depth quick\|standard\|deep]` | Start a code-review thread for the card's PR, or for a card without one, for the commits its thread made beyond its merge base: a fresh worktree checks the PR head (or the thread's HEAD) out detached and runs the `code-review` skill at the depth (Quick: correctness, CLAUDE.md compliance, scope, style; Standard, the default: adds testing and git history; Deep: adds security). Inside a thread, defaults to that thread's card. |
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the commit out: records which commit the review covers. |
-| `bb kanban monitor on\|off [--ticket <id>]` | Turn a card's review loop on or off. A monitored card is checked and routed by the board itself; off stops the loop after its current step. Turn it on for a card you create for a larger task. |
+| `bb kanban monitor on\|off [--ticket <id>] [--gates plan,findings,auto-accept\|none]` | Turn a card's review loop on or off. A monitored card is checked and routed by the board itself; off stops the loop after its current step. Turn it on for a card you create for a larger task. `--gates` picks the gates; by default only a Jira card's plan waits for approval. |
+| `bb kanban plan --plan-stdin` | Run from a monitored card's own thread while its plan gate holds it: proposes your plan (Markdown on stdin), then stop and wait for the approved plan. |
 | `bb kanban ready --commit <sha> --evidence-stdin [--screenshot <path>] [--check-command "<cmd>"]` | Run from a monitored card's own thread once its work is committed and verified (see below). |
 | `bb kanban landed [--ticket <id>]` | Run from a monitored local card's own thread after the user accepted it and you landed it with the project's finishing steps: the board moves the card to Done. |
 | `bb kanban checks-record --exit-code <n> --output-stdin` | Run from a checks thread: records the check command's exit code and the tail of its output. |
@@ -64,6 +65,9 @@ Add `--json` to any command when the output drives code.
 The thread instructions say when the card is monitored. Then the board moves
 the card, never you, and the loop starts from your ready report:
 
+0. If the instructions say the plan gate is on, first propose a plan with
+   `bb kanban plan --plan-stdin` and stop; build only once the board sends the
+   approved plan, and build to that version.
 1. Commit the work (on a PR card, push it to the PR branch; never force-push).
 2. Run the project's check command, named in the instructions. When the
    project sets none, choose the command that builds, lints and tests it.

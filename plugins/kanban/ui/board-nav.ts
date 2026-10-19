@@ -70,7 +70,7 @@ export type CardCommand =
   | { kind: "close" }
   | { kind: "scroll"; direction: 1 | -1 };
 
-export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "uphold" | "close-dispute" | "open-plan" | "change-level";
+export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "uphold" | "close-dispute" | "open-plan" | "change-level" | "approve";
 
 /** The brief actions that act on the finding under the cursor rather than the whole card. */
 export const FINDING_ACTIONS: ReadonlySet<BriefAction> = new Set(["pull-in", "uphold", "close-dispute"]);
@@ -101,6 +101,7 @@ export const CARD_KEYMAP: Keymap<CardCommand> = {
   c: { kind: "brief", action: "close-dispute" },
   P: { kind: "brief", action: "open-plan" },
   L: { kind: "brief", action: "change-level" },
+  Y: { kind: "brief", action: "approve" },
   "?": { kind: "help" },
   "<Esc>": { kind: "close" },
   "<C-d>": { kind: "scroll", direction: 1 },
@@ -165,7 +166,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["i"], action: "Start typing in the field, or the description" },
       { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
       { keys: ["t", "D"], action: "Open the card's thread / changes" },
-      { keys: ["m"], action: "Turn the card's review loop on or off" },
+      { keys: ["m"], action: "Turn the card's review loop on or off, with the gates ticked beside it (j/k reach them, Space ticks)" },
+      { keys: ["Y"], action: "Approve what the loop holds for you: the plan, as edited, or the round's ticked findings" },
       { keys: ["A"], action: "Handoff brief: accept; a local card's thread lands the change, a PR card is marked accepted" },
       { keys: ["S"], action: "Handoff brief: send your unsent diff comments back to the card's thread" },
       { keys: ["R"], action: "Handoff brief: stop the loop and have the card's thread rethink the approach" },

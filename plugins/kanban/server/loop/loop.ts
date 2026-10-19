@@ -1,5 +1,5 @@
 import type { Ticket } from "../../shared/board";
-import { effectiveLevel, fixingRound, parseLoopState, unansweredFindings, type AttentionLevel, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
+import { defaultGates, effectiveLevel, fixingRound, parseLoopState, unansweredFindings, type AttentionLevel, type CheckCommand, type Evidence, type FindingAnswer, type LoopGates } from "../../shared/loop";
 import { readingPlan as buildReadingPlan, type ReadingPlan } from "../../shared/reading-plan";
 import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
@@ -221,10 +221,45 @@ export function createLoop(
     publish();
   }
 
-  async function setMonitored(ticketId: string, monitored: boolean): Promise<Ticket> {
+  /** `gates` are the ones chosen as monitoring turns on; without them the card's kind picks the defaults. */
+  async function setMonitored(ticketId: string, monitored: boolean, gates: LoopGates | null = null): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    await dispatch(ticket.id, monitored ? { type: "monitor", hasThread: ticket.threadId !== null } : { type: "unmonitor" });
+    await dispatch(ticket.id, monitored ? { type: "monitor", hasThread: ticket.threadId !== null, gates: gates ?? defaultGates(ticket.kind) } : { type: "unmonitor" });
     return getTicket(ticket.id);
+  }
+
+  async function setGates(ticketId: string, gates: LoopGates): Promise<Ticket> {
+    return decide(getTicket(ticketId).id, { type: "set-gates", gates });
+  }
+
+  function planningState(ticket: Ticket) {
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    if (!state.monitored || state.phase !== "planning") throw new LoopTurnError(`Ticket ${ticket.id}'s plan gate isn't holding it, so there's no plan to propose or approve`);
+    return state;
+  }
+
+  /** The card's thread proposes its plan; the plan gate holds it for the user. */
+  async function proposePlan(ticketId: string, plan: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    planningState(ticket);
+    return decide(ticket.id, { type: "plan-proposed", plan });
+  }
+
+  /** The user approves the plan, edited or as proposed; it goes to the card's thread and every later review. */
+  async function approvePlan(ticketId: string, plan: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    planningState(ticket);
+    return decide(ticket.id, { type: "approve-plan", plan });
+  }
+
+  /** The user approves the findings gate's round with `findingIds`; the rest are left open. */
+  async function approveFindings(ticketId: string, findingIds: string[]): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    const state = waitingState(ticket);
+    if (state.reason !== "findings") throw new LoopTurnError(`Ticket ${ticket.id} has no round of findings awaiting your approval`);
+    const unknown = findingIds.filter((id) => !state.awaitingFindings.some((finding) => finding.id === id));
+    if (unknown.length > 0) throw new LoopTurnError(`The round awaiting you holds ${state.awaitingFindings.map((finding) => finding.id).join(", ")}; not ${unknown.join(", ")}`);
+    return decide(ticket.id, { type: "approve-findings", findingIds, pr: ticket.pr !== null });
   }
 
   /** The project's command when it sets one; otherwise the one the agent ran, marked as its choice. */
@@ -252,6 +287,11 @@ export function createLoop(
     const ticket = getTicket(ticketId);
     const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
     if (!state.monitored) return { ticket, checkCommand: null };
+    if (state.phase === "planning") {
+      throw new LoopTurnError(
+        state.proposedPlan === null ? `The plan gate holds ticket ${ticket.id}: propose a plan with \`bb kanban plan --plan-stdin\` and wait for its approval first` : `Ticket ${ticket.id}'s plan is waiting on the user's approval; wait for it before building`,
+      );
+    }
     if (state.phase === "accepted" || state.phase === "landed") {
       throw new LoopTurnError(
         ticket.pr === null ? `Ticket ${ticket.id} was accepted; land it and run \`bb kanban landed\` instead` : `Ticket ${ticket.id} was accepted; the user merges it on GitHub and the board moves it then`,
@@ -354,7 +394,7 @@ export function createLoop(
   async function decideDispute(ticketId: string, findingId: string, decision: "uphold" | "close"): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     if (!waitingState(ticket).disputes.some((dispute) => dispute.id === findingId && dispute.decision === null)) throw new LoopTurnError(`${findingId} isn't a dispute awaiting you`);
-    return decide(ticket.id, { type: "decide-dispute", findingId, decision });
+    return decide(ticket.id, { type: "decide-dispute", findingId, decision, pr: ticket.pr !== null });
   }
 
   async function recordChecks(run: ChecksRunRow, exitCode: number, outputTail: string): Promise<void> {
@@ -431,10 +471,10 @@ export function createLoop(
       return;
     }
     const findings = report.findings.map(({ id, severity, title, preExisting, triage, carriedFrom, dispute, category }) => ({ id, severity, title, preExisting, triage, carriedFrom, dispute, category }));
-    await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id) });
+    await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id), pr: getTicket(row.ticket_id).pr !== null });
   }
 
-  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute, setLevel, readingPlan };
+  return { setMonitored, setGates, proposePlan, approvePlan, approveFindings, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute, setLevel, readingPlan };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

@@ -7,11 +7,15 @@ import type { CardPrompt } from "./reducer";
 /** Lines of the check command's output a checks thread records. */
 const CHECKS_TAIL_LINES = 200;
 
+/** What the plan gate holds a card's thread to before it builds anything. */
+const PLAN_GATE =
+  "The plan gate is on: before writing any code, propose your plan for this card with `bb kanban plan --plan-stdin`, giving it as Markdown on stdin (the approach, the files you expect to change, how you will verify it), then stop and wait. The board sends you the approved plan, possibly edited by the user; build to that. Until then, `bb kanban ready` is refused.";
+
 /**
  * What a monitored card's thread is held to, in its instructions and when monitoring starts. `checkCommand` is the
- * project's; without one the agent picks the command and names it.
+ * project's; without one the agent picks the command and names it. `planning` is set while the plan gate holds it.
  */
-export function builderContract(isPr: boolean, checkCommand: string | null): string {
+export function builderContract(isPr: boolean, checkCommand: string | null, planning = false): string {
   const commit = isPr ? "commit it and push it to the PR branch (never force-push)" : "commit it on your branch (do not push)";
   const checks =
     checkCommand === null
@@ -20,6 +24,7 @@ export function builderContract(isPr: boolean, checkCommand: string | null): str
   const agentChosen = checkCommand === null ? ' --check-command "<the command you ran>"' : "";
   return [
     "The board monitors this card and runs its review loop, so never move the card yourself; the board moves it.",
+    ...(planning ? [PLAN_GATE] : []),
     `When the work is done, ${commit}, ${checks} and fix what fails.`,
     `Then finish with \`bb kanban ready --commit "$(git rev-parse HEAD)"${agentChosen} --evidence-stdin\`, giving on stdin JSON evidence of how you verified the work: \`{"commands":[{"command":"…","exitCode":0,"outputTail":"its last lines"}],"screenshots":["/absolute/path.png"]}\` (screenshots for UI changes).`,
     "Then stop: the board re-runs the checks in a fresh worktree and reviews the commit, and sends failing checks or the findings to fix back to this thread.",
@@ -31,14 +36,27 @@ const OUTPUT_FENCE = "~~~~~";
 
 /** The words for each prompt the loop sends into the card's thread. */
 export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" | "comments" }>, ticket: Ticket, checkCommand: string | null): string {
+  const planning = ticket.loop?.phase === "planning";
   switch (prompt.kind) {
     case "monitoring":
       return [
         `The board now monitors this card, "${ticket.title}", and runs its review loop.`,
         "",
-        builderContract(ticket.pr !== null, checkCommand),
+        builderContract(ticket.pr !== null, checkCommand, planning),
         "",
-        "If you are still working, or waiting on the user, carry on as you were; report ready only once the work is done.",
+        planning
+          ? "If you have already started, stop at a sensible point and propose the plan for what remains before carrying on."
+          : "If you are still working, or waiting on the user, carry on as you were; report ready only once the work is done.",
+      ].join("\n");
+    case "plan-approved":
+      return [
+        `The user approved the plan for "${ticket.title}"${prompt.edited ? ", with their edits; where it differs from what you proposed, theirs wins" : ""}. Build to it now; the board's reviews hold the change to it.`,
+        "",
+        "## Approved plan",
+        "",
+        prompt.plan.trim(),
+        "",
+        builderContract(ticket.pr !== null, checkCommand),
       ].join("\n");
     case "checks-failed":
       return [
@@ -64,11 +82,13 @@ export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" | "comm
       return [
         `The user stopped the board's review loop on "${ticket.title}" to rethink the approach: the way it is built looks wrong, and patching it round by round won't fix that.`,
         "",
-        "Step back from the current implementation and reconsider the approach. Propose a new one to the user, saying what you would change, what you would keep and why, and wait for their go-ahead before rebuilding.",
+        planning
+          ? "Step back from the current implementation and reconsider the approach. Propose a new plan with `bb kanban plan --plan-stdin`, saying what you would change, what you would keep and why, and wait for its approval before rebuilding."
+          : "Step back from the current implementation and reconsider the approach. Propose a new one to the user, saying what you would change, what you would keep and why, and wait for their go-ahead before rebuilding.",
         "",
         "Once approved, build it and finish as before; the loop counts its rounds again from that ready.",
         "",
-        builderContract(ticket.pr !== null, checkCommand),
+        builderContract(ticket.pr !== null, checkCommand, planning),
       ].join("\n");
   }
 }

@@ -10,11 +10,11 @@ Defaults: plan approval on for Jira cards and off for ad hoc cards, findings app
 
 **Blocked by:** 13 — Brief decisions.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The gate options are chosen when monitoring is turned on, in one step that has a keyboard path, with the defaults above.
-- [ ] The plan gate holds the loop in planning until I approve or edit, and the approval reaches the card thread.
-- [ ] The findings gate shows the round's apply set for approval before the fix prompt is sent.
-- [ ] Auto-accept fires only at Glance with no critical or important finding and no escalated dispute open, and never at Read or Scrutinize. Open minors are listed on the card.
-- [ ] Source and tag monitoring defaults apply to new cards only, and the card flag overrides them.
-- [ ] Reducer tests cover each gate on and off, and auto-accept's conditions.
+- [x] The gate options are chosen when monitoring is turned on, in one step that has a keyboard path, with the defaults above.
+- [x] The plan gate holds the loop in planning until I approve or edit, and the approval reaches the card thread.
+- [x] The findings gate shows the round's apply set for approval before the fix prompt is sent.
+- [x] Auto-accept fires only at Glance with no critical or important finding and no escalated dispute open, and never at Read or Scrutinize. Open minors are listed on the card.
+- [x] Source and tag monitoring defaults apply to new cards only, and the card flag overrides them.
+- [x] Reducer tests cover each gate on and off, and auto-accept's conditions.

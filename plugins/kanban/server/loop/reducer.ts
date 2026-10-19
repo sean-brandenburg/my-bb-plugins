@@ -14,6 +14,7 @@ import {
   type Evidence,
   type FindingAnswer,
   type LoopFinding,
+  type LoopGates,
   type LoopState,
   type NeedsYouReason,
   type PathRule,
@@ -32,8 +33,13 @@ export type ReviewedFinding = LoopFinding &
   Pick<Finding, "preExisting" | "carriedFrom" | "category"> & { triage: Pick<NonNullable<Finding["triage"]>, "decision"> | null; dispute: Pick<NonNullable<Finding["dispute"]>, "outcome"> | null };
 
 export type LoopEvent =
-  | { type: "monitor"; hasThread: boolean }
+  | { type: "monitor"; hasThread: boolean; gates: LoopGates }
   | { type: "unmonitor" }
+  | { type: "set-gates"; gates: LoopGates }
+  /** The card's thread proposes a plan, which the plan gate holds for the user. */
+  | { type: "plan-proposed"; plan: string }
+  /** The user approves the plan, as proposed or edited. */
+  | { type: "approve-plan"; plan: string }
   /** The card's thread committed its work and says it's verified. */
   | { type: "ready"; commit: string; evidence: Evidence; checkCommand: CheckCommand }
   | { type: "checks-result"; commit: string; exitCode: number; outputTail: string }
@@ -43,7 +49,7 @@ export type LoopEvent =
   /** The card's thread answers findings of the round it is fixing, by finding id. */
   | { type: "answer"; answers: Record<string, FindingAnswer> }
   /** `findings` are the report's own, without the ones its verifier filtered out. */
-  | { type: "review-completed"; reviewId: string; findings: ReviewedFinding[]; notCovered: string[]; pathRules: PathRule[] }
+  | { type: "review-completed"; reviewId: string; findings: ReviewedFinding[]; notCovered: string[]; pathRules: PathRule[]; pr: boolean }
   /** The card's thread is waiting on the user: a question, an approval. */
   | { type: "question" }
   /** A thread the loop started failed, was deleted, or went idle without recording its result; `threadId` is null when it couldn't be started. */
@@ -59,7 +65,9 @@ export type LoopEvent =
   | { type: "rethink" }
   /** The user pulls a finding of the last review that triage deferred or dropped back in. */
   | { type: "pull-in"; findingId: string }
-  | { type: "decide-dispute"; findingId: string; decision: "uphold" | "close" }
+  | { type: "decide-dispute"; findingId: string; decision: "uphold" | "close"; pr: boolean }
+  /** The user approves the findings gate's round with `findingIds`, deselecting the rest, which stay open. */
+  | { type: "approve-findings"; findingIds: string[]; pr: boolean }
   /** The user sets the attention level at Needs you, overriding the computed one until the head moves. */
   | { type: "set-level"; level: AttentionLevel; reason: string };
 
@@ -67,6 +75,8 @@ export type LoopEvent =
 export type CardPrompt =
   /** The thread already exists, so its instructions only pick the contract up at its next session. */
   | { kind: "monitoring" }
+  /** `edited` when the user changed the plan the thread proposed, or wrote one it never proposed. */
+  | { kind: "plan-approved"; plan: string; edited: boolean }
   | { kind: "checks-failed"; commit: string; command: string; exitCode: number; outputTail: string }
   /** `byUser` marks a round the user started, which `round` doesn't count. */
   | { kind: "fix"; round: number; reviewId: string; findingIds: string[]; byUser?: true }
@@ -111,6 +121,23 @@ function needsYou(state: LoopState, reason: NeedsYouReason): LoopStep {
     state: { ...state, phase: "needs-you", reason },
     actions: [{ type: "move", column: COLUMN.review }, ...(narrated(effectiveLevel(state)) ? [{ type: "spawn-narrative" as const }] : [])],
   };
+}
+
+/** A PR card is left for the user to merge, and sync moves it to Done; a local card's thread lands the change. */
+function accepted(state: LoopState, pr: boolean): LoopStep {
+  const next = { ...state, phase: "accepted" as const, reason: null };
+  return pr ? stay(next) : { state: next, actions: [{ type: "prompt-card", prompt: { kind: "land" } }] };
+}
+
+/**
+ * The loop ended clean. The auto-accept gate accepts it without stopping only at Glance, with no serious finding or
+ * escalated dispute open; open minors don't block it and stay listed on the card.
+ */
+function finish(state: LoopState, pr: boolean): LoopStep {
+  const serious = state.openFindings.some((finding) => finding.severity !== "minor") || state.disputes.some((dispute) => dispute.decision === null && dispute.severity !== "minor");
+  if (!state.gates.autoAccept || effectiveLevel(state) !== "glance" || serious) return needsYou(state, "clean");
+  const step = accepted({ ...state, autoAccepted: true }, pr);
+  return { state: step.state, actions: [{ type: "move", column: pr ? COLUMN.review : COLUMN.inProgress }, ...step.actions] };
 }
 
 /** Stopped for the user, who can accept, send back, rethink or settle findings. */
@@ -186,23 +213,32 @@ function reviewCompleted(base: LoopState, event: Extract<LoopEvent, { type: "rev
   const keptOpen = rejected.map(loopFinding);
   const open = routed(findings).map(loopFinding);
   if (rejected.some((finding) => finding.severity !== "minor")) return needsYou({ ...state, openFindings: keptOpen, heldFindings: open }, "dispute");
-  return route(state, { ...base, disputes: state.disputes }, reviewId, open, keptOpen);
+  return route(state, { ...base, disputes: state.disputes }, reviewId, open, keptOpen, event.pr);
 }
 
 /**
  * Hands `open` to the card's thread as the loop's next round, or stops at Needs you: clean when nothing is open or
- * only minors are left at the cap. A round starts from `base`, since the level is only recomputed when the loop stops.
+ * only minors are left at the cap, and for the findings gate's approval. A round starts from `base`, since the level is
+ * only recomputed when the loop stops.
  */
-function route(stopped: LoopState, base: LoopState, reviewId: string, open: LoopFinding[], keptOpen: LoopFinding[]): LoopStep {
-  if (open.length === 0) return needsYou({ ...stopped, openFindings: keptOpen }, "clean");
+function route(stopped: LoopState, base: LoopState, reviewId: string, open: LoopFinding[], keptOpen: LoopFinding[], pr: boolean): LoopStep {
+  if (open.length === 0) return finish({ ...stopped, openFindings: keptOpen }, pr);
   if (stopped.round >= LOOP_ROUND_CAP) {
     if (open.some((finding) => finding.severity !== "minor")) return needsYou(stopped, "cap");
-    return needsYou({ ...stopped, openFindings: [...open, ...keptOpen] }, "clean");
+    return finish({ ...stopped, openFindings: [...open, ...keptOpen] }, pr);
   }
+  // No narrative: the user only picks findings here, and the loop carries on once they have.
+  if (stopped.gates.findings) {
+    return { state: { ...stopped, phase: "needs-you", reason: "findings", reviewId, openFindings: keptOpen, awaitingFindings: open }, actions: [{ type: "move", column: COLUMN.review }] };
+  }
+  return loopRound(stopped, base, reviewId, open);
+}
+
+function loopRound(stopped: LoopState, base: LoopState, reviewId: string, open: LoopFinding[]): LoopStep {
   const round = stopped.round + 1;
   const findingIds = open.map((finding) => finding.id);
   return {
-    state: { ...base, phase: "fixing", reason: null, round, reviewId, heldFindings: [], rounds: [...stopped.rounds, { reviewId, handed: findingIds, answers: {}, owner: "loop", comments: 0 }] },
+    state: { ...base, phase: "fixing", reason: null, round, reviewId, heldFindings: [], awaitingFindings: [], rounds: [...stopped.rounds, { reviewId, handed: findingIds, answers: {}, owner: "loop", comments: 0 }] },
     actions: [
       { type: "move", column: COLUMN.inProgress },
       { type: "prompt-card", prompt: { kind: "fix", round, reviewId, findingIds } },
@@ -229,7 +265,7 @@ function userRound(state: LoopState, reviewId: string, findingIds: string[]): Lo
 }
 
 /** Once no serious dispute waits on the user, the upheld ones go to fix with what they held back, as the user's round. */
-function decideDispute(state: LoopState, findingId: string, decision: "uphold" | "close"): LoopStep {
+function decideDispute(state: LoopState, findingId: string, decision: "uphold" | "close", pr: boolean): LoopStep {
   const target = state.disputes.find((dispute) => dispute.id === findingId && dispute.decision === null);
   if (target === undefined || state.reviewId === null) return stay(state);
   const disputes = state.disputes.map((dispute) => (dispute === target ? { ...dispute, decision: decision === "uphold" ? ("upheld" as const) : ("closed" as const) } : dispute));
@@ -238,7 +274,16 @@ function decideDispute(state: LoopState, findingId: string, decision: "uphold" |
   if (disputes.some((dispute) => dispute.decision === null && dispute.severity !== "minor")) return stay(next);
   const upheld = disputes.filter((dispute) => dispute.decision === "upheld").map((dispute) => dispute.id);
   if (upheld.length > 0) return userRound(next, state.reviewId, [...upheld, ...next.heldFindings.map((finding) => finding.id)]);
-  return route(next, next, state.reviewId, next.heldFindings, next.openFindings);
+  return route(next, next, state.reviewId, next.heldFindings, next.openFindings, pr);
+}
+
+/** The findings gate's round goes out with the approved findings; the deselected stay open, and with none approved the loop ends. */
+function approveFindings(state: LoopState, findingIds: string[], pr: boolean): LoopStep {
+  if (state.reason !== "findings" || state.reviewId === null) return stay(state);
+  const approved = state.awaitingFindings.filter((finding) => findingIds.includes(finding.id));
+  const next = { ...state, awaitingFindings: [], openFindings: [...state.openFindings, ...state.awaitingFindings.filter((finding) => !findingIds.includes(finding.id))] };
+  if (approved.length === 0) return finish(next, pr);
+  return loopRound(next, next, state.reviewId, approved);
 }
 
 export function reduce(state: LoopState, event: LoopEvent): LoopStep {
@@ -247,8 +292,31 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       if (state.monitored) return stay(state);
       return {
         // A check or review still running from before the card was unmonitored carries on.
-        state: { ...state, monitored: true, phase: running(state) ? state.phase : "building", reason: null, pausedPhase: null, failedThreadId: null },
+        state: {
+          ...state,
+          monitored: true,
+          gates: event.gates,
+          phase: running(state) ? state.phase : event.gates.plan && state.plan === null ? "planning" : "building",
+          reason: null,
+          pausedPhase: null,
+          failedThreadId: null,
+        },
         actions: [{ type: "ensure-columns" }, ...(event.hasThread ? [{ type: "prompt-card" as const, prompt: { kind: "monitoring" as const } }] : [])],
+      };
+    case "set-gates":
+      // Turning the plan gate on only takes effect at the next monitor or rethink; turning it off lets a held thread build.
+      return stay({ ...state, gates: event.gates, phase: state.phase === "planning" && !event.gates.plan ? "building" : state.phase });
+    case "plan-proposed":
+      if (!state.monitored || state.phase !== "planning") return stay(state);
+      return { state: { ...state, proposedPlan: event.plan }, actions: [{ type: "move", column: COLUMN.review }] };
+    case "approve-plan":
+      if (!state.monitored || state.phase !== "planning") return stay(state);
+      return {
+        state: { ...state, phase: "building", plan: event.plan, proposedPlan: null },
+        actions: [
+          { type: "move", column: COLUMN.inProgress },
+          { type: "prompt-card", prompt: { kind: "plan-approved", plan: event.plan, edited: state.proposedPlan?.trim() !== event.plan.trim() } },
+        ],
       };
     case "unmonitor": {
       // The loop stops after the current step, so a running check or review keeps its phase until its result arrives.
@@ -280,7 +348,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       };
     }
     case "ready": {
-      if (!state.monitored || state.phase === "accepted" || state.phase === "landed") return stay(state);
+      if (!state.monitored || state.phase === "accepted" || state.phase === "landed" || state.phase === "planning") return stay(state);
       if (state.phase === "checking" && state.commit === event.commit) return stay(state);
       // The service refuses such a report with the ids; this only keeps the round from completing half-answered.
       if (unansweredFindings(state).length > 0) return stay(state);
@@ -297,6 +365,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
           evidence: event.evidence,
           checkCommand: event.checkCommand,
           openFindings: [],
+          awaitingFindings: [],
           levelOverride: state.levelOverride?.commit === event.commit ? state.levelOverride : null,
         },
         actions: [
@@ -353,9 +422,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       return stay({ ...state, phase: "paused", reason: "question", pausedPhase: state.phase });
     case "accept":
       if (!waiting(state)) return stay(state);
-      // A PR card is left for the user to merge; sync moves it to Done.
-      if (event.pr) return stay({ ...state, phase: "accepted", reason: null });
-      return { state: { ...state, phase: "accepted", reason: null }, actions: [{ type: "prompt-card", prompt: { kind: "land" } }] };
+      return accepted(state, event.pr);
     case "landed":
       if (state.phase !== "accepted") return stay(state);
       return { state: { ...state, phase: "landed" }, actions: [{ type: "move", column: COLUMN.done }] };
@@ -364,7 +431,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       // Logged as a round on the last review, so the next review is the incremental one of what the comments changed.
       const rounds = state.reviewId === null ? state.rounds : [...state.rounds, { reviewId: state.reviewId, handed: [], answers: {}, owner: "user" as const, comments: event.comments }];
       return {
-        state: { ...state, phase: "building", reason: null, humanRounds: state.humanRounds + 1, heldFindings: [], rounds },
+        state: { ...state, phase: "building", reason: null, humanRounds: state.humanRounds + 1, heldFindings: [], awaitingFindings: [], rounds },
         actions: [
           { type: "move", column: COLUMN.inProgress },
           { type: "prompt-card", prompt: { kind: "comments" } },
@@ -374,7 +441,23 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
     case "rethink":
       if (!waiting(state)) return stay(state);
       return {
-        state: { ...state, phase: "building", reason: null, round: 0, rounds: [], reviewId: null, attention: null, levelOverride: null, classification: null, openFindings: [], disputes: [], heldFindings: [] },
+        state: {
+          ...state,
+          phase: state.gates.plan ? "planning" : "building",
+          reason: null,
+          round: 0,
+          rounds: [],
+          reviewId: null,
+          attention: null,
+          levelOverride: null,
+          classification: null,
+          openFindings: [],
+          disputes: [],
+          heldFindings: [],
+          awaitingFindings: [],
+          plan: null,
+          proposedPlan: null,
+        },
         actions: [
           { type: "move", column: COLUMN.inProgress },
           { type: "prompt-card", prompt: { kind: "rethink" } },
@@ -385,7 +468,10 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       return userRound(state, state.reviewId, [event.findingId]);
     case "decide-dispute":
       if (!waiting(state)) return stay(state);
-      return decideDispute(state, event.findingId, event.decision);
+      return decideDispute(state, event.findingId, event.decision, event.pr);
+    case "approve-findings":
+      if (!waiting(state)) return stay(state);
+      return approveFindings(state, event.findingIds, event.pr);
     case "set-level": {
       if (!waiting(state)) return stay(state);
       const override = { level: event.level, reason: event.reason, from: state.attention?.level ?? null, commit: state.commit };

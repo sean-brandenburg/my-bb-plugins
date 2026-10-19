@@ -85,6 +85,12 @@ export function defineSettings(bb: BbPluginApi) {
       description: "New diff comments on PR cards carrying this tag default to going to the GitHub PR; elsewhere they default to local notes for an agent.",
       default: "pr-reviews",
     },
+    monitorTags: {
+      type: "string",
+      label: "Monitor tags",
+      description: "New cards carrying any of these comma-separated tags start monitored, running the review loop with the default gates. Only new cards; turning a card's monitoring off or on afterwards always wins.",
+      default: "",
+    },
     hideReviewThreads: {
       type: "boolean",
       label: "Keep code review threads out of the sidebar",

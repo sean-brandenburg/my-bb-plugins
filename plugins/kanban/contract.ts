@@ -4,7 +4,7 @@ import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sour
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
-import { attentionLevelSchema, levelOverrideSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
+import { PLAN_MAX_LENGTH, attentionLevelSchema, levelOverrideSchema, loopGatesSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
 import { readingPlanSchema } from "./shared/reading-plan";
 import { DEFAULT_REVIEW_DEPTH, findingEditSchema, reviewDepthSchema, reviewSchema } from "./shared/review";
 import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
@@ -20,6 +20,8 @@ export const rpcContract = defineRpcContract({
         tags: z.array(tagSchema).max(20).default([]),
         projectId: z.string().nullable().default(null),
         startThread: z.boolean().default(false),
+        /** The card's own monitoring flag; absent, the tags' monitoring default decides. */
+        monitored: z.boolean().optional(),
         /** Create the card as a subtask of this card. */
         parentId: z.string().nullable().default(null),
         dueDate: dueDateSchema.nullable().default(null),
@@ -130,10 +132,16 @@ export const rpcContract = defineRpcContract({
     output: ticketSchema,
   },
   /** Turn the review loop on or off; off stops it after its current step. */
+  /** `gates` are chosen as monitoring turns on; without them the card's kind picks the defaults. */
   ticket_set_monitored: {
-    input: z.object({ id: z.string(), monitored: z.boolean() }).strict(),
+    input: z.object({ id: z.string(), monitored: z.boolean(), gates: loopGatesSchema.optional() }).strict(),
     output: ticketSchema,
   },
+  loop_set_gates: { input: z.object({ id: z.string(), gates: loopGatesSchema }).strict(), output: ticketSchema },
+  /** While the plan gate holds the card: the plan, as proposed or edited, goes to its thread and every later review. */
+  loop_approve_plan: { input: z.object({ id: z.string(), plan: z.string().trim().min(1).max(PLAN_MAX_LENGTH) }).strict(), output: ticketSchema },
+  /** While the findings gate holds a round: the approved findings go to fix, the rest stay open. */
+  loop_approve_findings: { input: z.object({ id: z.string(), findingIds: z.array(z.string()) }).strict(), output: ticketSchema },
   /** At Needs you: a local card's thread lands the change, a PR card is left for the user to merge. */
   loop_accept: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
   /** At Needs you: the card's unsent local diff comments go to its thread as the user's round. */

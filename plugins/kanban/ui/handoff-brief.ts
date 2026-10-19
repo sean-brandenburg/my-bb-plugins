@@ -69,6 +69,8 @@ function escalation(loop: LoopState, report: ReviewReport | null): string | null
       return "The card's thread is waiting on your answer; the loop resumes at its next ready";
     case "loop-error":
       return "A checks or review thread failed twice";
+    case "findings":
+      return `The findings gate holds round ${loop.round + 1}: approve or deselect its findings before the fix prompt goes out`;
     default:
       return NEEDS_YOU_REASON_LABEL[reason];
   }

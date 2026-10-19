@@ -2,7 +2,7 @@ import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
-import { evidenceSchema, findingAnswerSchema, phaseChip, type Evidence } from "../shared/loop";
+import { PLAN_MAX_LENGTH, evidenceSchema, findingAnswerSchema, phaseChip, type Evidence, type LoopGates } from "../shared/loop";
 import { DEFAULT_REVIEW_DEPTH, REVIEW_DEPTH_LABEL, reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
@@ -23,7 +23,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
   const { runSync } = services.sourceSync;
-  const { setMonitored, answerFindings, reportReady, recordChecks, reportLanded } = services.loop;
+  const { setMonitored, proposePlan, answerFindings, reportReady, recordChecks, reportLanded } = services.loop;
 
   const COMMIT_SHA = /^[0-9a-f]{7,40}$/iu;
 
@@ -77,6 +77,19 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
     const parsed = reviewDepthSchema.safeParse(raw.toLowerCase());
     if (!parsed.success) throw new PluginCliError(`Unknown review depth "${raw}"; expected quick, standard or deep.`, { code: "invalid_depth" });
     return parsed.data;
+  }
+
+  const GATE_NAMES: Record<string, keyof LoopGates> = { plan: "plan", findings: "findings", "auto-accept": "autoAccept" };
+
+  function parseGates(raw: string): LoopGates {
+    const gates: LoopGates = { plan: false, findings: false, autoAccept: false };
+    const names = raw.split(",").map((name) => name.trim().toLowerCase()).filter((name) => name !== "" && name !== "none");
+    for (const name of names) {
+      const gate = GATE_NAMES[name];
+      if (gate === undefined) throw new PluginCliError(`Unknown gate "${name}"`, { code: "invalid_gate", hint: "Gates are plan, findings and auto-accept, or none." });
+      gates[gate] = true;
+    }
+    return gates;
   }
 
   function parseEvidence(raw: string | undefined, screenshots: readonly string[]): Evidence {
@@ -178,6 +191,8 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               description: "Spawn a thread for the card (needs --project or a fallback project setting)",
             },
             "no-link": { type: "boolean", description: "Do not link the card to the current thread" },
+            monitor: { type: "boolean", description: "Monitor the card with the default gates, whatever its tags' default" },
+            "no-monitor": { type: "boolean", description: "Leave the card unmonitored, even when one of its tags monitors new cards" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ positionals, options }, ctx) {
@@ -208,6 +223,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               pr: null,
               parentId: options.parent ?? null,
               dueDate,
+              ...(options.monitor ? { monitored: true } : options["no-monitor"] ? { monitored: false } : {}),
             });
             publish();
             if (ctx.threadId !== undefined && options.parent === undefined && !options["no-link"] && !options["start-thread"] && options.project === undefined) {
@@ -347,16 +363,39 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
         monitor: cliCommand({
           summary: "Turn the review loop on or off for a card (defaults to the current thread's card): the board checks, reviews and routes its work itself",
           positionals: [{ name: "state", description: "`on` or `off`", required: true }],
-          options: { ...ticketOption, json: { type: "boolean", description: "Emit JSON" } },
+          options: {
+            ...ticketOption,
+            gates: {
+              type: "string",
+              description: "With `on`: the comma-separated gates to turn on (plan, findings, auto-accept), or `none`; defaults to plan approval on Jira cards only",
+            },
+            json: { type: "boolean", description: "Emit JSON" },
+          },
           async run({ positionals, options }, ctx) {
             const state = positionals.state.toLowerCase();
             if (state !== "on" && state !== "off") throw new PluginCliError(`Expected \`on\` or \`off\`, got "${positionals.state}"`, { code: "invalid_state" });
             const ticket = ticketForContext(options.ticket, ctx.threadId);
-            const updated = await setMonitored(ticket.id, state === "on");
+            const updated = await setMonitored(ticket.id, state === "on", options.gates === undefined ? null : parseGates(options.gates));
             return {
               exitCode: 0,
               stdout: options.json ? JSON.stringify(updated) : state === "on" ? `Monitoring ${formatTicket(updated, await getColumns())}` : `Stopped monitoring ${ticket.id}; the loop stops after its current step`,
             };
+          },
+        }),
+        plan: cliCommand({
+          summary: "Propose a monitored card's plan while its plan gate holds it (run by the card's own thread): the user approves or edits it before you build",
+          options: { ...ticketOption, plan: { type: "string", stdin: true, required: true, description: "The plan as Markdown; --plan-stdin reads it from stdin" } },
+          async run({ options }, ctx) {
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            const plan = options.plan.trim();
+            if (plan === "" || plan.length > PLAN_MAX_LENGTH) throw new PluginCliError(`The plan must be 1 to ${PLAN_MAX_LENGTH} characters`, { code: "invalid_plan" });
+            try {
+              await proposePlan(ticket.id, plan);
+            } catch (error) {
+              if (!(error instanceof LoopTurnError)) throw error;
+              throw new PluginCliError(error.message, { code: "not_planning" });
+            }
+            return { exitCode: 0, stdout: "Plan proposed. Stop here and wait: the board sends you the approved plan, possibly edited, when the user approves it." };
           },
         }),
         ready: cliCommand({
@@ -384,7 +423,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               if (error instanceof FindingAnswerError) {
                 throw new PluginCliError(error.message, { code: "unanswered_findings", hint: 'Run `bb kanban answer <ids> fixed`, or `bb kanban answer <id> disputed --reason "<why>"`, for each.' });
               }
-              if (error instanceof LoopTurnError) throw new PluginCliError(error.message, { code: "accepted" });
+              if (error instanceof LoopTurnError) throw new PluginCliError(error.message, { code: "not_your_turn" });
               if (!(error instanceof NoCheckCommandError)) throw error;
               throw new PluginCliError(error.message, { code: "check_command_required", hint: 'Pass --check-command "<the command you ran>".' });
             }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
-import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel } from "../shared/loop";
+import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel, type LoopGates } from "../shared/loop";
 import type { PlanFile, ReadingPlan } from "../shared/reading-plan";
 import type { Ticket } from "../shared/board";
 import type { FindingSeverity, Review } from "../shared/review";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -332,6 +333,7 @@ const DECISION_DONE: Record<BriefAction, string> = {
   "close-dispute": "Closed the finding",
   "open-plan": "",
   "change-level": "Changed the attention level",
+  approve: "Approved",
 };
 
 const ROLE_TONE: Record<PlanFile["role"], "danger" | "warning" | "outline"> = { key: "danger", supporting: "warning", mechanical: "outline" };
@@ -438,9 +440,13 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
   const plan = useReadingPlan(ticket, rpc);
   const navigate = useBbNavigate();
   const [levelForm, setLevelForm] = useState(false);
+  const [deselected, setDeselected] = useState<string[]>([]);
+  useEffect(() => setDeselected([]), [ticket.loop?.reviewId, ticket.loop?.reason]);
   const sections = reviews === null ? null : handoffBrief(ticket.loop, reviews);
   if (sections === null) return null;
   const stopped = ticket.loop?.phase === "needs-you" && !pending;
+  const awaiting = ticket.loop?.reason === "findings" ? ticket.loop.awaitingFindings : [];
+  const approved = awaiting.filter((finding) => !deselected.includes(finding.id)).map((finding) => finding.id);
   const id = ticket.id;
   const level = sections.find((section) => section.kind === "level")!;
   const openPlan = () => {
@@ -472,13 +478,25 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
           return rpc.call("loop_decide_dispute", { id, findingId, decision: "uphold" });
         case "close-dispute":
           return rpc.call("loop_decide_dispute", { id, findingId, decision: "close" });
+        case "approve":
+          return rpc.call("loop_approve_findings", { id, findingIds: approved });
       }
-    }, DECISION_DONE[action]);
+    }, action === "approve" ? (approved.length === 0 ? "No findings approved; the loop ends here" : `Sent ${approved.length} finding${approved.length === 1 ? "" : "s"} to fix`) : DECISION_DONE[action]);
   };
   const noThread = ticket.threadId === null;
   return (
     <div data-kanban-brief="" className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
+        {awaiting.length === 0 ? null : (
+          <ActionButton
+            action="approve"
+            keyHint="Y"
+            label={`Approve findings (${approved.length} of ${awaiting.length})`}
+            title="Send the selected findings to the card's thread as the loop's next round; the deselected stay open"
+            disabled={!stopped}
+            onDecide={decide}
+          />
+        )}
         <ActionButton
           action="accept"
           keyHint="A"
@@ -515,6 +533,24 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
           }}
         />
       ) : null}
+      {awaiting.length === 0 ? null : (
+        <Group title="Findings to approve" summary={<span className="text-xs text-muted-foreground">{approved.length} of {awaiting.length}</span>} defaultOpen>
+          <Items>
+            {awaiting.map((finding) => (
+              <li key={finding.id} className="flex items-center gap-1.5">
+                <Checkbox
+                  checked={!deselected.includes(finding.id)}
+                  disabled={!stopped}
+                  onCheckedChange={(checked) => setDeselected((ids) => (checked === true ? ids.filter((entry) => entry !== finding.id) : [...ids, finding.id]))}
+                  aria-label={`Send ${finding.id} to fix`}
+                />
+                <Badge tone={SEVERITY_TONE[finding.severity]}>{finding.id}</Badge>
+                <span>{finding.title}</span>
+              </li>
+            ))}
+          </Items>
+        </Group>
+      )}
       {sections.map((section) => (
         <Group key={section.kind} title={BRIEF_SECTION_TITLE[section.kind]} summary={sectionSummary(section)} defaultOpen>
           <SectionBody section={section} onOpenThread={onOpenThread} decide={stopped ? decide : null} />
@@ -535,6 +571,87 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
         </Group>
       )}
     </div>
+  );
+}
+
+const GATE_OPTIONS: Array<{ gate: keyof LoopGates; label: string; title: string }> = [
+  { gate: "plan", label: "Plan approval", title: "The card's thread proposes a plan and waits for your approval or edits before building" },
+  { gate: "findings", label: "Findings approval", title: "Each round's findings wait for you to approve or deselect them before the fix prompt goes out" },
+  { gate: "autoAccept", label: "Auto-accept", title: "A change that ends clean at Glance, with nothing serious open, is accepted without stopping at Needs you" },
+];
+
+/** The loop's gates as checkboxes, each a stop for the card's keys; chosen before monitoring turns on, and changeable after. */
+export function GateOptions({ gates, disabled, onChange }: { gates: LoopGates; disabled: boolean; onChange: (gates: LoopGates) => void }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {GATE_OPTIONS.map(({ gate, label, title }) => (
+        <label key={gate} className="flex items-center gap-1.5 text-xs" title={title}>
+          <Checkbox checked={gates[gate]} disabled={disabled} onCheckedChange={(checked) => onChange({ ...gates, [gate]: checked === true })} aria-label={`${label}: ${title}`} />
+          {label}
+        </label>
+      ))}
+    </span>
+  );
+}
+
+/** While the plan gate holds the card: the proposed plan, editable, and its approval, which `Y` presses. */
+export function PlanApproval({ ticket, rpc, run, pending }: { ticket: Ticket; rpc: Rpc; run: RunAction; pending: boolean }) {
+  const proposed = ticket.loop?.proposedPlan ?? null;
+  const [plan, setPlan] = useState(proposed ?? "");
+  useEffect(() => setPlan(proposed ?? ""), [proposed]);
+  if (ticket.loop?.monitored !== true || ticket.loop.phase !== "planning") return null;
+  return (
+    <div data-kanban-brief="" className="flex flex-col gap-1.5">
+      <Group title="Plan" summary={proposed === null ? <Badge tone="outline">waiting</Badge> : <Badge tone="warning">needs you</Badge>} defaultOpen>
+        <p className="text-xs text-muted-foreground">
+          {proposed === null
+            ? "The plan gate holds the card: its thread proposes a plan before building. You can also write one here and approve it."
+            : "The card's thread proposed this plan. Edit it if you want; the approved plan goes to the thread and every review of the change."}
+        </p>
+        <textarea
+          aria-label="Plan"
+          value={plan}
+          rows={8}
+          placeholder="The approach, the files it changes, how it is verified"
+          onChange={(event) => setPlan(event.target.value)}
+          className="w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-1.5 font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <div>
+          <ActionButton
+            action="approve"
+            keyHint="Y"
+            label={proposed !== null && plan.trim() !== proposed.trim() ? "Approve edited plan" : "Approve plan"}
+            title="The card's thread builds to this plan"
+            disabled={pending || plan.trim() === ""}
+            onDecide={() => void run(() => rpc.call("loop_approve_plan", { id: ticket.id, plan: plan.trim() }), "Plan approved; the card's thread builds to it")}
+          />
+        </div>
+      </Group>
+    </div>
+  );
+}
+
+/** Minor findings an accepted card left open, each with a card of its own to make. */
+export function LeftOpenMinors({ ticket, rpc, run, pending }: { ticket: Ticket; rpc: Rpc; run: RunAction; pending: boolean }) {
+  const loop = ticket.loop;
+  if (loop === null || (loop.phase !== "accepted" && loop.phase !== "landed") || loop.openFindings.length === 0 || loop.reviewId === null) return null;
+  const reviewId = loop.reviewId;
+  return (
+    <Group title="Left open" summary={<span className="text-xs text-muted-foreground">{loop.openFindings.length} minor</span>} defaultOpen>
+      <Items>
+        {loop.openFindings.map((finding) => (
+          <FindingItem
+            key={finding.id}
+            {...finding}
+            action={
+              <Button type="button" variant="secondary" className={COMPACT} disabled={pending} onClick={() => void run(() => rpc.call("review_make_card", { reviewId, findingId: finding.id }), "Card made for the finding")}>
+                Make a card
+              </Button>
+            }
+          />
+        ))}
+      </Items>
+    </Group>
   );
 }
 

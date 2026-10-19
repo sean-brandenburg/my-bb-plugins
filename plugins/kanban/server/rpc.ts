@@ -46,6 +46,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
           pr: null,
           parentId: input.parentId,
           dueDate: input.dueDate,
+          ...(input.monitored === undefined ? {} : { monitored: input.monitored }),
         });
         for (const subtask of input.subtasks) {
           board.createTicket({
@@ -98,7 +99,10 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     ticket_delete: ({ id }) => board.deleteTicket(id),
     ticket_restore: ({ id }) => board.restoreTicket(id),
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
-    ticket_set_monitored: ({ id, monitored }) => loop.setMonitored(id, monitored),
+    ticket_set_monitored: ({ id, monitored, gates }) => loop.setMonitored(id, monitored, gates ?? null),
+    loop_set_gates: ({ id, gates }) => loop.setGates(id, gates),
+    loop_approve_plan: ({ id, plan }) => loop.approvePlan(id, plan),
+    loop_approve_findings: ({ id, findingIds }) => loop.approveFindings(id, findingIds),
     loop_accept: ({ id }) => loop.accept(id),
     loop_send_back: ({ id }) => loop.sendBack(id),
     loop_rethink: ({ id }) => loop.rethink(id),

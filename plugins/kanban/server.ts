@@ -53,10 +53,12 @@ export default async function plugin(bb: BbPluginApi) {
   await board.keepPreLoopDefaults();
   sourceSync.registerService();
   board.setReviewTag((await settings.get()).reviewTag);
+  board.setMonitorTags((await settings.get()).monitorTags);
   await codeReviewThreads.reconcileOnLoad();
   await reviews.repairInterimReviewsOnLoad();
   settings.onChange((next, prev) => {
     board.setReviewTag(next.reviewTag);
+    board.setMonitorTags(next.monitorTags);
     if (next.hideReviewThreads !== prev.hideReviewThreads) void codeReviewThreads.applyCodeReviewThreadVisibility(next.hideReviewThreads);
     sourceSync.onSettingsChange(next, prev);
   });

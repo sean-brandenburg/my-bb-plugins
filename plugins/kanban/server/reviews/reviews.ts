@@ -66,9 +66,9 @@ export function createReviews(
     }
   }
 
-  /** The plan gate doesn't keep the plan it approved yet; when it does, the review's scope finder takes it from here. */
-  function cardIntent(branch: string | null): CardIntent {
-    return { plan: null, branch };
+  /** The plan the plan gate approved, which the review's scope finder and triage hold the change to. */
+  function cardIntent(ticket: Ticket, branch: string | null): CardIntent {
+    return { plan: ticket.loop?.plan ?? null, branch };
   }
 
   /**
@@ -85,13 +85,13 @@ export function createReviews(
     answers: Record<string, FindingAnswer> = {},
   ): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, depth, prSubject(ticket), cardIntent(null), answers);
+    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, depth, prSubject(ticket), cardIntent(ticket, null), answers);
     const { subject: head, projectId, branch } = await localReviewTarget(ticket);
     const subject = commit === null || head.kind !== "local" ? head : localSubject(commit, head.defaultBranch);
     if (explicitProjectId !== null && explicitProjectId !== projectId) {
       throw new Error(`A local review runs in the project of the card's thread (${projectId}), so it can't run in ${explicitProjectId}`);
     }
-    return spawnReviewForTicket(ticket.id, projectId, mode, depth, subject, cardIntent(branch), answers);
+    return spawnReviewForTicket(ticket.id, projectId, mode, depth, subject, cardIntent(ticket, branch), answers);
   }
 
   async function spawnReviewForTicket(

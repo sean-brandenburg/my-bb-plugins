@@ -5,7 +5,9 @@ import type { DiffCommentTarget } from "../shared/comments";
 import type { Review } from "../shared/review";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToReview, rowToTicket, type TicketRow } from "./db/rows";
-import { normalizeTags, parseStringArray, shortId } from "./util";
+import { defaultGates, INITIAL_LOOP_STATE } from "../shared/loop";
+import { reduce } from "./loop/reducer";
+import { errorMessage, normalizeTags, parseStringArray, shortId } from "./util";
 
 /** Columns a brand-new card lands in, by what the card is. */
 export function initialColumn(columns: Column[], pr: PullRequest | null, jira: JiraIssue | null = null): string {
@@ -82,6 +84,7 @@ export function createBoardStore(ctx: KanbanContext) {
   }
 
   let reviewTagCache = "pr-reviews";
+  let monitorTagsCache = new Set<string>();
   function canPostToGithub(row: TicketRow): boolean {
     return row.kind === "pr" && row.pr_repo !== null && row.pr_number !== null;
   }
@@ -206,6 +209,10 @@ export function createBoardStore(ctx: KanbanContext) {
     jira?: JiraIssue | null;
     parentId?: string | null;
     dueDate?: string | null;
+    /** The card's own monitoring flag, which wins over the defaults; absent, its source or tags decide. */
+    monitored?: boolean;
+    /** The card comes from a source that monitors new cards. */
+    sourceMonitors?: boolean;
   }): Ticket {
     const now = Date.now();
     const id = shortId();
@@ -242,7 +249,17 @@ export function createBoardStore(ctx: KanbanContext) {
       created_at: now,
       updated_at: now,
     });
+    const tags = normalizeTags(input.tags ?? []);
+    if (input.monitored ?? (input.sourceMonitors === true || tags.some((tag) => monitorTagsCache.has(tag)))) {
+      // A new card has no thread to tell, so the monitor event's only other action is the columns.
+      stmts.setLoopState.run(JSON.stringify(reduce(INITIAL_LOOP_STATE, { type: "monitor", hasThread: false, gates: defaultGates(input.kind) }).state), id);
+      ensureLoopColumns().catch((error: unknown) => bb.log.warn(`could not add the review loop's columns: ${errorMessage(error)}`));
+    }
     return getTicket(id);
+  }
+
+  function setMonitorTags(raw: string): void {
+    monitorTagsCache = new Set(normalizeTags(raw.split(",")));
   }
 
   function setReviewTag(raw: string): void {
@@ -374,6 +391,7 @@ export function createBoardStore(ctx: KanbanContext) {
     keepPreLoopDefaults,
     getSources,
     setReviewTag,
+    setMonitorTags,
   };
 }
 

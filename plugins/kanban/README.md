@@ -155,6 +155,19 @@ its PR is reviewed and its review findings and comments are handed to agents.
   monitoring off stops the loop after its current step: a running check or
   review finishes, and its result is kept but drives nothing; a fix round in
   progress ends with its findings left open, so the review's Apply is back.
+  Three gates sit beside the Monitor toggle (`j`/`k` reach them, Space ticks),
+  chosen as monitoring turns on (`bb kanban monitor on --gates
+  plan,findings,auto-accept|none`): plan approval (on by default for Jira
+  cards) holds the card in `planning` until its thread proposes a plan with
+  `bb kanban plan --plan-stdin` and you approve it, edited or not, with `Y`; the
+  approved plan goes to the thread and into every review's card intent.
+  Findings approval stops each round at Needs you (`approve rN`) until you
+  untick findings and approve the rest with `Y`; the unticked stay open.
+  Auto-accept accepts a clean change at Glance, with no serious finding or
+  dispute open, without stopping; never at Read or Scrutinize. Open minors
+  are listed on the accepted card with Make a card. A source's "Monitor new
+  cards" box and the Monitor tags setting monitor new cards by default;
+  `bb kanban add --monitor|--no-monitor` and the card's toggle always win.
   A card stopped at Needs you (or paused by a question) opens with a handoff
   brief at the top of its panel, one collapsible group per section the card's
   `j`/`k` reach: the level and its reasons, led by why the loop stopped when
@@ -504,12 +517,13 @@ bb kanban due <YYYY-MM-DD|none> [--ticket <id>]
 bb kanban sources
 bb kanban columns
 bb kanban show [--ticket <id>]
-bb kanban add "<title>" [--tag <tag>] [--due <YYYY-MM-DD>] [--description <md>] [--column <id>] [--project <id>] [--start-thread] [--parent <id>]
+bb kanban add "<title>" [--tag <tag>] [--due <YYYY-MM-DD>] [--description <md>] [--column <id>] [--project <id>] [--start-thread] [--parent <id>] [--monitor|--no-monitor]
 bb kanban subtasks [--ticket <id>]
 bb kanban set-parent <ticket-id> <parent-id|none>
 bb kanban start-subtasks [--ticket <id>] [--sequential]
 bb kanban move <column-id> [--ticket <id>]
-bb kanban monitor on|off [--ticket <id>]
+bb kanban monitor on|off [--ticket <id>] [--gates plan,findings,auto-accept|none]
+bb kanban plan --plan-stdin
 bb kanban ready --commit <sha> [--evidence-stdin] [--screenshot <path>] [--check-command "<cmd>"]
 bb kanban checks-record --exit-code <n> [--output-stdin]
 bb kanban review [--ticket <id>] [--project <id>] [--full]

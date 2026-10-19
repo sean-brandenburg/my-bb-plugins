@@ -16,7 +16,7 @@ import { toastError } from "./actions";
 const SOURCE_KIND_LABELS: Record<SourceKind, string> = { "github-search": "GitHub search", "jira-jql": "Jira (JQL)" };
 
 function newSource(kind: SourceKind, id: string): Source {
-  const base = { id, name: kind === "jira-jql" ? "Jira issues" : "GitHub search", tags: [], doneWhenGone: false, enabled: true, projectId: null };
+  const base = { id, name: kind === "jira-jql" ? "Jira issues" : "GitHub search", tags: [], doneWhenGone: false, enabled: true, projectId: null, monitorNewCards: false };
   return kind === "jira-jql"
     ? { ...base, kind, jql: "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC" }
     : { ...base, kind, query: "" };
@@ -189,6 +189,17 @@ export function SourcesDialog({
                     <option value="keep">Keep the card where it is</option>
                     <option value="done">Move the card to Done</option>
                   </Select>
+                </dd>
+                <dt className="pt-1.5 text-xs text-muted-foreground">Review loop</dt>
+                <dd>
+                  <label className="flex min-h-8 items-center gap-1.5 text-sm">
+                    <Checkbox
+                      checked={source.monitorNewCards}
+                      onCheckedChange={(checked) => update(source.id, (entry) => ({ ...entry, monitorNewCards: checked === true }))}
+                      aria-label={`Monitor new cards from ${source.name}`}
+                    />
+                    Monitor new cards, with the default gates; a card's own flag wins
+                  </label>
                 </dd>
               </dl>
               <p className="text-[11px] text-muted-foreground">

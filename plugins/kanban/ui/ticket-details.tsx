@@ -4,7 +4,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import { useNerdFont } from "bb-nerd-font";
 import type { Board, Column, Ticket } from "../shared/board";
-import { ATTENTION_LEVEL_LABEL, NEEDS_YOU_REASON_LABEL, formatPathRules, parsePathRules, phaseChip, type PathRule } from "../shared/loop";
+import { ATTENTION_LEVEL_LABEL, NEEDS_YOU_REASON_LABEL, defaultGates, formatPathRules, parsePathRules, phaseChip, type PathRule } from "../shared/loop";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +19,7 @@ import { ExternalLink, ThreadStatusDot, Select, HEADER_ICON_BUTTON, COMPACT, Gro
 import { ProjectSelect } from "./project-select";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
-import { HandoffBrief } from "./brief-panel";
+import { GateOptions, HandoffBrief, LeftOpenMinors, PlanApproval } from "./brief-panel";
 import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
@@ -113,8 +113,14 @@ function TicketDetails({
   const hasDiff = useTicketHasDiff(ticket, thread);
   const rootRef = useRef<HTMLDivElement>(null);
   const monitored = ticket.loop?.monitored === true;
+  // The gates to monitor with, chosen beside the toggle; a monitored card shows its own.
+  const [gateChoice, setGateChoice] = useState(() => defaultGates(ticket.kind));
+  useEffect(() => setGateChoice(defaultGates(ticket.kind)), [ticket.id, ticket.kind]);
   const toggleMonitored = () =>
-    void run(() => rpc.call("ticket_set_monitored", { id: ticket.id, monitored: !monitored }), monitored ? "Monitoring off; the loop stops after its current step" : "Monitoring on");
+    void run(
+      () => rpc.call("ticket_set_monitored", monitored ? { id: ticket.id, monitored: false } : { id: ticket.id, monitored: true, gates: gateChoice }),
+      monitored ? "Monitoring off; the loop stops after its current step" : "Monitoring on",
+    );
   const keys = useCardKeys(rootRef, ticket.id, focusOnMount, {
     onMonitor: toggleMonitored,
     onThread: () => {
@@ -232,6 +238,8 @@ function TicketDetails({
       </header>
 
       <HandoffBrief ticket={ticket} rpc={rpc} run={run} pending={pending} onOpenThread={onOpenThread} />
+      <PlanApproval ticket={ticket} rpc={rpc} run={run} pending={pending} />
+      <LeftOpenMinors ticket={ticket} rpc={rpc} run={run} pending={pending} />
 
       <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
         <Property label="Column">
@@ -306,6 +314,11 @@ function TicketDetails({
             <LoopChip ticket={ticket} />
             {monitored ? <LoopStatus ticket={ticket} onOpenThread={onOpenThread} /> : null}
           </div>
+          <GateOptions
+            gates={monitored ? ticket.loop!.gates : gateChoice}
+            disabled={pending}
+            onChange={(gates) => (monitored ? void run(() => rpc.call("loop_set_gates", { id: ticket.id, gates })) : setGateChoice(gates))}
+          />
         </Property>
         {monitored && ticket.projectId !== null ? (
           <Property label="Checks">
@@ -425,7 +438,7 @@ function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (t
   const text =
     loop.phase === "checking"
       ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
-      : loop.phase === "classifying" || loop.phase === "reviewing" || loop.phase === "fixing"
+      : loop.phase === "planning" || loop.phase === "classifying" || loop.phase === "reviewing" || loop.phase === "fixing"
         ? (chip?.title ?? "")
         : loop.phase === "paused"
           ? "Paused: the card's thread is waiting on you; the loop resumes when it reports ready"

@@ -2119,6 +2119,39 @@ describe("monitored review loop", () => {
     await recordChecks("thr_2", 0);
     expect((await card()).loop).toMatchObject({ phase: "classifying" });
   });
+
+  it("holds a plan-gated card until its plan is approved, then sends the approved plan to its thread and its review", async () => {
+    const ticket = await monitoredCard();
+    await current().harness.behavior.callRpc("ticket_set_monitored", { id: ticket.id, monitored: false });
+    await current().harness.behavior.callRpc("ticket_set_monitored", { id: ticket.id, monitored: true, gates: { plan: true, findings: false, autoAccept: false } });
+    expect(sentTexts().at(-1)!.text).toContain("bb kanban plan --plan-stdin");
+    expect((await ready()).exitCode).not.toBe(0);
+
+    expect((await current().harness.behavior.runCli(["plan", "--plan", "Memoize lookups"], ctx("thr_1"))).exitCode).toBe(0);
+    expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "planning", proposedPlan: "Memoize lookups" } });
+    await current().harness.behavior.callRpc("loop_approve_plan", { id: ticket.id, plan: "Memoize lookups per request" });
+    expect(await card()).toMatchObject({ columnId: "in-progress", loop: { phase: "building", plan: "Memoize lookups per request" } });
+    expect(sentTexts().at(-1)!.text).toContain("with their edits");
+    expect(sentTexts().at(-1)!.text).toContain("Memoize lookups per request");
+
+    await ready();
+    await recordChecks("thr_2", 0);
+    await classify("thr_3", 3);
+    await vi.waitFor(() => expect(spawned).toHaveLength(4));
+    expect(String(spawned[3]!.prompt)).toContain("**Approved plan:**\n\nMemoize lookups per request");
+  });
+});
+
+describe("monitoring defaults", () => {
+  it("monitors new cards carrying a monitor tag with the default gates, unless the card's own flag says otherwise", async () => {
+    await load({ autoStartThreads: false, monitorTags: "loop, risky" });
+    const create = async (input: Record<string, unknown>) => (await current().harness.behavior.callRpc("ticket_create", { title: "Work", ...input })) as Ticket;
+    expect((await create({ tags: ["loop"] })).loop).toMatchObject({ monitored: true, phase: "building", gates: { plan: false, findings: false, autoAccept: false } });
+    expect((await create({ tags: ["loop"], monitored: false })).loop).toBeNull();
+    expect((await create({ tags: ["other"] })).loop).toBeNull();
+    expect((await create({ tags: ["other"], monitored: true })).loop).toMatchObject({ monitored: true });
+    expect((await board()).columns.map((column) => column.id)).toContain("checking");
+  });
 });
 
 describe("tags and sources", () => {

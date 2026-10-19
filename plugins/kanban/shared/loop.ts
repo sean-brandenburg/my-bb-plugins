@@ -6,7 +6,7 @@ export const loopPhaseSchema = z.enum(["idle", "planning", "building", "checking
 export type LoopPhase = z.infer<typeof loopPhaseSchema>;
 
 /** Why the loop stopped at Needs you: `clean` is the happy ending, every other reason an escalation. */
-export const needsYouReasonSchema = z.enum(["clean", "cap", "not-converging", "checks", "dispute", "question", "loop-error"]);
+export const needsYouReasonSchema = z.enum(["clean", "cap", "not-converging", "checks", "dispute", "question", "loop-error", "findings"]);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;
 
 export const NEEDS_YOU_REASON_LABEL: Record<NeedsYouReason, string> = {
@@ -17,6 +17,7 @@ export const NEEDS_YOU_REASON_LABEL: Record<NeedsYouReason, string> = {
   dispute: "dispute",
   question: "question",
   "loop-error": "loop error",
+  findings: "findings to approve",
 };
 
 /** Kept short so a card's loop state stays small; the checks table keeps the full tail of a re-run. */
@@ -164,11 +165,22 @@ export const loopGatesSchema = z.object({
 });
 export type LoopGates = z.infer<typeof loopGatesSchema>;
 
+/** The gates a card is monitored with unless they're chosen: a Jira ticket's plan waits for approval, an ad hoc card's doesn't. */
+export function defaultGates(kind: "pr" | "jira" | "adhoc"): LoopGates {
+  return { plan: kind === "jira", findings: false, autoAccept: false };
+}
+
+export const PLAN_MAX_LENGTH = 20_000;
+
 /** Every field has a default, so state stored by an older version of the loop still parses. */
 export const loopStateSchema = z.object({
   monitored: z.boolean().default(false),
   gates: loopGatesSchema.default({ plan: false, findings: false, autoAccept: false }),
   phase: loopPhaseSchema.default("idle"),
+  /** The plan the card's thread proposed, waiting on the plan gate. */
+  proposedPlan: z.string().nullable().default(null),
+  /** The plan the user approved, possibly edited; the reviews hold the change to it. */
+  plan: z.string().nullable().default(null),
   /** Set while the phase is needs-you, and to question while paused. */
   reason: needsYouReasonSchema.nullable().default(null),
   /** The phase a question paused, which the next ready resumes from. */
@@ -198,6 +210,10 @@ export const loopStateSchema = z.object({
   disputes: z.array(loopDisputeSchema).default([]),
   /** Findings to fix that a serious dispute held back; they go to fix once every serious dispute is decided. */
   heldFindings: z.array(loopFindingSchema).default([]),
+  /** A round's findings to fix, waiting on the findings gate for the user to approve or deselect them. */
+  awaitingFindings: z.array(loopFindingSchema).default([]),
+  /** Accepted by the auto-accept gate rather than by the user. */
+  autoAccepted: z.boolean().default(false),
   /** Rounds the user started, which never count toward the cap. */
   humanRounds: z.number().int().default(0),
   /** The commit being checked or reviewed. */
@@ -257,12 +273,21 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
         return { label: `ready${level}`, tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you${reasons}` };
       }
       if (loop.reason === "loop-error") return { label: "stuck · loop error", tone: "danger", title: "Needs you: a checks or review thread failed twice; open it from the card" };
+      if (loop.reason === "findings") {
+        return { label: `approve r${loop.round + 1}`, tone: "warning", title: `Needs you: approve or deselect the ${loop.awaitingFindings.length} finding${loop.awaitingFindings.length === 1 ? "" : "s"} of the next round before the fix prompt goes out` };
+      }
       return { label: `stuck · ${NEEDS_YOU_REASON_LABEL[loop.reason]}`, tone: "danger", title: `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}` };
     case "paused":
       return { label: "stuck · question", tone: "warning", title: "The card's thread is waiting on you" };
+    case "planning":
+      return loop.proposedPlan === null
+        ? { label: "planning", tone: "neutral", title: "Monitored with the plan gate: the card's thread proposes a plan before building" }
+        : { label: "approve plan", tone: "warning", title: "Needs you: approve or edit the plan the card's thread proposed" };
     case "accepted":
-    case "landed":
-      return { label: loop.phase, tone: "success", title: `Monitored; ${loop.phase}` };
+    case "landed": {
+      const minors = loop.openFindings.length === 0 ? "" : `; minor findings left open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`;
+      return { label: loop.phase === "accepted" && loop.autoAccepted ? "auto-accepted" : loop.phase, tone: "success", title: `Monitored; ${loop.autoAccepted ? "auto-accepted at Glance" : "accepted"}${loop.phase === "landed" ? " and landed" : ""}${minors}` };
+    }
     case "idle":
     case "building":
       return { label: "building", tone: "neutral", title: "Monitored: the board checks the work when the card's thread reports it ready" };

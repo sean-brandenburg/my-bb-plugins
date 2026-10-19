@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { INITIAL_LOOP_STATE, type FindingAnswer, type LoopState, type PathRule } from "../../shared/loop";
 import { reduce, type LoopAction, type LoopEvent, type ReviewedFinding } from "./reducer";
 
+const noGates = { plan: false, findings: false, autoAccept: false };
 const sha = "0123456789abcdef0123456789abcdef01234567";
 const fixSha = "fedcba9876543210fedcba9876543210fedcba98";
 const evidence = { commands: [{ command: "pnpm test", exitCode: 0, outputTail: "42 passed" }], screenshots: [] };
@@ -29,11 +30,11 @@ const carried = (id: string, severity: ReviewedFinding["severity"], handle: stri
 const answer = (answers: Record<string, FindingAnswer>): LoopEvent => ({ type: "answer", answers });
 const fixed = { answer: "fixed" } as const;
 const disputed = { answer: "disputed", reason: "The cache is per-request" } as const;
-const reviewed = (reviewId: string, findings: ReviewedFinding[], notCovered: string[] = []): LoopEvent => ({ type: "review-completed", reviewId, findings, notCovered, pathRules: [] });
+const reviewed = (reviewId: string, findings: ReviewedFinding[], notCovered: string[] = []): LoopEvent => ({ type: "review-completed", reviewId, findings, notCovered, pathRules: [], pr: false });
 const file = (path: string, risk: number, lines = 10) => ({ path, risk, role: "key" as const, lines, note: "" });
 const classified = (risk = 2, pathRules: PathRule[] = []): LoopEvent => ({ type: "classified", commit: sha, classification: { files: [file("src/a.ts", risk)] }, pathRules });
 /** A monitored card whose first ready commit passed its checks, was classified, and whose review `rev1` started. */
-const reviewing: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), classified(3), { type: "review-started", reviewId: "rev1" }];
+const reviewing: LoopEvent[] = [{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(3), { type: "review-started", reviewId: "rev1" }];
 /** One fix round on top of `events`: the card's thread reports the fix ready, it passes its checks, and review `reviewId` starts. */
 const fixedAndReviewing = (commit: string, reviewId: string): LoopEvent[] => [ready(commit), checks(0, commit), { type: "review-started", reviewId }];
 
@@ -51,16 +52,16 @@ function run(events: LoopEvent[], from: LoopState = INITIAL_LOOP_STATE): { state
 
 describe("loop reducer", () => {
   it("starts building when monitored, adding the loop's columns and telling an existing thread", () => {
-    const withThread = run([{ type: "monitor", hasThread: true }]);
+    const withThread = run([{ type: "monitor", hasThread: true, gates: noGates }]);
     expect(withThread.state).toMatchObject({ monitored: true, phase: "building", reason: null });
     expect(withThread.actions[0]).toEqual([{ type: "ensure-columns" }, { type: "prompt-card", prompt: { kind: "monitoring" } }]);
 
     // A thread started later gets the contract in its instructions.
-    expect(run([{ type: "monitor", hasThread: false }]).actions[0]).toEqual([{ type: "ensure-columns" }]);
+    expect(run([{ type: "monitor", hasThread: false, gates: noGates }]).actions[0]).toEqual([{ type: "ensure-columns" }]);
   });
 
   it("checks a ready commit and moves the card to Checking", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready()]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready()]);
     expect(state).toMatchObject({ phase: "checking", commit: sha, checkCommand: { command: "pnpm check", source: "project" }, evidence });
     expect(actions[1]).toEqual([
       { type: "move", column: "checking" },
@@ -69,7 +70,7 @@ describe("loop reducer", () => {
   });
 
   it("classifies a commit that passes its first checks, then reviews it in full at the depth its attention level picks", () => {
-    const start: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0)];
+    const start: LoopEvent[] = [{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0)];
     const checked = run(start);
     expect(checked.state).toMatchObject({ phase: "classifying", round: 0, checks: [{ commit: sha, exitCode: 0, passed: true }] });
     expect(checked.actions[2]).toEqual([{ type: "spawn-classify", commit: sha }]);
@@ -84,7 +85,7 @@ describe("loop reducer", () => {
 
   it("retries a classify thread that failed once, then reviews without the scores at Standard", () => {
     const failed = (threadId: string): LoopEvent => ({ type: "thread-failed", role: "classify", commit: sha, threadId });
-    const start: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), failed("thr_k1")];
+    const start: LoopEvent[] = [{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), failed("thr_k1")];
     const { state, actions } = run([...start, failed("thr_k2")]);
     expect(actions[3]).toEqual([{ type: "spawn-classify", commit: sha }]);
     expect(state).toMatchObject({ phase: "reviewing", classification: null, attention: { level: "read" }, depth: "standard", retries: 0 });
@@ -92,22 +93,22 @@ describe("loop reducer", () => {
   });
 
   it("recomputes the level when the loop stops, with what the rounds and the last review showed", () => {
-    const quiet = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    const quiet = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
     expect(quiet.state).toMatchObject({ phase: "needs-you", reason: "clean", attention: { level: "glance" } });
-    const uncovered = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [], ["the drag preview"])]);
+    const uncovered = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [], ["the drag preview"])]);
     expect(uncovered.state.attention).toEqual({ level: "read", reasons: ["risk 2: src/a.ts", "1 thing the checks don't cover"] });
   });
 
   it("requests the reading plan's narrative at Needs you only at Read or Scrutinize", () => {
-    const glance = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    const glance = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
     expect(glance.state.attention?.level).toBe("glance");
     expect(glance.actions[5]).toEqual([{ type: "move", column: "review" }]);
-    const scrutinize = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(5), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    const scrutinize = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(5), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
     expect(scrutinize.actions[5]).toEqual([{ type: "move", column: "review" }, { type: "spawn-narrative" }]);
   });
 
   it("holds a level the user set, with the reason, until the head moves", () => {
-    const glance = [{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])] satisfies LoopEvent[];
+    const glance = [{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])] satisfies LoopEvent[];
     const raised = run([...glance, { type: "set-level", level: "scrutinize", reason: "touches the token store" }]);
     const override = { level: "scrutinize", reason: "touches the token store", from: "glance", commit: sha };
     expect(raised.state).toMatchObject({ phase: "needs-you", levelOverride: override, levelOverrides: [override] });
@@ -231,7 +232,7 @@ describe("loop reducer", () => {
   });
 
   it("sends a single failure back to the card's thread with the output, spending no review", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), checks(2)]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(2)]);
     expect(state).toMatchObject({ phase: "building", reason: null, checks: [{ commit: sha, exitCode: 2, passed: false }] });
     expect(actions[2]).toEqual([
       { type: "move", column: "in-progress" },
@@ -240,45 +241,45 @@ describe("loop reducer", () => {
   });
 
   it("escalates a second failure in a row with reason checks", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), checks(1), ready(fixSha), checks(1, fixSha)]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(1), ready(fixSha), checks(1, fixSha)]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "checks", commit: fixSha });
     expect(actions[4]).toEqual([{ type: "move", column: "review" }]);
   });
 
   it("counts only failures in a row: a pass in between starts the count again", () => {
-    const { state } = run([{ type: "monitor", hasThread: true }, ready(), checks(1), ready(fixSha), checks(0, fixSha), ready(sha), checks(1)]);
+    const { state } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), checks(1), ready(fixSha), checks(0, fixSha), ready(sha), checks(1)]);
     expect(state).toMatchObject({ phase: "building", reason: null });
   });
 
   it("ignores a result for a commit it is no longer checking", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), ready(fixSha), checks(1, sha)]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), ready(fixSha), checks(1, sha)]);
     expect(state).toMatchObject({ phase: "checking", commit: fixSha, checks: [] });
     expect(actions[3]).toEqual([]);
   });
 
   it("ignores a repeated ready for the commit already being checked", () => {
-    const { actions } = run([{ type: "monitor", hasThread: true }, ready(), ready()]);
+    const { actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), ready()]);
     expect(actions[2]).toEqual([]);
   });
 
   it("retries a checks thread that ended without a result once, then escalates as a loop error naming the thread", () => {
     const failed = (threadId: string): LoopEvent => ({ type: "thread-failed", role: "checks", commit: sha, threadId });
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), failed("thr_c2")]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), failed("thr_c1"), failed("thr_c2")]);
     expect(actions[2]).toEqual([{ type: "spawn-checks", commit: sha, checkCommand: { command: "pnpm check", source: "project" } }]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error", failedThreadId: "thr_c2" });
     expect(actions[3]).toEqual([{ type: "move", column: "review" }]);
 
     // A retry that succeeds leaves the next step its own retry.
-    expect(run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), checks(0), classified(3), { type: "thread-failed", role: "review", reviewId: null, threadId: null }]).actions[5]).toEqual([
+    expect(run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), failed("thr_c1"), checks(0), classified(3), { type: "thread-failed", role: "review", reviewId: null, threadId: null }]).actions[5]).toEqual([
       { type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} },
     ]);
     // The thread of a commit since superseded failing says nothing about the current one.
-    expect(run([{ type: "monitor", hasThread: true }, ready(), ready(fixSha), failed("thr_c1")]).state).toMatchObject({ phase: "checking", retries: 0 });
+    expect(run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), ready(fixSha), failed("thr_c1")]).state).toMatchObject({ phase: "checking", retries: 0 });
   });
 
   describe("questions", () => {
     it("pauses with reason question without moving the card, and resumes on the next ready", () => {
-      const { state, actions } = run([{ type: "monitor", hasThread: true }, { type: "question" }]);
+      const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, { type: "question" }]);
       expect(state).toMatchObject({ phase: "paused", reason: "question", pausedPhase: "building" });
       expect(actions[1]).toEqual([]);
       const resumed = run([ready()], state);
@@ -297,20 +298,20 @@ describe("loop reducer", () => {
     });
 
     it("ignores a question while the board's own threads run", () => {
-      expect(run([{ type: "monitor", hasThread: true }, ready(), { type: "question" }]).state.phase).toBe("checking");
+      expect(run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), { type: "question" }]).state.phase).toBe("checking");
       expect(run([{ type: "question" }]).state.phase).toBe("idle");
     });
   });
 
   it("stops after the current step when unmonitored: a running check's result is kept but drives nothing", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), { type: "unmonitor" }, checks(1)]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), { type: "unmonitor" }, checks(1)]);
     expect(state).toMatchObject({ monitored: false, phase: "idle", reason: null, commit: sha, checks: [{ commit: sha, exitCode: 1, passed: false }] });
     expect(actions[2]).toEqual([]);
     expect(actions[3]).toEqual([]);
   });
 
   it("keeps the findings and history when unmonitored in any phase, ending an open fix round unfixed", () => {
-    const building = [{ type: "monitor", hasThread: true }] as LoopEvent[];
+    const building = [{ type: "monitor", hasThread: true, gates: noGates }] as LoopEvent[];
     const checking = [...building, ready()];
     const fixing = [...reviewing, reviewed("rev1", [finding("F1", "important")])];
     const phases: Record<string, LoopEvent[]> = {
@@ -340,7 +341,7 @@ describe("loop reducer", () => {
   });
 
   it("keeps a second monitor event from restarting a loop already running", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), { type: "monitor", hasThread: true }]);
+    const { state, actions } = run([{ type: "monitor", hasThread: true, gates: noGates }, ready(), { type: "monitor", hasThread: true, gates: noGates }]);
     expect(state.phase).toBe("checking");
     expect(actions[2]).toEqual([]);
   });
@@ -413,24 +414,98 @@ describe("loop reducer", () => {
       it("waits for every serious dispute, then sends the upheld ones to fix with the findings they held back", () => {
         const stopped = disputing([rejected("important"), rejected("critical", "F2"), finding("F3", "minor")]);
         expect(stopped.state).toMatchObject({ reason: "dispute", disputes: [{ id: "F1", decision: null }, { id: "F2", decision: null }], heldFindings: [{ id: "F3" }] });
-        const one = run([{ type: "decide-dispute", findingId: "F1", decision: "uphold" }], stopped.state);
+        const one = run([{ type: "decide-dispute", findingId: "F1", decision: "uphold", pr: false }], stopped.state);
         expect(one.state).toMatchObject({ phase: "needs-you", reason: "dispute", disputes: [{ decision: "upheld" }, { decision: null }] });
-        const both = run([{ type: "decide-dispute", findingId: "F2", decision: "close" }], one.state);
+        const both = run([{ type: "decide-dispute", findingId: "F2", decision: "close", pr: false }], one.state);
         expect(both.state).toMatchObject({ phase: "fixing", round: 1, humanRounds: 1, rounds: [{}, { reviewId: "rev2", handed: ["F1", "F3"], owner: "user" }] });
       });
 
       it("closing the last one routes the held findings as the loop's own round, or ends clean", () => {
-        const held = run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], disputing([rejected("important"), finding("F3", "minor")]).state);
+        const held = run([{ type: "decide-dispute", findingId: "F1", decision: "close", pr: false }], disputing([rejected("important"), finding("F3", "minor")]).state);
         expect(held.state).toMatchObject({ phase: "fixing", round: 2, humanRounds: 0, rounds: [{}, { reviewId: "rev2", handed: ["F3"], owner: "loop" }] });
-        const none = run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], disputing([rejected("important")]).state);
+        const none = run([{ type: "decide-dispute", findingId: "F1", decision: "close", pr: false }], disputing([rejected("important")]).state);
         expect(none.state).toMatchObject({ phase: "needs-you", reason: "clean", disputes: [{ id: "F1", decision: "closed" }] });
       });
 
       it("settles a minor dispute left open: closing drops it from the open findings, upholding sends it to fix", () => {
         const minor = disputing([rejected("minor")]);
         expect(minor.state).toMatchObject({ reason: "clean", openFindings: [{ id: "F1" }], disputes: [{ id: "F1" }] });
-        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "close" }], minor.state).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [] });
-        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "uphold" }], minor.state).state).toMatchObject({ phase: "fixing", rounds: [{}, { handed: ["F1"], owner: "user" }] });
+        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "close", pr: false }], minor.state).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [] });
+        expect(run([{ type: "decide-dispute", findingId: "F1", decision: "uphold", pr: false }], minor.state).state).toMatchObject({ phase: "fixing", rounds: [{}, { handed: ["F1"], owner: "user" }] });
+      });
+    });
+  });
+
+  describe("gates", () => {
+    const gated = (gates: Partial<typeof noGates>, hasThread = true): LoopEvent => ({ type: "monitor", hasThread, gates: { ...noGates, ...gates } });
+
+    it("holds a plan-gated card in planning, refusing ready, until the user approves a plan, which goes to its thread", () => {
+      const held = run([gated({ plan: true }), ready()]);
+      expect(held.state).toMatchObject({ phase: "planning", commit: null });
+      expect(held.actions[1]).toEqual([]);
+
+      const proposed = run([{ type: "plan-proposed", plan: "Add a cache" }], held.state);
+      expect(proposed.state).toMatchObject({ phase: "planning", proposedPlan: "Add a cache" });
+      expect(proposed.actions[0]).toEqual([{ type: "move", column: "review" }]);
+
+      const approved = run([{ type: "approve-plan", plan: "Add a cache, per request" }], proposed.state);
+      expect(approved.state).toMatchObject({ phase: "building", plan: "Add a cache, per request", proposedPlan: null });
+      expect(approved.actions[0]).toEqual([
+        { type: "move", column: "in-progress" },
+        { type: "prompt-card", prompt: { kind: "plan-approved", plan: "Add a cache, per request", edited: true } },
+      ]);
+      expect(run([ready()], approved.state).state.phase).toBe("checking");
+    });
+
+    it("starts building without the plan gate, and plans again on a rethink with it", () => {
+      expect(run([gated({})]).state.phase).toBe("building");
+      const stopped = run([gated({ plan: true }), { type: "approve-plan", plan: "p" }, ready(), checks(0), classified(3), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+      expect(stopped.state).toMatchObject({ phase: "needs-you", plan: "p" });
+      expect(run([{ type: "rethink" }], stopped.state).state).toMatchObject({ phase: "planning", plan: null });
+    });
+
+    it("holds each round's apply set for approval with the findings gate, sending only the approved ones", () => {
+      const findings = [finding("F1", "important"), finding("F2", "minor")];
+      const held = run([gated({ findings: true }), ...reviewing.slice(1), reviewed("rev1", findings)]);
+      expect(held.state).toMatchObject({ phase: "needs-you", reason: "findings", round: 0, awaitingFindings: [{ id: "F1" }, { id: "F2" }] });
+      expect(held.actions.at(-1)).toEqual([{ type: "move", column: "review" }]);
+
+      const approved = run([{ type: "approve-findings", findingIds: ["F1"], pr: false }], held.state);
+      expect(approved.state).toMatchObject({ phase: "fixing", round: 1, awaitingFindings: [], openFindings: [{ id: "F2" }], rounds: [{ handed: ["F1"], owner: "loop" }] });
+      expect(approved.actions[0]).toContainEqual({ type: "prompt-card", prompt: { kind: "fix", round: 1, reviewId: "rev1", findingIds: ["F1"] } });
+
+      const none = run([{ type: "approve-findings", findingIds: [], pr: false }], held.state);
+      expect(none.state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [{ id: "F1" }, { id: "F2" }] });
+
+      // Without the gate the round goes straight out.
+      expect(run([...reviewing, reviewed("rev1", findings)]).state).toMatchObject({ phase: "fixing", round: 1 });
+    });
+
+    describe("auto-accept", () => {
+      const clean = (gates: Partial<typeof noGates>, risk: number, findings: ReviewedFinding[] = [], pr = false) =>
+        run([gated(gates), ready(), checks(0), classified(risk), { type: "review-started", reviewId: "rev1" }, { type: "review-completed", reviewId: "rev1", findings, notCovered: [], pathRules: [], pr }]);
+
+      it("accepts a clean change at Glance without stopping, landing a local card and leaving a PR card to merge", () => {
+        const local = clean({ autoAccept: true }, 2);
+        expect(local.state).toMatchObject({ phase: "accepted", autoAccepted: true, attention: { level: "glance" } });
+        expect(local.actions.at(-1)).toEqual([
+          { type: "move", column: "in-progress" },
+          { type: "prompt-card", prompt: { kind: "land" } },
+        ]);
+        expect(clean({ autoAccept: true }, 2, [], true).actions.at(-1)).toEqual([{ type: "move", column: "review" }]);
+      });
+
+      it("lists open minors on the accepted card rather than stopping for them", () => {
+        const minor = clean({ autoAccept: true }, 2, [carried("F1", "minor", "rev0/F1", "rejected")]);
+        expect(minor.state).toMatchObject({ phase: "accepted", openFindings: [{ id: "F1", severity: "minor" }] });
+      });
+
+      it("never fires at Read or Scrutinize, with a serious finding open, or with the gate off", () => {
+        expect(clean({ autoAccept: true }, 3).state).toMatchObject({ phase: "needs-you", reason: "clean", attention: { level: "read" } });
+        expect(clean({ autoAccept: true }, 5).state).toMatchObject({ phase: "needs-you", reason: "clean", attention: { level: "scrutinize" } });
+        expect(clean({}, 2).state).toMatchObject({ phase: "needs-you", reason: "clean" });
+        const deselected = run([{ type: "approve-findings", findingIds: [], pr: false }], clean({ autoAccept: true, findings: true }, 2, [finding("F1", "important")]).state);
+        expect(deselected.state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [{ id: "F1", severity: "important" }] });
       });
     });
   });
