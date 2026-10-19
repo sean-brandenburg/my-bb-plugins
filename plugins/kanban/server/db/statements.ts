@@ -89,6 +89,9 @@ export function prepareStatements(db: KanbanDatabase) {
     reviewsForTicket: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE ticket_id = ? ORDER BY created_at DESC, rowid DESC`,
     ),
+    reviewsForTicketOfKind: db.prepare<[string, ReviewRow["subject_kind"]], ReviewRow>(
+      `SELECT * FROM reviews WHERE ticket_id = ? AND subject_kind = ? ORDER BY created_at DESC, rowid DESC`,
+    ),
     latestReview: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE ticket_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     ),
@@ -100,10 +103,10 @@ export function prepareStatements(db: KanbanDatabase) {
     ),
     reviewById: db.prepare<[string], ReviewRow>(`SELECT * FROM reviews WHERE id = ?`),
     unappliedFinishedReviews: db.prepare<[], ReviewRow>(`SELECT * FROM reviews WHERE status != 'running' AND apply_thread_id IS NULL`),
-    // A local review's apply round runs in the card's own thread, which the hide-review-threads setting must never touch.
+    // A local review's apply round runs in the card's own thread (current or since relinked), which the hide-review-threads setting must never touch.
     codeReviewThreadIds: db.prepare<[], { thread_id: string }>(
       `SELECT thread_id FROM reviews
-       UNION SELECT apply_thread_id FROM reviews WHERE apply_thread_id IS NOT NULL
+       UNION SELECT apply_thread_id FROM reviews WHERE apply_thread_id IS NOT NULL AND subject_kind != 'local'
          AND apply_thread_id NOT IN (SELECT thread_id FROM tickets WHERE thread_id IS NOT NULL)
        UNION SELECT thread_id FROM comment_applies
        UNION SELECT thread_id FROM narratives

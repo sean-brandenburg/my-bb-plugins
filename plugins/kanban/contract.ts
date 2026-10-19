@@ -4,7 +4,7 @@ import { boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchem
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
-import { findingEditSchema, reviewSchema, reviewSubjectSchema } from "./shared/review";
+import { findingEditSchema, reviewSchema } from "./shared/review";
 import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
 
 export const rpcContract = defineRpcContract({
@@ -271,10 +271,10 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: ticketSchema,
   },
-  /** What a review of the card would cover, or why it can't be reviewed yet. */
-  review_subject: {
+  /** Why the card can't be reviewed yet; null when it can. */
+  review_availability: {
     input: z.object({ ticketId: z.string() }).strict(),
-    output: z.object({ subject: reviewSubjectSchema.nullable(), reason: z.string().nullable() }),
+    output: z.object({ reason: z.string().nullable() }),
   },
   review_list: {
     input: z.object({ ticketId: z.string() }).strict(),

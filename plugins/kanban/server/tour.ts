@@ -243,7 +243,8 @@ export function createTour(
   /** A checkout that already has the subject's code: its latest review or tour thread, else the card thread, else nothing. */
   async function reusableEnvironment(subject: Ticket): Promise<string | null> {
     const candidates = [
-      stmts.latestCompletedReview.get(subject.id)?.thread_id ?? null,
+      // A local review's worktree is detached at the commit it reviewed, not the card's current work.
+      subject.pr === null ? null : (stmts.latestCompletedReviewOfKind.get(subject.id, "pr")?.thread_id ?? null),
       stmts.latestNarrative.get(subject.id)?.thread_id ?? null,
       subject.threadId,
     ].filter((id): id is string => id !== null);

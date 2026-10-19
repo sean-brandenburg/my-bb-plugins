@@ -82,7 +82,7 @@ describe("review subjects", () => {
   it("takes a PR card's pull request and refuses a card without one", () => {
     expect(prSubject(prTicket())).toEqual({ kind: "pr", repo: "acme-co/widgets", number: 7, url: "https://github.com/acme-co/widgets/pull/7" });
     expect(subjectLabel(prSubject(prTicket()))).toBe("widgets#7");
-    expect(() => prSubject(ticket())).toThrow(/Only PR cards/u);
+    expect(() => prSubject(ticket())).toThrow(/Not a PR card/u);
   });
 
   it("names a local commit by its short sha and rejects anything that is not a sha and a ref", () => {

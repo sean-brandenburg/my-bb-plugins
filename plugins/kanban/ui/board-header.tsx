@@ -13,7 +13,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { relativeTime, shortSha } from "./format";
-import { useBoard, useOpenThread, useNow, useReviewSubject } from "./data";
+import { useBoard, useOpenThread, useNow, useReviewUnavailableReason } from "./data";
 import { pageUi, usePageUi } from "./page-state";
 import { Badge, COMPACT, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
 import { diffInstanceKey, diffSubjectFromSubPath, findDiffSubjectTicket } from "./diff-page";
@@ -121,7 +121,7 @@ function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
   const openThread = useOpenThread();
   const [starting, setStarting] = useState(false);
   const review = ticket.latestReview;
-  const availability = useReviewSubject(ticket, review === null && ticket.pr === null);
+  const unavailable = useReviewUnavailableReason(ticket, review === null);
   const startReview = async () => {
     setStarting(true);
     try {
@@ -134,7 +134,6 @@ function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
     }
   };
   if (review === null) {
-    const unavailable = ticket.pr !== null ? null : availability === null ? "Checking the card's commits…" : availability.reason;
     return (
       <span title={unavailable ?? (ticket.pr !== null ? "Review the PR" : "Review the card thread's commits")}>
         <Button type="button" variant="secondary" className={COMPACT} disabled={starting || unavailable !== null} onClick={() => void startReview()}>

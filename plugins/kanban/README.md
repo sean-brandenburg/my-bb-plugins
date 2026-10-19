@@ -315,9 +315,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   ones are omitted from the prompt entirely), commits, and pushes
   to the PR head branch. A local review is applied by the card's own thread
   instead: the findings arrive there as a prompt, it commits the fixes on its
-  branch without pushing, and the round is recorded the same way. Your selection is the triage: the thread applies
-  every selected finding as written, without asking or dropping any, and
-  reports the ones it could not apply.
+  branch without pushing, and the round is recorded the same way. Your
+  selection is the triage: the thread applies every selected finding as
+  written, without asking or dropping any, and reports the ones it could not
+  apply.
   When the round is recorded, every finding it fixed is marked applied: the
   card panel folds it to its struck-through title with an "applied" chip, the
   changes view stops showing it, and later rounds never get it again (a

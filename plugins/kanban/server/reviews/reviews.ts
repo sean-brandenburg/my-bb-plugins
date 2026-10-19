@@ -10,7 +10,7 @@ import type { Projects } from "../projects";
 import { parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
 import { localApplyPrompt, prApplyPrompt, reviewPrompt } from "./prompts";
 import { localSubject, prSubject, subjectLabel } from "./subject";
-import { parseStringArray, shortId, threadTitle } from "../util";
+import { errorMessage, parseStringArray, shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
 
@@ -26,11 +26,10 @@ export function createReviews(
   const { codeReviewThreadVisibility } = codeReviewThreads;
 
   /**
-   * What a review of the card covers: its pull request, or the commits its thread made beyond the branch the changes
-   * view diffs against. The error says why the card can't be reviewed yet, in words the board shows as the reason.
+   * A local review covers the commits the card's thread made beyond the branch the changes view diffs against, and
+   * runs in that thread's project. The error says why the card can't be reviewed yet, in words the board shows.
    */
-  async function reviewSubjectForTicket(ticket: Ticket): Promise<ReviewSubject> {
-    if (ticket.pr !== null) return prSubject(ticket);
+  async function localReviewTarget(ticket: Ticket): Promise<{ subject: ReviewSubject; projectId: string }> {
     if (ticket.threadId === null) throw new Error("Start the card's thread first; a review covers the commits it makes");
     const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
     if (thread.environmentId === null) throw new Error("The card's thread has no environment yet");
@@ -48,16 +47,30 @@ export function createReviews(
     const head = checkout.kind === "branch" || checkout.kind === "detached" ? checkout.headSha : null;
     if (head === null) throw new Error("The card's thread has no commits yet");
     if (mergeBase === null || mergeBase.aheadCount === 0) throw new Error(`No commits beyond \`${branch}\` to review; commit the card's work first`);
-    return localSubject(head, branch);
+    return { subject: localSubject(head, branch), projectId: thread.projectId };
   }
 
-  async function reviewAvailability(ticketId: string): Promise<{ subject: ReviewSubject | null; reason: string | null }> {
+  /** Why the card can't be reviewed yet, or null when it can; a PR card always can once it has a project. */
+  async function reviewUnavailableReason(ticketId: string): Promise<string | null> {
     const ticket = getTicket(ticketId);
+    if (ticket.pr !== null) return null;
     try {
-      return { subject: await reviewSubjectForTicket(ticket), reason: null };
+      await localReviewTarget(ticket);
+      return null;
     } catch (error) {
-      return { subject: null, reason: error instanceof Error ? error.message : String(error) };
+      return errorMessage(error);
     }
+  }
+
+  /** Review a PR card's pull request, or another card's committed work, in a new hidden thread. */
+  async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental"): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, prSubject(ticket));
+    const { subject, projectId } = await localReviewTarget(ticket);
+    if (explicitProjectId !== null && explicitProjectId !== projectId) {
+      throw new Error(`A local review runs in the project of the card's thread (${projectId}), so it can't run in ${explicitProjectId}`);
+    }
+    return spawnReviewForTicket(ticket.id, projectId, mode, subject);
   }
 
   async function spawnReviewForTicket(
@@ -70,8 +83,7 @@ export function createReviews(
     // A card reviewed both as a PR and locally keeps two chains; a re-review only continues the one of its own kind.
     const previousRow = mode === "incremental" ? stmts.latestCompletedReviewOfKind.get(ticket.id, subject.kind) : undefined;
     const previous = previousRow === undefined || previousRow.commit_sha === null ? null : rowToReview(previousRow);
-    const standing =
-      previous === null ? [] : standingReviews(stmts.reviewsForTicket.all(ticket.id).map(rowToReview).filter((review) => review.subjectKind === subject.kind));
+    const standing = previous === null ? [] : standingReviews(stmts.reviewsForTicketOfKind.all(ticket.id, subject.kind).map(rowToReview));
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: await freshWorktree(projectId),
@@ -290,7 +302,7 @@ export function createReviews(
     return rowToReview(stmts.reviewById.get(reviewId)!);
   }
 
-  return { reviewSubjectForTicket, reviewAvailability, spawnReviewForTicket, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
+  return { reviewUnavailableReason, startReview, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
 }
 
 export type Reviews = ReturnType<typeof createReviews>;

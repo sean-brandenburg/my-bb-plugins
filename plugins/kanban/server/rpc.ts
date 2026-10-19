@@ -97,12 +97,8 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     ticket_delete: ({ id }) => board.deleteTicket(id),
     ticket_restore: ({ id }) => board.restoreTicket(id),
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
-    ticket_review_pr: async ({ id, projectId, mode }) => {
-      const ticket = board.getTicket(id);
-      const subject = await reviews.reviewSubjectForTicket(ticket);
-      return reviews.spawnReviewForTicket(id, await projects.projectForTicket(ticket, projectId), mode, subject);
-    },
-    review_subject: ({ ticketId }) => reviews.reviewAvailability(ticketId),
+    ticket_review_pr: ({ id, projectId, mode }) => reviews.startReview(id, projectId, mode),
+    review_availability: async ({ ticketId }) => ({ reason: await reviews.reviewUnavailableReason(ticketId) }),
     review_list: ({ ticketId }) => reviews.listReviews(ticketId),
     review_apply: ({ ticketId, reviewId, push }) => reviews.spawnApplyForReview(ticketId, reviewId, push),
     review_set_selection: ({ reviewId, findingId, selected }) => reviews.setSelection(reviewId, findingId, selected),

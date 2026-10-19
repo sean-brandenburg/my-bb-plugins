@@ -222,6 +222,7 @@ export function KanbanDiffView({ subjectId, onBack, onOpenThread }: { subjectId:
       refreshSignal={boardChanges}
       labels={KANBAN_DIFF_LABELS}
       renderSubmitBar={(pending) => <KanbanSubmitBar subjectId={subjectId} pending={pending} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
+      // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}
     />
   );

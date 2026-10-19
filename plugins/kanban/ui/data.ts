@@ -5,7 +5,6 @@ import type { rpcContract } from "../contract";
 import { knownChangeTotals } from "bb-diff-view/app/change-totals";
 import { useThreadChangeTotals } from "bb-diff-view/app/use-change-totals";
 import type { Board, Ticket } from "../shared/board";
-import type { ReviewSubject } from "../shared/review";
 import { BOARD_CHANGED } from "../shared/events";
 import { errorMessage } from "./format";
 
@@ -130,30 +129,32 @@ export function useOpenThread(): (threadId: string) => void {
 }
 
 /**
- * What a review of the card would cover, or why it can't be reviewed yet. A local card's answer depends on its thread's
- * commits, so it is asked again whenever the thread's status changes.
+ * Why the card can't be reviewed yet, or null when it can. A PR card can be; a local card's answer depends on its
+ * thread's commits, so it is asked again whenever the thread's status changes.
  */
-export function useReviewSubject(ticket: Ticket, enabled = true): { subject: ReviewSubject | null; reason: string | null } | null {
+export function useReviewUnavailableReason(ticket: Ticket, enabled = true): string | null {
   const rpc = useRpc<typeof rpcContract>();
   const threads = useThreadIndex();
   const threadStatus = ticket.threadId === null ? null : (threads.get(ticket.threadId)?.status ?? null);
-  const [availability, setAvailability] = useState<{ subject: ReviewSubject | null; reason: string | null } | null>(null);
+  const asks = enabled && ticket.pr === null;
+  const [answer, setAnswer] = useState<{ ticketId: string; reason: string | null } | null>(null);
   useEffect(() => {
-    if (!enabled) return;
+    if (!asks) return;
     let cancelled = false;
-    rpc.call("review_subject", { ticketId: ticket.id }).then(
-      (next) => {
-        if (!cancelled) setAvailability(next);
+    rpc.call("review_availability", { ticketId: ticket.id }).then(
+      ({ reason }) => {
+        if (!cancelled) setAnswer({ ticketId: ticket.id, reason });
       },
       (cause: unknown) => {
-        if (!cancelled) setAvailability({ subject: null, reason: errorMessage(cause) });
+        if (!cancelled) setAnswer({ ticketId: ticket.id, reason: errorMessage(cause) });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [enabled, rpc, ticket.id, ticket.threadId, ticket.updatedAt, threadStatus]);
-  return availability;
+  }, [asks, rpc, ticket.id, ticket.threadId, ticket.updatedAt, threadStatus]);
+  if (!asks) return null;
+  return answer === null || answer.ticketId !== ticket.id ? "Checking the card's commits…" : answer.reason;
 }
 
 /** "Push after applying" is a per-user habit, so it lives in localStorage rather than on the card. */

@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { shortSha } from "./format";
-import { type Rpc, usePushPreference, useReviewSubject } from "./data";
+import { type Rpc, usePushPreference, useReviewUnavailableReason } from "./data";
 import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, MENU_ITEM_CLASS } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
@@ -222,6 +222,12 @@ function StructuredReview({
   );
 }
 
+function applyStatusLabel(apply: NonNullable<Review["apply"]>, local: boolean): string {
+  if (apply.completedAt === null) return local ? "Card thread applying" : "Apply thread running";
+  if (local) return `Committed ${shortSha(apply.pushedCommit)}`;
+  return apply.push ? `Pushed ${shortSha(apply.pushedCommit)}` : `Committed ${shortSha(apply.pushedCommit)}, not pushed`;
+}
+
 function ReviewStatusChips({ review }: { review: Ticket["latestReview"] }) {
   if (review === null) return null;
   if (review.status === "running") return <Badge tone="accent">Reviewing…</Badge>;
@@ -280,19 +286,14 @@ export function ReviewPanel({
     rpc.call("review_set_applied", { reviewId, findingId, applied }).then(updateReview, toastError);
   const startReview = (mode: "full" | "incremental") =>
     void run(() => rpc.call("ticket_review_pr", { id: ticket.id, projectId: null, mode }), "Review started");
-  const availability = useReviewSubject(ticket, ticket.pr === null);
-  const unavailable =
-    ticket.pr !== null
-      ? canReview
-        ? null
-        : "Start the card's thread in a project first; reviews run there"
-      : availability === null
-        ? "Checking the card's commits…"
-        : availability.reason;
+  const localReason = useReviewUnavailableReason(ticket);
+  const unavailable = canReview ? localReason : "Start the card's thread in a project first; reviews run there";
   const canStart = unavailable === null && !pending && review?.status !== "running";
-  const canIncremental = review?.status === "completed" && review.commitSha !== null;
+  // The next review is of the card's kind, and only continues from a review of the same kind.
+  const reviewsLocally = ticket.pr === null;
+  const canIncremental = review?.status === "completed" && review.commitSha !== null && review.subjectKind === (reviewsLocally ? "local" : "pr");
   const unavailableNote = unavailable === null ? null : <span className="text-xs text-muted-foreground">{unavailable}</span>;
-  const local = review !== null ? review.subjectKind === "local" : ticket.pr === null;
+  const appliesLocally = review?.subjectKind === "local";
 
   const menu = review === null ? null : (
     <DropdownMenu.Root modal={false}>
@@ -307,7 +308,7 @@ export function ReviewPanel({
             <>
               <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => onOpenThread(review.apply!.threadId)}>
                 <Icon name="kanban-wrench" className="size-4 text-muted-foreground" />
-                {local ? "Open the card's thread" : "Open apply thread"}
+                {appliesLocally ? "Open the card's thread" : "Open apply thread"}
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
             </>
@@ -332,10 +333,10 @@ export function ReviewPanel({
     <Group title="Code review" summary={<ReviewStatusChips review={review} />} menu={menu} defaultOpen>
       {review === null ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span title={unavailable ?? (local ? "Runs the code-review skill on the card thread's commits, in a worktree of their own" : "Runs the code-review skill on the PR in its own worktree")}>
+          <span title={unavailable ?? (reviewsLocally ? "Runs the code-review skill on the card thread's commits, in a worktree of their own" : "Runs the code-review skill on the PR in its own worktree")}>
             <Button type="button" variant="secondary" className={COMPACT} disabled={!canStart} onClick={() => startReview("full")}>
               <Icon name="kanban-search-check" className="size-3.5" />
-              {local ? "Review the commits" : "Review this PR"}
+              {reviewsLocally ? "Review the commits" : "Review this PR"}
             </Button>
           </span>
           {unavailableNote}
@@ -359,21 +360,21 @@ export function ReviewPanel({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <span title={selectedCount === 0 ? "Tick at least one open finding to apply" : local ? "Sends the selected open findings to the card's thread to fix and commit" : "Applies the selected findings that are still open"}>
+            <span title={selectedCount === 0 ? "Tick at least one open finding to apply" : appliesLocally ? "Sends the selected open findings to the card's thread to fix and commit" : "Applies the selected findings that are still open"}>
               <Button
                 type="button"
                 variant="secondary"
                 className={COMPACT}
                 disabled={pending || applying || !review.hasBody || selectedCount === 0}
                 onClick={() =>
-                  void run(() => rpc.call("review_apply", { ticketId: ticket.id, reviewId: review.id, push: !local && push }), local ? "Sent to the card's thread" : "Apply thread started")
+                  void run(() => rpc.call("review_apply", { ticketId: ticket.id, reviewId: review.id, push: !appliesLocally && push }), appliesLocally ? "Sent to the card's thread" : "Apply thread started")
                 }
               >
                 <Icon name="kanban-wrench" className="size-3.5" />
                 {applying ? "Applying…" : `Apply ${selectedCount ?? ""}${selectedCount === null ? "review" : selectedCount === 1 ? " finding" : " findings"}`}
               </Button>
             </span>
-            {local ? null : <PushToggle push={push} onChange={setPush} disabled={pending || applying} />}
+            {appliesLocally ? null : <PushToggle push={push} onChange={setPush} disabled={pending || applying} />}
             <button type="button" className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => onOpenThread(review.threadId)}>
               <Icon name="MessageSquare" className="size-3.5" />
               Review thread
@@ -385,15 +386,7 @@ export function ReviewPanel({
                 onClick={() => onOpenThread(review.apply!.threadId)}
               >
                 <ThreadStatusDot thread={threads.get(review.apply.threadId)} />
-                {review.apply.completedAt === null
-                  ? local
-                    ? "Card thread applying"
-                    : "Apply thread running"
-                  : local
-                    ? `Committed ${shortSha(review.apply.pushedCommit)}`
-                    : review.apply.push
-                    ? `Pushed ${shortSha(review.apply.pushedCommit)}`
-                    : `Committed ${shortSha(review.apply.pushedCommit)}, not pushed`}
+                {applyStatusLabel(review.apply, appliesLocally)}
               </button>
             ) : null}
           </div>

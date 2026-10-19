@@ -5,16 +5,16 @@ import { z } from "zod";
  * the project's default branch (a ref that resolves in the project's repository). The local commit and branch are
  * pasted into shell commands in the prompt, so they are validated.
  */
-export const reviewSubjectSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("pr"), repo: z.string(), number: z.number().int(), url: z.string() }),
-  z.object({
-    kind: z.literal("local"),
-    commit: z.string().regex(/^[0-9a-f]{7,40}$/iu),
-    defaultBranch: z.string().regex(/^\w[\w./-]*$/u),
-  }),
-]);
+const prSubjectSchema = z.object({ kind: z.literal("pr"), repo: z.string(), number: z.number().int(), url: z.string() });
+const localSubjectSchema = z.object({
+  kind: z.literal("local"),
+  commit: z.string().regex(/^[0-9a-f]{7,40}$/iu),
+  defaultBranch: z.string().regex(/^\w[\w./-]*$/u),
+});
+export const reviewSubjectSchema = z.discriminatedUnion("kind", [prSubjectSchema, localSubjectSchema]);
 export type ReviewSubject = z.infer<typeof reviewSubjectSchema>;
-export type PrReviewSubject = Extract<ReviewSubject, { kind: "pr" }>;
+export type PrReviewSubject = z.infer<typeof prSubjectSchema>;
+const reviewSubjectKindSchema = z.enum([prSubjectSchema.shape.kind.value, localSubjectSchema.shape.kind.value]);
 
 export const reviewApplySchema = z.object({
   threadId: z.string(),
@@ -107,7 +107,7 @@ export const reviewSchema = z.object({
   ticketId: z.string(),
   threadId: z.string(),
   /** A re-review only continues from a review of the same kind, and a local review is applied in the card's own thread. */
-  subjectKind: z.enum(["pr", "local"]),
+  subjectKind: reviewSubjectKindSchema,
   /** `failed`: the thread went idle without recording a commit or producing a report (setup problems, usually). */
   status: z.enum(["running", "completed", "failed"]),
   /** The PR head or local commit that was reviewed; the next review diffs from here. */

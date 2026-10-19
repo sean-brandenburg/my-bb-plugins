@@ -2,7 +2,6 @@ import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
-import type { ReviewSubject } from "../shared/review";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
@@ -16,7 +15,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { getTicket, hydrate, getColumns, getSources, createTicket, moveTicket, setParent, setTags, setDueDate } = services.board;
   const { spawnThreadForTicket, linkThread } = services.threads;
   const { projectForTicket, fallbackProject } = services.projects;
-  const { reviewSubjectForTicket, spawnReviewForTicket, spawnApplyForReview, completeApply: completeReviewApply } = services.reviews;
+  const { reviewUnavailableReason, startReview, spawnApplyForReview, completeApply: completeReviewApply } = services.reviews;
   const { spawnApplyForComments, completeApply } = services.prComments;
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
@@ -226,24 +225,15 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
           summary: "Start a code-review thread for a card's pull request, or for the commits its thread made beyond its merge base (defaults to the current thread's card)",
           options: {
             ...ticketOption,
-            project: { type: "string", description: "Project id to run the review in; defaults to the card's project" },
+            project: { type: "string", description: "Project id to run a PR review in; defaults to the card's project. A local review runs in its thread's project" },
             full: { type: "boolean", description: "Review the whole change even if an earlier review exists (default: the commits since the last review, re-checking its open findings)" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
             const ticket = ticketForContext(options.ticket, ctx.threadId);
-            let subject: ReviewSubject;
-            try {
-              subject = await reviewSubjectForTicket(ticket);
-            } catch (error) {
-              throw new PluginCliError(`Ticket ${ticket.id} can't be reviewed: ${error instanceof Error ? error.message : String(error)}.`, { code: "not_reviewable" });
-            }
-            const reviewed = await spawnReviewForTicket(
-              ticket.id,
-              await projectForTicket(ticket, options.project ?? null),
-              options.full ? "full" : "incremental",
-              subject,
-            );
+            const reason = await reviewUnavailableReason(ticket.id);
+            if (reason !== null) throw new PluginCliError(`Ticket ${ticket.id} can't be reviewed: ${reason}.`, { code: "not_reviewable" });
+            const reviewed = await startReview(ticket.id, options.project ?? null, options.full ? "full" : "incremental");
             return {
               exitCode: 0,
               stdout: options.json ? JSON.stringify(reviewed) : `Review started in @thread:${reviewed.reviewThreadId}`,
