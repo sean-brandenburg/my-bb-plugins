@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PullRequest } from "../../shared/board";
-import type { CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
+import type { ChecksRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
 
 export type KanbanDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
@@ -83,6 +83,19 @@ export function prepareStatements(db: KanbanDatabase) {
       `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, jira_url = ?, jira_status = ?, jira_status_category = ?, jira_issue_type = ?, jira_priority = ?, jira_assignee = ?, jira_updated_at = ?, updated_at = ? WHERE id = ?`,
     ),
     remove: db.prepare<[string]>(`DELETE FROM tickets WHERE id = ?`),
+    // The loop runs on its own schedule, so storing its state leaves updated_at alone.
+    setLoopState: db.prepare<[string, string]>(`UPDATE tickets SET loop_state = ? WHERE id = ?`),
+    insertChecksRun: db.prepare(
+      `INSERT INTO checks_runs (id, ticket_id, thread_id, commit_sha, command, command_source, status, created_at)
+       VALUES (@id, @ticket_id, @thread_id, @commit_sha, @command, @command_source, 'running', @created_at)`,
+    ),
+    checksRunByThread: db.prepare<[string], ChecksRunRow>(`SELECT * FROM checks_runs WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`),
+    checksRunById: db.prepare<[string], ChecksRunRow>(`SELECT * FROM checks_runs WHERE id = ?`),
+    completeChecksRun: db.prepare<[number, string, number, string]>(
+      `UPDATE checks_runs SET status = 'completed', exit_code = ?, output_tail = ?, completed_at = ? WHERE id = ?`,
+    ),
+    failChecksRun: db.prepare<[number, string]>(`UPDATE checks_runs SET status = 'failed', completed_at = ? WHERE id = ? AND status = 'running'`),
+    deleteChecksRunsForTicket: db.prepare<[string]>(`DELETE FROM checks_runs WHERE ticket_id = ?`),
     moveColumn: db.prepare<[string, number, number, string]>(
       `UPDATE tickets SET column_id = ?, column_entered_at = ?, updated_at = ? WHERE column_id = ?`,
     ),
@@ -110,7 +123,8 @@ export function prepareStatements(db: KanbanDatabase) {
          AND apply_thread_id NOT IN (SELECT thread_id FROM tickets WHERE thread_id IS NOT NULL)
        UNION SELECT thread_id FROM comment_applies
        UNION SELECT thread_id FROM narratives
-       UNION SELECT thread_id FROM hunk_explanations`,
+       UNION SELECT thread_id FROM hunk_explanations
+       UNION SELECT thread_id FROM checks_runs`,
     ),
     reviewByThread: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1`,

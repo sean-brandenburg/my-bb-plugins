@@ -7,7 +7,7 @@ import type { Services } from "./services";
 /** The board's RPC surface; each handler hands off to the feature that owns it. */
 export function registerRpc(ctx: KanbanContext, services: Services): void {
   const { bb, db, stmts, sync, publish } = ctx;
-  const { board, subjects, threads, projects, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads } = services;
+  const { board, subjects, threads, projects, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads, loop, projectSettings } = services;
   const { resolveDiffSubject } = subjects;
 
   bb.rpc.register(rpcContract, {
@@ -18,6 +18,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       tags: board.allTags(),
       sync,
       dumps: stmts.dumpsOpen.all().map(rowToDump),
+      projectSettings: projectSettings.allProjectSettings(),
     }),
     dump_create: ({ text, projectId }) => dumps.createDump(text, projectId),
     dumps_list: ({ includeClosed }) => dumps.listDumps(includeClosed),
@@ -97,6 +98,8 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     ticket_delete: ({ id }) => board.deleteTicket(id),
     ticket_restore: ({ id }) => board.restoreTicket(id),
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
+    ticket_set_monitored: ({ id, monitored }) => loop.setMonitored(id, monitored),
+    project_set_check_command: ({ projectId, checkCommand }) => projectSettings.setProjectSettings(projectId, { checkCommand: checkCommand === "" ? null : checkCommand }),
     ticket_review_pr: ({ id, projectId, mode }) => reviews.startReview(id, projectId, mode),
     review_availability: async ({ ticketId }) => ({ reason: await reviews.reviewUnavailableReason(ticketId) }),
     review_list: ({ ticketId }) => reviews.listReviews(ticketId),

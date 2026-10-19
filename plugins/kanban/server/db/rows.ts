@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PullRequest, Ticket } from "../../shared/board";
 import type { CommentApply, DiffComment, DiffCommentTarget, PrComment } from "../../shared/comments";
 import { proposalSchema, type Dump, type Proposal } from "../../shared/dump";
+import { parseLoopState, type CheckCommand } from "../../shared/loop";
 import type { Review } from "../../shared/review";
 import type { HunkExplanation, Narrative } from "../../shared/tour";
 import { parseNarrative, parseReviewReport } from "../agent-output";
@@ -45,8 +46,24 @@ export interface TicketRow {
   position: number;
   /** Null only for rows written before the column existed and not yet migrated. */
   column_entered_at: number | null;
+  /** The review loop's state as JSON; null until the card is first monitored. */
+  loop_state: string | null;
   created_at: number;
   updated_at: number;
+}
+
+export interface ChecksRunRow {
+  id: string;
+  ticket_id: string;
+  thread_id: string;
+  commit_sha: string;
+  command: string;
+  command_source: CheckCommand["source"];
+  status: "running" | "completed" | "failed";
+  exit_code: number | null;
+  output_tail: string | null;
+  created_at: number;
+  completed_at: number | null;
 }
 
 export interface HunkExplanationRow {
@@ -372,6 +389,7 @@ export function rowToTicket(
         : null,
     position: row.position,
     columnEnteredAt: row.column_entered_at ?? row.updated_at,
+    loop: row.loop_state === null ? null : parseLoopState(row.loop_state),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

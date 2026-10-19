@@ -162,6 +162,17 @@ export function BoardPage({ subPath }: { subPath: string }) {
     refetch();
   };
 
+  const toggleMonitored = async (ticket: Ticket) => {
+    const monitored = ticket.loop?.monitored !== true;
+    try {
+      await rpc.call("ticket_set_monitored", { id: ticket.id, monitored });
+      toast.success(monitored ? "Monitoring on" : "Monitoring off; the loop stops after its current step", { description: ticket.title });
+    } catch (cause) {
+      toastError(cause);
+    }
+    refetch();
+  };
+
   const todoKeys = useRef<TodoKeys | null>(null);
   const todoRef = useRef<HTMLDivElement>(null);
   const columnCards = (columnId: string | undefined) => layout[board?.columns.findIndex((column) => column.id === columnId) ?? -1] ?? [];
@@ -242,6 +253,9 @@ export function BoardPage({ subPath }: { subPath: string }) {
         return;
       case "diff":
         if (ticket !== undefined && ticketHasDiff(ticket)) openDiff(ticket.id);
+        return;
+      case "monitor":
+        if (ticket !== undefined) void toggleMonitored(ticket);
         return;
       case "delete":
         if (at === null && ticket !== undefined) void deleteTicket(ticket);
@@ -433,6 +447,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
             thread={selected?.threadId == null ? null : threads.get(selected.threadId)}
             threads={threads}
             allTags={board.tags}
+            projectSettings={board.projectSettings}
             rpc={rpc}
             onOpenDiff={openDiff}
             tickets={board.tickets}

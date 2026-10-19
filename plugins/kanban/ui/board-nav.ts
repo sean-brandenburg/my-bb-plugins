@@ -11,6 +11,7 @@ export type BoardCommand =
   | { kind: "open" }
   | { kind: "thread" }
   | { kind: "diff" }
+  | { kind: "monitor" }
   | { kind: "delete" }
   | { kind: "undo" }
   | { kind: "add" }
@@ -40,6 +41,7 @@ export const KEYMAP: Keymap<BoardCommand> = {
   o: { kind: "open" },
   t: { kind: "thread" },
   D: { kind: "diff" },
+  m: { kind: "monitor" },
   d: { kind: "delete" },
   u: { kind: "undo" },
   a: { kind: "add" },
@@ -61,6 +63,7 @@ export type CardCommand =
   | { kind: "type" }
   | { kind: "thread" }
   | { kind: "diff" }
+  | { kind: "monitor" }
   | { kind: "help" }
   | { kind: "close" }
   | { kind: "scroll"; direction: 1 | -1 };
@@ -82,6 +85,7 @@ export const CARD_KEYMAP: Keymap<CardCommand> = {
   i: { kind: "type" },
   t: { kind: "thread" },
   D: { kind: "diff" },
+  m: { kind: "monitor" },
   "?": { kind: "help" },
   "<Esc>": { kind: "close" },
   "<C-d>": { kind: "scroll", direction: 1 },
@@ -102,6 +106,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["o", "Enter"], action: "Open card" },
       { keys: ["t"], action: "Open the card's thread" },
       { keys: ["D"], action: "View the card's changes" },
+      { keys: ["m"], action: "Monitor the card: turn its review loop on or off" },
       { keys: ["d"], action: "Delete card" },
       { keys: ["u"], action: "Undo the last delete" },
       { keys: ["a"], action: "New card in this column" },
@@ -145,6 +150,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["i"], action: "Start typing in the field, or the description" },
       { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
       { keys: ["t", "D"], action: "Open the card's thread / changes" },
+      { keys: ["m"], action: "Turn the card's review loop on or off" },
     ],
   },
   {

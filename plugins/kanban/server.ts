@@ -22,6 +22,7 @@ export * from "./shared/board";
 export * from "./shared/comments";
 export * from "./shared/diff";
 export * from "./shared/dump";
+export * from "./shared/loop";
 export * from "./shared/review";
 export * from "./shared/tour";
 export { BOARD_CHANGED } from "./shared/events";
@@ -46,8 +47,10 @@ export default async function plugin(bb: BbPluginApi) {
     publish: () => bb.realtime.publish(BOARD_CHANGED, { at: Date.now() }),
   };
   const services = createServices(ctx);
-  const { board, codeReviewThreads, reviews, sourceSync } = services;
+  const { board, codeReviewThreads, reviews, sourceSync, projectSettings } = services;
 
+  await projectSettings.loadProjectSettings();
+  await board.keepPreLoopDefaults();
   sourceSync.registerService();
   board.setReviewTag((await settings.get()).reviewTag);
   await codeReviewThreads.reconcileOnLoad();
@@ -59,7 +62,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   registerThreadLifecycle(ctx, services);
-  registerAgentInstructions(ctx);
+  registerAgentInstructions(ctx, services);
   registerRpc(ctx, services);
   registerCli(ctx, services);
 

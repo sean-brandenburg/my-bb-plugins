@@ -8,6 +8,8 @@ import { createChanges } from "./diff/changes";
 import { createDiffSubjects } from "./diff/subjects";
 import { createViewedMarks } from "./diff/viewed";
 import { createDumps } from "./dumps";
+import { createLoop } from "./loop/loop";
+import { createProjectSettings } from "./project-settings";
 import { createProjects } from "./projects";
 import { createReviews } from "./reviews/reviews";
 import { createSubtasks } from "./subtasks";
@@ -17,6 +19,7 @@ import { createTour } from "./tour";
 /** Builds every feature in dependency order; each one only sees the features it is handed. */
 export function createServices(ctx: KanbanContext) {
   const board = createBoardStore(ctx);
+  const projectSettings = createProjectSettings(ctx);
   const subjects = createDiffSubjects(ctx, { board });
   const threads = createCardThreads(ctx, { board });
   const projects = createProjects(ctx, { threads });
@@ -30,7 +33,8 @@ export function createServices(ctx: KanbanContext) {
   const dumps = createDumps(ctx, { board, threads });
   const subtasks = createSubtasks(ctx, { board, threads, projects });
   const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments });
-  return { board, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
+  const loop = createLoop(ctx, { board, threads, codeReviewThreads, projectSettings });
+  return { board, projectSettings, loop, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
 }
 
 export type Services = ReturnType<typeof createServices>;

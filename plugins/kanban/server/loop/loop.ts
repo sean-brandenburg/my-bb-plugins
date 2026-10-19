@@ -1,0 +1,137 @@
+import type { Ticket } from "../../shared/board";
+import { parseLoopState, type CheckCommand, type Evidence } from "../../shared/loop";
+import type { BoardStore } from "../board";
+import type { CardThreads } from "../card-threads";
+import type { CodeReviewThreads } from "../code-review-threads";
+import type { KanbanContext } from "../context";
+import type { ChecksRunRow } from "../db/rows";
+import type { ProjectSettingsStore } from "../project-settings";
+import { errorMessage, shortId, threadTitle } from "../util";
+import { cardPromptText, checksPrompt } from "./prompts";
+import { reduce, type LoopAction, type LoopEvent } from "./reducer";
+
+/** Thrown when a ready report can't name a check command; the CLI turns it into a hint. */
+export class NoCheckCommandError extends Error {}
+
+/**
+ * The monitored review loop's adapter: it turns thread events, CLI calls and board actions into reducer events,
+ * stores the state the reducer returns, and carries out its actions.
+ */
+export function createLoop(
+  ctx: KanbanContext,
+  { board, threads, codeReviewThreads, projectSettings }: { board: BoardStore; threads: CardThreads; codeReviewThreads: CodeReviewThreads; projectSettings: ProjectSettingsStore },
+) {
+  const { bb, stmts, publish } = ctx;
+  const { getTicket } = board;
+
+  /** Reads, reduces and stores in one synchronous step, so two events for a card can't interleave; actions run after. */
+  async function dispatch(ticketId: string, event: LoopEvent): Promise<void> {
+    const row = stmts.byId.get(ticketId);
+    if (row === undefined) return;
+    const { state, actions } = reduce(parseLoopState(row.loop_state), event);
+    stmts.setLoopState.run(JSON.stringify(state), ticketId);
+    publish();
+    for (const action of actions) await perform(ticketId, action);
+  }
+
+  async function perform(ticketId: string, action: LoopAction): Promise<void> {
+    switch (action.type) {
+      case "ensure-columns":
+        await board.ensureLoopColumns();
+        return;
+      case "move": {
+        const ticket = getTicket(ticketId);
+        if (ticket.columnId === action.column) return;
+        if (!(await board.getColumns()).some((column) => column.id === action.column)) return;
+        board.moveTicket(ticketId, action.column, null);
+        return;
+      }
+      case "spawn-checks":
+        try {
+          await spawnChecks(getTicket(ticketId), action.commit, action.checkCommand);
+        } catch (error) {
+          bb.log.warn(`could not start a checks thread for ticket ${ticketId}: ${errorMessage(error)}`);
+          await dispatch(ticketId, { type: "thread-failed", role: "checks", commit: action.commit });
+        }
+        return;
+      case "prompt-card": {
+        const ticket = getTicket(ticketId);
+        if (ticket.threadId === null) return;
+        const text = cardPromptText(action.prompt, ticket, projectSettings.projectSettings(ticket.projectId).checkCommand);
+        try {
+          await bb.sdk.threads.send({ threadId: ticket.threadId, mode: "auto", input: [{ type: "text", text, mentions: [] }] });
+        } catch (error) {
+          bb.log.warn(`could not prompt the thread of ticket ${ticketId}: ${errorMessage(error)}`);
+        }
+        return;
+      }
+    }
+  }
+
+  async function spawnChecks(ticket: Ticket, commit: string, checkCommand: CheckCommand): Promise<void> {
+    const projectId = ticket.projectId;
+    if (projectId === null) throw new Error("The card has no project to check its work in");
+    const thread = await bb.sdk.threads.spawn({
+      projectId,
+      environment: await threads.freshWorktree(projectId),
+      prompt: checksPrompt(ticket, commit, checkCommand.command),
+      title: threadTitle(`Checks ${commit.slice(0, 7)}: ${ticket.title}`),
+      ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
+      visibility: await codeReviewThreads.codeReviewThreadVisibility(),
+      pluginMetadata: { ticketId: ticket.id, role: "checks" },
+    });
+    stmts.insertChecksRun.run({
+      id: shortId(),
+      ticket_id: ticket.id,
+      thread_id: thread.id,
+      commit_sha: commit,
+      command: checkCommand.command,
+      command_source: checkCommand.source,
+      created_at: Date.now(),
+    });
+    publish();
+  }
+
+  async function setMonitored(ticketId: string, monitored: boolean): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    await dispatch(ticket.id, monitored ? { type: "monitor", hasThread: ticket.threadId !== null } : { type: "unmonitor" });
+    return getTicket(ticket.id);
+  }
+
+  /** The project's command when it sets one; otherwise the one the agent ran, marked as its choice. */
+  function resolveCheckCommand(ticket: Ticket, agentCommand: string | null): CheckCommand {
+    const projectCommand = projectSettings.projectSettings(ticket.projectId).checkCommand;
+    if (projectCommand !== null) return { command: projectCommand, source: "project" };
+    if (agentCommand !== null && agentCommand.trim() !== "") return { command: agentCommand.trim(), source: "agent" };
+    throw new NoCheckCommandError("The project sets no check command, so the ready report has to name the one you ran");
+  }
+
+  /** The card's thread reports its work committed and verified; on a monitored card the checks start. */
+  async function reportReady(ticketId: string, report: { commit: string; evidence: Evidence; checkCommand: string | null }): Promise<{ ticket: Ticket; checkCommand: CheckCommand | null }> {
+    const ticket = getTicket(ticketId);
+    if (!parseLoopState(stmts.byId.get(ticket.id)!.loop_state).monitored) return { ticket, checkCommand: null };
+    const checkCommand = resolveCheckCommand(ticket, report.checkCommand);
+    await dispatch(ticket.id, { type: "ready", commit: report.commit, evidence: report.evidence, checkCommand });
+    return { ticket: getTicket(ticket.id), checkCommand };
+  }
+
+  async function recordChecks(run: ChecksRunRow, exitCode: number, outputTail: string): Promise<void> {
+    stmts.completeChecksRun.run(exitCode, outputTail, Date.now(), run.id);
+    await dispatch(run.ticket_id, { type: "checks-result", commit: run.commit_sha, exitCode, outputTail });
+  }
+
+  /** A checks thread that goes idle without recording a result never ran the checks. */
+  function handleIdle(threadId: string): boolean {
+    const run = stmts.checksRunByThread.get(threadId);
+    if (run === undefined) return false;
+    if (run.status === "running") {
+      stmts.failChecksRun.run(Date.now(), run.id);
+      void dispatch(run.ticket_id, { type: "thread-failed", role: "checks", commit: run.commit_sha });
+    }
+    return true;
+  }
+
+  return { setMonitored, reportReady, recordChecks, handleIdle };
+}
+
+export type Loop = ReturnType<typeof createLoop>;

@@ -207,5 +207,21 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
       delta TEXT
     )`,
     `ALTER TABLE reviews ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'pr'`,
+    `ALTER TABLE tickets ADD COLUMN loop_state TEXT`,
+    `CREATE TABLE IF NOT EXISTS checks_runs (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      commit_sha TEXT NOT NULL,
+      command TEXT NOT NULL,
+      command_source TEXT NOT NULL,
+      status TEXT NOT NULL,
+      exit_code INTEGER,
+      output_tail TEXT,
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    )`,
+    `CREATE INDEX IF NOT EXISTS checks_runs_ticket ON checks_runs(ticket_id, created_at)`,
+    `CREATE INDEX IF NOT EXISTS checks_runs_thread ON checks_runs(thread_id)`,
   ]);
 }

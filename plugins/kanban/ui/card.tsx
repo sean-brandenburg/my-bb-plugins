@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { cardSnippet, dueStatus, shortAge, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
-import { ChecksMark, JiraStatusGlyph, PrStateGlyph, ReviewBadge } from "./badges";
+import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph, ReviewBadge } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { useTicketHasDiff } from "./data";
 
@@ -105,8 +105,9 @@ export function CardView({
       <span className="line-clamp-3 break-words font-medium leading-5">{ticket.title}</span>
       {snippet !== "" ? <p className="-mt-1 line-clamp-2 break-words text-xs leading-4 text-muted-foreground">{snippet}</p> : null}
       <CardSource ticket={ticket} />
-      {review !== null || shownTags.length > 0 ? (
+      {review !== null || shownTags.length > 0 || ticket.loop?.monitored === true ? (
         <div className="flex flex-wrap items-center gap-1">
+          <LoopChip ticket={ticket} />
           <ReviewBadge ticket={ticket} />
           <TagBadges tags={shownTags} />
           {ownTags.length > shownTags.length ? (

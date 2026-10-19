@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COLUMN } from "./columns";
 import { dumpSchema } from "./dump";
+import { loopStateSchema, projectSettingsSchema } from "./loop";
 import { reviewSummarySchema } from "./review";
 
 export const TICKET_TITLE_MAX_LENGTH = 200;
@@ -155,6 +156,8 @@ export const ticketSchema = z.object({
   position: z.number(),
   /** When the card moved into its current column. */
   columnEnteredAt: z.number(),
+  /** The monitored review loop's state; null for a card that was never monitored. */
+  loop: loopStateSchema.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -180,10 +183,23 @@ export const boardSchema = z.object({
   sync: syncStatusSchema,
   /** Brain dumps still in flight or awaiting review (planning, ready, failed). */
   dumps: z.array(dumpSchema),
+  /** Per-project settings, by project id; a project with none set is absent. */
+  projectSettings: z.record(z.string(), projectSettingsSchema),
 });
 export type Board = z.infer<typeof boardSchema>;
 
+/** A new board's columns, named for the monitored review loop; the ids are the ones agents have always moved cards by. */
 export const DEFAULT_COLUMNS: Column[] = [
+  { id: COLUMN.backlog, name: "Backlog" },
+  { id: COLUMN.todo, name: "To Do" },
+  { id: COLUMN.inProgress, name: "Building" },
+  { id: COLUMN.checking, name: "Checking" },
+  { id: COLUMN.review, name: "Needs you" },
+  { id: COLUMN.done, name: "Done" },
+];
+
+/** The defaults before the review loop. A board that never stored its columns showed these, and keeps them. */
+export const PRE_LOOP_DEFAULT_COLUMNS: Column[] = [
   { id: COLUMN.backlog, name: "Backlog" },
   { id: COLUMN.todo, name: "To Do" },
   { id: COLUMN.inProgress, name: "In Progress" },

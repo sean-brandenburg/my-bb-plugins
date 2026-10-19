@@ -49,6 +49,7 @@ export function focusBoard(ticketId: string): void {
 export interface CardKeyHandlers {
   onThread: () => void;
   onDiff: () => void;
+  onMonitor: () => void;
   onHelp: () => void;
   /** Back to the board with the card left open; absent where the card is a modal. */
   onBack?: () => void;
@@ -180,6 +181,9 @@ export function useCardKeys(
           return;
         case "diff":
           handlers.onDiff();
+          return;
+        case "monitor":
+          handlers.onMonitor();
           return;
         case "help":
           handlers.onHelp();

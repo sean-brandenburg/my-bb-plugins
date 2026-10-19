@@ -23,6 +23,9 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban add "<title>" [--tag <tag>] [--description <md>] [--column <id>] [--project <id>] [--start-thread]` | Add a card. Inside a thread it is linked to that thread unless `--no-link`, `--project`, or `--start-thread` is passed. |
 | `bb kanban review [--ticket <id>] [--project <id>] [--full]` | Start a code-review thread for the card's PR, or for a card without one, for the commits its thread made beyond its merge base: a fresh worktree checks the PR head (or the thread's HEAD) out detached and runs the `code-review` skill. Inside a thread, defaults to that thread's card. |
 | `bb kanban review-record --commit <sha> [--base <branch>] [--head <branch>]` | Run from a review thread after checking the commit out: records which commit the review covers. |
+| `bb kanban monitor on\|off [--ticket <id>]` | Turn a card's review loop on or off. A monitored card is checked and routed by the board itself; off stops the loop after its current step. Turn it on for a card you create for a larger task. |
+| `bb kanban ready --commit <sha> --evidence-stdin [--screenshot <path>] [--check-command "<cmd>"]` | Run from a monitored card's own thread once its work is committed and verified (see below). |
+| `bb kanban checks-record --exit-code <n> --output-stdin` | Run from a checks thread: records the check command's exit code and the tail of its output. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
 | `bb kanban narrative-check --report-stdin < draft.json` | Run from a narrative thread: checks a draft kanban-narrative report parses and that its steps (and revision steps) cover every changed line; lists what they miss. |
 | `bb kanban narrative-context` | Run from a narrative thread: prints the earlier narrative's steps and the delta a revision chapter must explain. |
@@ -54,6 +57,35 @@ Add `--json` to any command when the output drives code.
    work is waiting on someone else (a PR review, CI), use `bb kanban move review`.
 3. Run `bb kanban columns` first if the default column ids were changed.
 4. Report the move in your summary.
+
+## Procedure for a monitored card's thread
+
+The thread instructions say when the card is monitored. Then the board moves
+the card, never you, and the loop starts from your ready report:
+
+1. Commit the work (on a PR card, push it to the PR branch; never force-push).
+2. Run the project's check command, named in the instructions. When the
+   project sets none, choose the command that builds, lints and tests it.
+   Fix what fails.
+3. Report it, with JSON evidence on stdin of how you verified the work:
+
+   ```
+   bb kanban ready --commit "$(git rev-parse HEAD)" --evidence-stdin <<'EOF'
+   {"commands":[{"command":"pnpm test","exitCode":0,"outputTail":"42 passed"}],"screenshots":["/abs/path/after.png"]}
+   EOF
+   ```
+
+   Add `--check-command "<cmd>"` when the project sets no check command.
+4. Stop. The board re-runs the checks at that commit in a fresh worktree. If
+   they fail, their output comes back to this thread: fix it, commit, and
+   report ready again.
+
+## Checks threads
+
+A checks thread checks the reported commit out detached, prepares the
+worktree, runs the check command once and records the result with
+`bb kanban checks-record --exit-code <n> --output-stdin`. It changes nothing
+and never tries to fix a failure.
 
 ## Planning threads
 

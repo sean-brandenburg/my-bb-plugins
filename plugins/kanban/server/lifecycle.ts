@@ -2,11 +2,12 @@ import { COLUMN } from "../shared/columns";
 import { doneColumn, type BoardStore } from "./board";
 import type { KanbanContext } from "./context";
 import type { Dumps } from "./dumps";
+import type { Loop } from "./loop/loop";
 import type { Reviews } from "./reviews/reviews";
 import type { Tour } from "./tour";
 
 /** Cards follow their threads: activity moves them on, archiving finishes them, and idle threads deliver their output. */
-export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour, reviews }: { board: BoardStore; dumps: Dumps; tour: Tour; reviews: Reviews }): void {
+export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour, reviews, loop }: { board: BoardStore; dumps: Dumps; tour: Tour; reviews: Reviews; loop: Loop }): void {
   const { bb, settings, stmts, publish } = ctx;
   const { getColumns, moveTicket } = board;
 
@@ -27,6 +28,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     if (thread.activeBackgroundAgentCount > 0) return;
     if (dumps.handleIdle(thread.id, lastAssistantText)) return;
     if (tour.handleIdle(thread.id, lastAssistantText)) return;
+    if (loop.handleIdle(thread.id)) return;
     reviews.handleIdle(thread.id, lastAssistantText);
   });
 

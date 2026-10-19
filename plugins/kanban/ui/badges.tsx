@@ -1,5 +1,6 @@
 import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
 import type { JiraIssue, PullRequest, Ticket } from "../shared/board";
+import { phaseChip } from "../shared/loop";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus } from "./format";
@@ -72,6 +73,18 @@ export function JiraBadges({ ticket }: { ticket: Ticket }) {
       {statusMark === null && jira.status !== "" ? <Badge tone={tone}>{jira.status}</Badge> : null}
       {jira.priority !== null ? <Badge title="Priority">{jira.priority}</Badge> : null}
     </>
+  );
+}
+
+/** Marks a monitored card with the review loop's phase, or why it needs you. */
+export function LoopChip({ ticket }: { ticket: Ticket }) {
+  const chip = ticket.loop === null ? null : phaseChip(ticket.loop);
+  if (chip === null) return null;
+  return (
+    <Badge tone={chip.tone} title={chip.title}>
+      <Icon name="kanban-refresh" className="size-3" />
+      {chip.label}
+    </Badge>
   );
 }
 

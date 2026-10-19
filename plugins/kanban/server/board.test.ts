@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_COLUMNS, type JiraIssue, type PullRequest } from "../shared/board";
-import { doneColumn, initialColumn } from "./board";
+import { DEFAULT_COLUMNS, PRE_LOOP_DEFAULT_COLUMNS, type JiraIssue, type PullRequest } from "../shared/board";
+import { doneColumn, initialColumn, withLoopColumns } from "./board";
 
 const pr = (state: PullRequest["state"]): PullRequest => ({ repo: "acme/widgets", number: 7, url: "", role: "authored", state, author: "", updatedAt: "", headRef: null, checks: null });
 const jira = (statusCategory: JiraIssue["statusCategory"]): JiraIssue => ({ key: "PROJ-1", url: "", status: "", statusCategory, issueType: "", priority: null, assignee: null, updatedAt: "" });
@@ -27,5 +27,26 @@ describe("initialColumn", () => {
     expect(initialColumn(columns, null, jira("indeterminate"))).toBe("todo");
     expect(initialColumn(columns, pr("merged"))).toBe("ideas");
     expect(doneColumn(columns)).toBe("shipped");
+  });
+});
+
+describe("withLoopColumns", () => {
+  const ids = (columns: { id: string }[]) => columns.map((column) => column.id);
+
+  it("adds Checking just before review on a board that predates the loop, keeping its names", () => {
+    const columns = withLoopColumns(PRE_LOOP_DEFAULT_COLUMNS);
+    expect(ids(columns)).toEqual(["backlog", "todo", "in-progress", "checking", "review", "done"]);
+    expect(columns.find((column) => column.id === "checking")?.name).toBe("Checking");
+    expect(columns.find((column) => column.id === "review")?.name).toBe("In Review");
+  });
+
+  it("leaves a board that has every loop column alone", () => {
+    expect(withLoopColumns(DEFAULT_COLUMNS)).toBe(DEFAULT_COLUMNS);
+  });
+
+  it("restores a removed in-progress or review where it belongs, before the done column", () => {
+    expect(ids(withLoopColumns([{ id: "todo", name: "To Do" }, { id: "done", name: "Done" }]))).toEqual(["todo", "in-progress", "checking", "review", "done"]);
+    // With no `done` column the last one is where finished cards go, so the loop's columns stay ahead of it.
+    expect(ids(withLoopColumns([{ id: "ideas", name: "Ideas" }, { id: "review", name: "Review" }, { id: "shipped", name: "Shipped" }]))).toEqual(["ideas", "in-progress", "checking", "review", "shipped"]);
   });
 });

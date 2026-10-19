@@ -15,13 +15,24 @@ interface ReviewSetup {
   changesPhrase: string;
 }
 
+const DISPOSABLE_WORKTREE = "Setup (this worktree is disposable; do not touch any other checkout).";
+const LOCAL_SETUP = `${DISPOSABLE_WORKTREE} Worktrees of this project share one repository, so the commit is already here and nothing needs fetching.`;
+
+/** Steps that check one commit of a card's work out detached in a fresh worktree: fetched from the PR, or already in the shared repository. */
+export function commitCheckout(ticket: Ticket, commit: string): { preamble: string; steps: string[] } {
+  if (ticket.pr === null) return { preamble: LOCAL_SETUP, steps: [`\`git checkout --detach ${commit}\``] };
+  return {
+    preamble: `${DISPOSABLE_WORKTREE} \`git fetch\` needs your GitHub credentials, which the sandbox hides; running it with the sandbox disabled is expected and authorized here, so do that rather than stopping to ask.`,
+    steps: [`\`git fetch origin "pull/${ticket.pr.number}/head"\``, `\`git checkout --detach ${commit}\``],
+  };
+}
+
 function reviewSetup(subject: ReviewSubject, ticket: Ticket): ReviewSetup {
   if (subject.kind === "pr") {
     const { repo, number, url } = subject;
     return {
       description: `pull request ${repo}#${number}: "${ticket.title}" (${url})`,
-      preamble:
-        "Setup (this worktree is disposable; do not touch any other checkout). The `gh` and `git fetch` steps need your GitHub credentials, which the sandbox hides; running them with the sandbox disabled is expected and authorized here, so do that rather than stopping to ask.",
+      preamble: `${DISPOSABLE_WORKTREE} The \`gh\` and \`git fetch\` steps need your GitHub credentials, which the sandbox hides; running them with the sandbox disabled is expected and authorized here, so do that rather than stopping to ask.`,
       steps: [
         `\`BASE=$(gh pr view ${number} --repo ${repo} --json baseRefName --jq .baseRefName)\` and \`HEAD_REF=$(gh pr view ${number} --repo ${repo} --json headRefName --jq .headRefName)\``,
         `\`git fetch origin "$BASE" "pull/${number}/head"\``,
@@ -35,8 +46,7 @@ function reviewSetup(subject: ReviewSubject, ticket: Ticket): ReviewSetup {
   const { commit, defaultBranch } = subject;
   return {
     description: `the local work on "${ticket.title}" at commit ${commit}`,
-    preamble:
-      "Setup (this worktree is disposable; do not touch any other checkout). Worktrees of this project share one repository, so the commit is already here and nothing needs fetching.",
+    preamble: LOCAL_SETUP,
     steps: [
       `\`git checkout --detach ${commit}\``,
       `\`bb kanban review-record --commit "$(git rev-parse HEAD)" --base "${defaultBranch}"\` so the board knows which commit this review covers.`,

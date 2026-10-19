@@ -2,9 +2,11 @@ import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
+import { evidenceSchema, phaseChip, type Evidence } from "../shared/loop";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
+import { NoCheckCommandError } from "./loop/loop";
 import { countSeverities } from "./reviews/findings";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
@@ -20,6 +22,9 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
   const { runSync } = services.sourceSync;
+  const { setMonitored, reportReady, recordChecks } = services.loop;
+
+  const COMMIT_SHA = /^[0-9a-f]{7,40}$/iu;
 
   function formatTicket(ticket: Ticket, columns: Column[]): string {
     const column = columns.find((candidate) => candidate.id === ticket.columnId)?.name ?? ticket.columnId;
@@ -34,7 +39,9 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
     const thread = ticket.threadId === null ? "" : `  @thread:${ticket.threadId}`;
     const review = ticket.reviewThreadId === null ? "" : `  review:@thread:${ticket.reviewThreadId}`;
     const nesting = ticket.parentId !== null ? `  ↳ ${ticket.parentId}` : ticket.children.total > 0 ? `  (${ticket.children.done}/${ticket.children.total} subtasks)` : "";
-    return `${ticket.id}  [${column}]  ${ticket.title}${tags}${due}${pr}${thread}${review}${nesting}`;
+    const chip = ticket.loop === null ? null : phaseChip(ticket.loop);
+    const loop = chip === null ? "" : `  monitored: ${chip.label}`;
+    return `${ticket.id}  [${column}]  ${ticket.title}${tags}${due}${pr}${thread}${review}${nesting}${loop}`;
   }
 
   function ticketForContext(ticketOption: string | undefined, threadId: string | undefined): Ticket {
@@ -62,6 +69,23 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
       });
     }
     return parsed.data;
+  }
+
+  function parseEvidence(raw: string | undefined, screenshots: readonly string[]): Evidence {
+    let json: unknown = {};
+    if (raw !== undefined && raw.trim() !== "") {
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        throw new PluginCliError("The evidence is not JSON.", { code: "invalid_evidence", hint: 'Pass {"commands":[{"command":"…","exitCode":0,"outputTail":"…"}],"screenshots":[]}.' });
+      }
+    }
+    const parsed = evidenceSchema.safeParse(json);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new PluginCliError(`Invalid evidence${issue === undefined ? "" : ` at ${issue.path.join(".") || "the top level"}: ${issue.message}`}`, { code: "invalid_evidence" });
+    }
+    return { ...parsed.data, screenshots: [...parsed.data.screenshots, ...screenshots] };
   }
 
   const ticketOption = {
@@ -302,12 +326,80 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
                 hint: "Run this from the review thread, or pass --review <id>.",
               });
             }
-            if (!/^[0-9a-f]{7,40}$/iu.test(options.commit)) {
+            if (!COMMIT_SHA.test(options.commit)) {
               throw new PluginCliError(`"${options.commit}" is not a commit sha.`, { code: "invalid_commit" });
             }
             stmts.recordReviewCommit.run(options.commit, options.base ?? null, options.head ?? null, row.id);
             publish();
             return { exitCode: 0, stdout: `Review ${row.id} covers ${options.commit}` };
+          },
+        }),
+        monitor: cliCommand({
+          summary: "Turn the review loop on or off for a card (defaults to the current thread's card): the board checks, reviews and routes its work itself",
+          positionals: [{ name: "state", description: "`on` or `off`", required: true }],
+          options: { ...ticketOption, json: { type: "boolean", description: "Emit JSON" } },
+          async run({ positionals, options }, ctx) {
+            const state = positionals.state.toLowerCase();
+            if (state !== "on" && state !== "off") throw new PluginCliError(`Expected \`on\` or \`off\`, got "${positionals.state}"`, { code: "invalid_state" });
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            const updated = await setMonitored(ticket.id, state === "on");
+            return {
+              exitCode: 0,
+              stdout: options.json ? JSON.stringify(updated) : state === "on" ? `Monitoring ${formatTicket(updated, await getColumns())}` : `Stopped monitoring ${ticket.id}; the loop stops after its current step`,
+            };
+          },
+        }),
+        ready: cliCommand({
+          summary: "Report a monitored card's work committed and verified (run by the card's own thread): the board re-runs the checks at the commit",
+          options: {
+            ...ticketOption,
+            commit: { type: "string", required: true, description: "Full sha of the commit holding the work" },
+            evidence: {
+              type: "string",
+              stdin: true,
+              description: 'JSON evidence of how the work was verified: {"commands":[{"command","exitCode","outputTail"}],"screenshots":["/path.png"]}; --evidence-stdin reads it from stdin',
+            },
+            screenshot: { type: "string", repeatable: true, description: "Path of a screenshot showing a UI change (repeatable)" },
+            "check-command": { type: "string", description: "The check command you ran; needed only when the project sets none" },
+            json: { type: "boolean", description: "Emit JSON" },
+          },
+          async run({ options }, ctx) {
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            if (!COMMIT_SHA.test(options.commit)) throw new PluginCliError(`"${options.commit}" is not a commit sha.`, { code: "invalid_commit" });
+            const evidence = parseEvidence(options.evidence, options.screenshot);
+            let result: Awaited<ReturnType<typeof reportReady>>;
+            try {
+              result = await reportReady(ticket.id, { commit: options.commit, evidence, checkCommand: options["check-command"] ?? null });
+            } catch (error) {
+              if (!(error instanceof NoCheckCommandError)) throw error;
+              throw new PluginCliError(error.message, { code: "check_command_required", hint: 'Pass --check-command "<the command you ran>".' });
+            }
+            if (options.json) return { exitCode: 0, stdout: JSON.stringify(result) };
+            if (result.checkCommand === null) {
+              return { exitCode: 0, stdout: `Ticket ${ticket.id} isn't monitored, so the board runs no checks; \`bb kanban monitor on\` turns its review loop on.` };
+            }
+            const chosen = result.checkCommand.source === "agent" ? " (your choice; the project sets none)" : "";
+            return {
+              exitCode: 0,
+              stdout: `Ready at ${options.commit}. The board is re-running \`${result.checkCommand.command}\`${chosen} in a fresh worktree; stop here, and anything that fails comes back to this thread.`,
+            };
+          },
+        }),
+        "checks-record": cliCommand({
+          summary: "Record the result of re-running a monitored card's checks (run by the checks thread itself)",
+          options: {
+            "exit-code": { type: "integer", min: 0, max: 255, required: true, description: "The check command's exit code" },
+            output: { type: "string", stdin: true, description: "The tail of the command's output; --output-stdin reads it from stdin" },
+            run: { type: "string", description: "Checks run id; defaults to the run owned by the current thread" },
+          },
+          async run({ options }, ctx) {
+            const row =
+              options.run !== undefined ? stmts.checksRunById.get(options.run) : ctx.threadId === undefined ? undefined : stmts.checksRunByThread.get(ctx.threadId);
+            if (row === undefined) {
+              throw new PluginCliError("No checks run found for this thread.", { code: "no_checks_for_thread", hint: "Run this from the checks thread, or pass --run <id>." });
+            }
+            await recordChecks(row, options["exit-code"], options.output ?? "");
+            return { exitCode: 0, stdout: `Recorded exit code ${options["exit-code"]} for the checks of ${row.commit_sha.slice(0, 7)}` };
           },
         }),
         "review-show": cliCommand({

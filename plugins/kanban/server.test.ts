@@ -424,7 +424,7 @@ describe("CLI", () => {
       signal: new AbortController().signal,
     });
     expect(move.exitCode).toBe(0);
-    expect(move.stdout).toContain("[In Progress]");
+    expect(move.stdout).toContain("[Building]");
 
     const show = await current().harness.behavior.runCli(["show", "--json"], {
       threadId: "thr_9",
@@ -1677,6 +1677,171 @@ describe("local card review", () => {
     await completeReview("thr_2", reportBody(sha, {}, [{ id: "F1", severity: "critical", title: "Real bug", locations: [] }]));
     await current().harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "thr_1", projectId: "proj_acme" }) });
     await expect(current().harness.behavior.callRpc("review_apply", { ticketId: card.id })).rejects.toThrow(/card's thread is gone/u);
+  });
+});
+
+describe("monitored review loop", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const fixSha = "fedcba9876543210fedcba9876543210fedcba98";
+  const ctx = (threadId: string) => ({ threadId, signal: new AbortController().signal });
+  const evidence = JSON.stringify({ commands: [{ command: "pnpm test", exitCode: 0, outputTail: "42 passed" }] });
+  const sentTexts = () => (current().harness.inspection.sdk.callsTo("threads.send") as Array<[{ threadId: string; input: Array<{ text: string }> }]>).map(([args]) => ({ threadId: args.threadId, text: args.input[0]!.text }));
+  const card = async () => (await board()).tickets[0]!;
+
+  /** A local card whose thread is `thr_1`, monitored, in a project whose check command is `checkCommand`. */
+  async function monitoredCard(checkCommand: string | null = "pnpm check"): Promise<Ticket> {
+    await load({ autoStartThreads: false });
+    current().harness.sdk.stub("threads.send", async () => ({ ok: true }));
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "Cache lookups", projectId: "proj_acme", startThread: true })) as Ticket;
+    if (checkCommand !== null) await current().harness.behavior.callRpc("project_set_check_command", { projectId: "proj_acme", checkCommand });
+    return (await current().harness.behavior.callRpc("ticket_set_monitored", { id: ticket.id, monitored: true })) as Ticket;
+  }
+
+  const ready = (commit = sha, ...extra: string[]) => current().harness.behavior.runCli(["ready", "--commit", commit, "--evidence", evidence, ...extra], ctx("thr_1"));
+  const recordChecks = (threadId: string, exitCode: number, output = "") => current().harness.behavior.runCli(["checks-record", "--exit-code", String(exitCode), "--output", output], ctx(threadId));
+
+  it("starts building when monitored and tells the card's thread the loop's contract", async () => {
+    const ticket = await monitoredCard();
+    expect(ticket.loop).toMatchObject({ monitored: true, phase: "building", reason: null });
+    expect(sentTexts()).toEqual([{ threadId: "thr_1", text: expect.stringContaining("bb kanban ready") }]);
+    expect(sentTexts()[0]!.text).toContain("`pnpm check`");
+  });
+
+  it("re-runs the checks of a ready commit in a fresh hidden worktree and moves the card to Checking", async () => {
+    await monitoredCard();
+    const result = await ready();
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("`pnpm check`");
+    expect(spawned[1]).toMatchObject({
+      projectId: "proj_acme",
+      environment: { type: "host", hostId: "host_1", workspace: { type: "managed-worktree", baseBranch: { kind: "default" } } },
+      parentThreadId: "thr_1",
+      title: "Checks 0123456: Cache lookups",
+      visibility: "hidden",
+      pluginMetadata: { ticketId: (await card()).id, role: "checks" },
+    });
+    const prompt = String(spawned[1]!.prompt);
+    expect(prompt).toContain(`git checkout --detach ${sha}`);
+    expect(prompt).toContain("( pnpm check )");
+    expect(prompt).toContain("bb kanban checks-record --exit-code \"$code\" --output-stdin");
+    expect(await card()).toMatchObject({
+      columnId: "checking",
+      loop: { phase: "checking", commit: sha, checkCommand: { command: "pnpm check", source: "project" }, evidence: { commands: [{ command: "pnpm test", exitCode: 0, outputTail: "42 passed" }], screenshots: [] } },
+    });
+  });
+
+  it("moves passing checks to Needs you", async () => {
+    await monitoredCard();
+    await ready();
+    expect((await recordChecks("thr_2", 0, "all green")).exitCode).toBe(0);
+    expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "clean", checks: [{ commit: sha, exitCode: 0, passed: true }] } });
+  });
+
+  it("sends failing checks back to the card's thread with their output, and escalates a second failure in a row", async () => {
+    await monitoredCard();
+    await ready();
+    await recordChecks("thr_2", 1, "FAIL cache.test.ts");
+    expect(await card()).toMatchObject({ columnId: "in-progress", loop: { phase: "building", reason: null } });
+    const bounced = sentTexts()[1]!;
+    expect(bounced.threadId).toBe("thr_1");
+    expect(bounced.text).toContain(`\`pnpm check\` at commit ${sha}`);
+    expect(bounced.text).toContain("exit code 1");
+    expect(bounced.text).toContain("FAIL cache.test.ts");
+    expect(spawned.filter((args) => (args.pluginMetadata as { role?: string }).role === "review")).toEqual([]);
+
+    await ready(fixSha);
+    expect(spawned[2]).toMatchObject({ pluginMetadata: { role: "checks" } });
+    await recordChecks("thr_3", 1, "FAIL again");
+    expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "checks" } });
+    expect(sentTexts()).toHaveLength(2);
+  });
+
+  it("escalates a checks thread that goes idle without recording a result as a loop error", async () => {
+    await monitoredCard();
+    await ready();
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }), lastAssistantText: "I could not run it" });
+    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { reason: "loop-error" } }));
+  });
+
+  it("uses the agent's command, marked as its choice, when the project sets none", async () => {
+    await monitoredCard(null);
+    const refused = await ready();
+    expect(refused.exitCode).not.toBe(0);
+    expect(refused.stderr).toContain("--check-command");
+    expect(spawned).toHaveLength(1);
+
+    const result = await ready(sha, "--check-command", "make test");
+    expect(result.stdout).toContain("your choice");
+    expect(String(spawned[1]!.prompt)).toContain("( make test )");
+    expect((await card()).loop?.checkCommand).toEqual({ command: "make test", source: "agent" });
+  });
+
+  it("turns on and off from the CLI; off stops the loop after its current step", async () => {
+    await load({ autoStartThreads: false });
+    current().harness.sdk.stub("threads.send", async () => ({ ok: true }));
+    await current().harness.behavior.callRpc("ticket_create", { title: "Cache lookups", projectId: "proj_acme", startThread: true });
+    await current().harness.behavior.callRpc("project_set_check_command", { projectId: "proj_acme", checkCommand: "pnpm check" });
+    const notYet = await ready();
+    expect(notYet.stdout).toContain("isn't monitored");
+    expect(spawned).toHaveLength(1);
+
+    expect((await current().harness.behavior.runCli(["monitor", "on"], ctx("thr_1"))).stdout).toContain("monitored: building");
+    await ready();
+    expect((await current().harness.behavior.runCli(["monitor", "off"], ctx("thr_1"))).stdout).toContain("after its current step");
+    await recordChecks("thr_2", 1, "FAIL");
+    expect((await card()).loop).toMatchObject({ monitored: false, phase: "idle", checks: [{ exitCode: 1 }] });
+    expect(sentTexts()).toHaveLength(1);
+  });
+
+  it("holds a monitored card's thread to the loop's contract and tells checks threads what to record", async () => {
+    const ticket = await monitoredCard();
+    const configured = await current().harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ pluginMetadata: { ticketId: ticket.id } }));
+    expect(configured?.instructions).toContain("never move the card yourself");
+    expect(configured?.instructions).toContain("bb kanban ready");
+    expect(configured?.instructions).toContain("`pnpm check`");
+    expect(configured?.instructions).not.toContain("bb kanban move in-progress");
+    expect(configured!.instructions!.length).toBeLessThanOrEqual(4096);
+
+    const checks = await current().harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ pluginMetadata: { ticketId: ticket.id, role: "checks" } }));
+    expect(checks?.instructions).toContain("bb kanban checks-record");
+  });
+
+  it("adds Checking to an existing board the first time a card is monitored, keeping its column names", async () => {
+    await load({ autoStartThreads: false });
+    expect((await board()).columns.map((column) => column.name)).toEqual(["Backlog", "To Do", "Building", "Checking", "Needs you", "Done"]);
+    await current().harness.behavior.callRpc("columns_set", {
+      columns: [
+        { id: "backlog", name: "Backlog" },
+        { id: "in-progress", name: "Doing" },
+        { id: "review", name: "In Review" },
+        { id: "done", name: "Done" },
+      ],
+    });
+    const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "A" })) as Ticket;
+    await current().harness.behavior.callRpc("ticket_set_monitored", { id: ticket.id, monitored: true });
+    expect((await board()).columns).toEqual([
+      { id: "backlog", name: "Backlog" },
+      { id: "in-progress", name: "Doing" },
+      { id: "checking", name: "Checking" },
+      { id: "review", name: "In Review" },
+      { id: "done", name: "Done" },
+    ]);
+  });
+
+  it("keeps the old default names on a board in use that never stored its columns", async () => {
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("ticket_create", { title: "A" });
+    host = await current().harness.lifecycle.reload(plugin);
+    expect((await board()).columns.map((column) => column.name)).toEqual(["Backlog", "To Do", "In Progress", "In Review", "Done"]);
+  });
+
+  it("keeps a card's checks runs through delete and restore", async () => {
+    const ticket = await monitoredCard();
+    await ready();
+    await current().harness.behavior.callRpc("ticket_delete", { id: ticket.id });
+    await current().harness.behavior.callRpc("ticket_restore", { id: ticket.id });
+    await recordChecks("thr_2", 0);
+    expect((await card()).loop).toMatchObject({ phase: "needs-you", reason: "clean" });
   });
 });
 

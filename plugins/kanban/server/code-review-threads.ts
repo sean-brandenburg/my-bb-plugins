@@ -2,7 +2,7 @@ import type { CodeReviewThread } from "../shared/tour";
 import type { KanbanContext } from "./context";
 
 /** A new key re-syncs every existing code review thread once on load; change it when another thread kind joins the hidden set. */
-const CODE_REVIEW_THREADS_HIDDEN_KEY = "codeReviewThreadsHidden";
+const CODE_REVIEW_THREADS_HIDDEN_KEY = "codeReviewThreadsHidden.checks";
 
 /** Threads the code review buttons start (reviews, applies, tours, explanations), hidden from the sidebar when the setting says so. */
 export function createCodeReviewThreads(ctx: KanbanContext) {

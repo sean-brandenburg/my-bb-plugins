@@ -31,6 +31,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     jira: null,
     position: 0,
     columnEnteredAt: 0,
+    loop: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,

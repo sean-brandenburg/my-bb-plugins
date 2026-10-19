@@ -33,6 +33,12 @@ A kanban board where every card is a BB thread.
   card of its own. Synced PR comments
   (and your local ones) go to an `apply-pr-comments` thread. Findings and PR
   comment threads render inline in the diff.
+- **Monitored cards**: flag a card and the board runs the loop for it. Its
+  thread commits and reports ready with evidence; a hidden thread re-runs the
+  project's check command at that commit in a fresh worktree; failing checks go
+  back to the card's thread with the output, and a second failure in a row
+  stops at Needs you. The card moves through Building, Checking and Needs you
+  on its own and shows the loop's phase.
 - An agent-written **narrative review** of the change: reading order, risk
   and watch-outs, plus a step-by-step walk that covers every changed line,
   with mermaid diagrams. When the code moves, the narrative is updated with a
@@ -41,7 +47,7 @@ A kanban board where every card is a BB thread.
 - PR repositories with no matching project are cloned and registered as
   projects automatically.
 - Each card shows its thread's live status; cards in Backlog or To Do move to
-  In Progress when their thread starts working, and agents move them on with
+  Building (In Progress on boards made before the loop) when their thread starts working, and agents move them on with
   `bb kanban move <column>`.
 
 ## How it works
@@ -58,5 +64,7 @@ separate Diff view plugin, whose diff library this plugin embeds.
 
 The bundled skill explains the `bb kanban` commands. A thread started from a
 card is told its ticket id and column, and asked to move the card to In
-Progress when it starts work and to Done when the work is verified. Review,
-apply, planning and subtask threads get their own instructions.
+Progress when it starts work and to Done when the work is verified; a
+monitored card's thread is instead told to commit, run the checks, report
+with `bb kanban ready`, and never move the card. Review, apply, checks,
+planning and subtask threads get their own instructions.

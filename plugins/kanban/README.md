@@ -42,7 +42,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   between columns (skipping empty ones), `j`/`k` between cards, `gg`/`G` jump
   to a column's first or last card, `0`/`$` to the first or last column.
   `H`/`L` move the card to the neighbouring column and `J`/`K` reorder it.
-  `o` (or Enter) opens the card, `t` its thread, `D` its changes, `d` deletes
+  `o` (or Enter) opens the card, `t` its thread, `D` its changes, `m` turns its
+  review loop on or off (see Monitored cards), `d` deletes
   it (no confirmation; `u` or the toast's Undo brings it back with its
   reviews, comments and subtasks, for up to a week), `a` adds a
   card to the current column, `za` shows or hides the column's old cards
@@ -64,10 +65,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   with vim-mode it takes two (the first enters vim's normal mode). Escape again
   closes the card and puts the cursor back on the board, and `h` past a row's
   left edge goes back to the board leaving the card open. `t` and `D` open the card's thread and
-  changes.
+  changes, and `m` turns its review loop on or off.
 - Card details follow one hierarchy: the title with a quiet meta line (kind,
   id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
-  the count of unsent comments), a property list (Column, Tags, Due, Thread, Author or Jira fields),
+  the count of unsent comments), a property list (Column, Tags, Due, Thread, Monitor, then Checks on a monitored card, Author or Jira fields),
   then collapsible groups for Code review, PR comments, and Description or
   Notes. Title and description save when the field loses focus. A PR or Jira
   card's title is editable too; once edited, sync keeps your title instead of
@@ -111,6 +112,24 @@ its PR is reviewed and its review findings and comments are handed to agents.
   threads; columns and the todo list sit on translucent, blurred panels.
 - **Ad hoc cards** from the page, from `bb kanban add`, or from an agent inside
   a thread (the card is linked to that thread).
+- **Monitored cards**: tick Monitor → Review loop in the card panel (or press
+  `m`, or run `bb kanban monitor on`) and the board drives the card itself. Its
+  thread is told (in its instructions, and with a message when the thread
+  already exists) to commit its work, run the project's check command, and
+  finish with `bb kanban ready` and the evidence of what it ran, never moving
+  the card itself. The card then moves to Checking while a hidden thread
+  checks the commit out detached in a fresh worktree of the project (for a PR
+  card, fetched from the PR first) and re-runs the check command; it records
+  the exit code and the output's tail with `bb kanban checks-record`. Passing
+  checks move the card to Needs you; failing ones go back to the card's thread
+  with the output and no review is run, and a second failure in a row stops
+  the loop at Needs you. A checks thread that ends without a result stops it as
+  a loop error. The check command is set per project in the card panel's
+  Checks field; a project without one lets the agent pick, and the board marks
+  it as the agent's choice. Monitored cards carry a chip naming the loop's
+  phase (`building`, `checks`, `ready`, or `stuck · <reason>`). Turning
+  monitoring off stops the loop after its current step: a running check
+  finishes, and its result is kept but drives nothing.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against
@@ -371,7 +390,11 @@ remote, and whether a card moves to In Progress when its thread starts working.
 
 ## Columns
 
-Default columns: `backlog`, `todo`, `in-progress`, `review`, `done`. Edit them
+Default columns: `backlog` (Backlog), `todo` (To Do), `in-progress`
+(Building), `checking` (Checking), `review` (Needs you), `done` (Done). The
+names are for new boards; a board already in use keeps its own, and the first
+monitored card adds Checking just before `review` (and puts back an
+`in-progress` or `review` column that was removed). Edit them
 under Settings → Columns on the page; agents refer to columns by id. New PR cards land in `todo`,
 whether you authored them or were asked to review. Sync never moves an open PR
 card you placed by hand, except one in Done that comes back to its source after
@@ -400,6 +423,9 @@ bb kanban subtasks [--ticket <id>]
 bb kanban set-parent <ticket-id> <parent-id|none>
 bb kanban start-subtasks [--ticket <id>] [--sequential]
 bb kanban move <column-id> [--ticket <id>]
+bb kanban monitor on|off [--ticket <id>]
+bb kanban ready --commit <sha> [--evidence-stdin] [--screenshot <path>] [--check-command "<cmd>"]
+bb kanban checks-record --exit-code <n> [--output-stdin]
 bb kanban review [--ticket <id>] [--project <id>] [--full]
 bb kanban review-show [--ticket <id>]
 bb kanban apply-review [--ticket <id>] [--no-push]

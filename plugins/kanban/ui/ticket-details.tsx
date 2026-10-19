@@ -3,9 +3,11 @@ import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_us
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import { useNerdFont } from "bb-nerd-font";
-import type { Column, Ticket } from "../shared/board";
+import type { Board, Column, Ticket } from "../shared/board";
+import { NEEDS_YOU_REASON_LABEL, phaseChip } from "../shared/loop";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -17,7 +19,7 @@ import { ExternalLink, ThreadStatusDot, Select, HEADER_ICON_BUTTON, COMPACT, Gro
 import { ProjectSelect } from "./project-select";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
-import { ChecksMark, JiraStatusGlyph, PrStateGlyph } from "./badges";
+import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
@@ -33,6 +35,7 @@ function TicketDetails({
   thread,
   threads,
   allTags,
+  projectSettings,
   rpc,
   onClose,
   onChanged,
@@ -50,6 +53,7 @@ function TicketDetails({
   thread: PluginSidebarThread | null | undefined;
   threads: ReadonlyMap<string, PluginSidebarThread>;
   allTags: readonly string[];
+  projectSettings: Board["projectSettings"];
   rpc: Rpc;
   onClose: () => void;
   onChanged: () => void;
@@ -107,7 +111,11 @@ function TicketDetails({
   const jiraMark = nerdFont && ticket.jira !== null ? jiraStatusMark(ticket.jira) : null;
   const hasDiff = useTicketHasDiff(ticket, thread);
   const rootRef = useRef<HTMLDivElement>(null);
+  const monitored = ticket.loop?.monitored === true;
+  const toggleMonitored = () =>
+    void run(() => rpc.call("ticket_set_monitored", { id: ticket.id, monitored: !monitored }), monitored ? "Monitoring off; the loop stops after its current step" : "Monitoring on");
   const keys = useCardKeys(rootRef, ticket.id, focusOnMount, {
+    onMonitor: toggleMonitored,
     onThread: () => {
       if (ticket.threadId !== null) onOpenThread(ticket.threadId);
     },
@@ -286,6 +294,21 @@ function TicketDetails({
             </div>
           )}
         </Property>
+        <Property label="Monitor">
+          <div className="flex min-h-7 flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-sm">
+              <Checkbox checked={monitored} disabled={pending} onCheckedChange={toggleMonitored} aria-label="Monitor: the board checks and reviews this card's work itself" />
+              Review loop
+            </label>
+            <LoopChip ticket={ticket} />
+            {monitored ? <LoopStatus ticket={ticket} /> : null}
+          </div>
+        </Property>
+        {monitored && ticket.projectId !== null ? (
+          <Property label="Checks">
+            <CheckCommandEditor projectId={ticket.projectId} command={projectSettings[ticket.projectId]?.checkCommand ?? null} rpc={rpc} run={run} onLeave={keys.leave} />
+          </Property>
+        ) : null}
         {ticket.pr !== null ? (
           <Property label="Author">
             <span>{ticket.pr.author || "unknown"}</span>
@@ -383,6 +406,53 @@ function TicketDetails({
         </Button>
       </footer>
     </div>
+  );
+}
+
+/** One line on where the loop stands, beyond what the chip says. */
+function LoopStatus({ ticket }: { ticket: Ticket }) {
+  const loop = ticket.loop!;
+  const last = loop.checks.at(-1);
+  const chip = phaseChip(loop);
+  const text =
+    loop.phase === "checking"
+      ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
+      : loop.phase === "needs-you" && loop.reason !== null && loop.reason !== "clean"
+        ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
+        : last !== undefined
+          ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
+          : "Waiting for the card's thread to report ready";
+  return (
+    <span className="text-xs text-muted-foreground" title={chip?.title}>
+      {text}
+    </span>
+  );
+}
+
+/** The project's check command, shared by every monitored card in it; empty leaves the choice to each card's agent. Saves on blur. */
+function CheckCommandEditor({ projectId, command, rpc, run, onLeave }: { projectId: string; command: string | null; rpc: Rpc; run: RunAction; onLeave: (field: HTMLElement) => void }) {
+  const [value, setValue] = useState(command ?? "");
+  useEffect(() => setValue(command ?? ""), [projectId, command]);
+  const save = () => {
+    const next = value.trim() === "" ? null : value.trim();
+    if (next === command) return;
+    void run(() => rpc.call("project_set_check_command", { projectId, checkCommand: next }), next === null ? "Check command cleared" : "Check command saved");
+  };
+  return (
+    <input
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={save}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        onLeave(event.currentTarget);
+      }}
+      aria-label="The project's check command"
+      placeholder="The agent picks one, e.g. pnpm typecheck && pnpm test"
+      title="Re-run by the board at every ready commit of a monitored card in this project"
+      className="h-7 w-full rounded-md border border-input bg-transparent px-2 font-mono text-xs placeholder:font-sans placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    />
   );
 }
 
@@ -488,6 +558,7 @@ export function TicketTab() {
     thread: ticket.threadId === null ? null : threads.get(ticket.threadId),
     threads,
     allTags: board!.tags,
+    projectSettings: board!.projectSettings,
     rpc,
     onChanged: refetch,
     onOpenThread: openThread,

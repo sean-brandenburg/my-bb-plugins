@@ -3,6 +3,8 @@ export const COLUMN = {
   backlog: "backlog",
   todo: "todo",
   inProgress: "in-progress",
+  /** Owned by the monitored review loop: cards wait here while the board re-runs their checks and reviews them. */
+  checking: "checking",
   review: "review",
   done: "done",
 } as const;

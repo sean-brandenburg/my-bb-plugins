@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_COLUMNS, DEFAULT_SOURCES, columnSchema, sourceSchema, type Column, type JiraIssue, type PullRequest, type Source, type Ticket } from "../shared/board";
+import { DEFAULT_COLUMNS, DEFAULT_SOURCES, PRE_LOOP_DEFAULT_COLUMNS, columnSchema, sourceSchema, type Column, type JiraIssue, type PullRequest, type Source, type Ticket } from "../shared/board";
 import { COLUMN, doneColumnId } from "../shared/columns";
 import type { DiffCommentTarget } from "../shared/comments";
 import type { Review } from "../shared/review";
@@ -28,8 +28,29 @@ export function doneColumn(columns: Column[]): string {
   return doneColumnId(columns)!;
 }
 
+/** Names for loop columns a board gets back or gains; columns it already has keep their own names. */
+const LOOP_COLUMN_NAMES: Record<string, string> = Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.id, column.name]));
+
+/**
+ * The board with every column the review loop moves cards to: a missing `review` goes before the column finished
+ * cards go to, a missing `in-progress` before the loop's later columns, and `checking` just before `review`. The same
+ * array when nothing is missing.
+ */
+export function withLoopColumns(columns: Column[]): Column[] {
+  const next = [...columns];
+  const has = (id: string) => next.some((column) => column.id === id);
+  const insertBefore = (id: string, before: string | undefined) => {
+    const at = before === undefined ? -1 : next.findIndex((column) => column.id === before);
+    next.splice(at === -1 ? next.length : at, 0, { id, name: LOOP_COLUMN_NAMES[id]! });
+  };
+  if (!has(COLUMN.review)) insertBefore(COLUMN.review, next.length > 1 ? doneColumnId(next)! : undefined);
+  if (!has(COLUMN.inProgress)) insertBefore(COLUMN.inProgress, has(COLUMN.checking) ? COLUMN.checking : COLUMN.review);
+  if (!has(COLUMN.checking)) insertBefore(COLUMN.checking, COLUMN.review);
+  return next.length === columns.length ? columns : next;
+}
+
 /** Tables whose rows belong to one card through `ticket_id` and go with it when it's deleted. */
-const TICKET_TABLES = ["reviews", "pr_comments", "comment_applies", "diff_comments", "diff_viewed", "narratives", "hunk_explanations"] as const;
+const TICKET_TABLES = ["reviews", "pr_comments", "comment_applies", "diff_comments", "diff_viewed", "narratives", "hunk_explanations", "checks_runs"] as const;
 /** How long a deleted card can still be put back. */
 const DELETED_KEPT_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -258,6 +279,7 @@ export function createBoardStore(ctx: KanbanContext) {
       stmts.deleteViewedForTicket.run(id);
       stmts.deleteNarrativesForTicket.run(id);
       stmts.deleteExplanationsForTicket.run(id);
+      stmts.deleteChecksRunsForTicket.run(id);
       stmts.remove.run(id);
       return true;
     })();
@@ -314,6 +336,25 @@ export function createBoardStore(ctx: KanbanContext) {
     return { columns };
   }
 
+  /** Adds the columns the review loop needs to a board that lacks them; a no-op once it has them. */
+  async function ensureLoopColumns(): Promise<void> {
+    const columns = await getColumns();
+    const next = withLoopColumns(columns);
+    if (next === columns) return;
+    await bb.storage.kv.set("columns", next);
+    publish();
+  }
+
+  /**
+   * A board in use that never saved its columns showed the defaults of its day; it keeps those names rather than
+   * taking the loop's renamed defaults, which are for new boards.
+   */
+  async function keepPreLoopDefaults(): Promise<void> {
+    if ((await bb.storage.kv.get("columns")) != null) return;
+    if (stmts.all.all().length === 0) return;
+    await bb.storage.kv.set("columns", PRE_LOOP_DEFAULT_COLUMNS);
+  }
+
   return {
     hydrate,
     getTicket,
@@ -328,6 +369,8 @@ export function createBoardStore(ctx: KanbanContext) {
     allTags,
     getColumns,
     setColumns,
+    ensureLoopColumns,
+    keepPreLoopDefaults,
     getSources,
     setReviewTag,
   };

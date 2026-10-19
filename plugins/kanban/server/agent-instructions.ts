@@ -1,6 +1,9 @@
+import { parseLoopState } from "../shared/loop";
 import type { KanbanContext } from "./context";
 import type { TicketRow } from "./db/rows";
 import type { Statements } from "./db/statements";
+import { builderContract } from "./loop/prompts";
+import type { ProjectSettingsStore } from "./project-settings";
 
 function ticketLabel(row: TicketRow): string {
   return `kanban ticket ${JSON.stringify(row.id)} (${JSON.stringify(row.title)})`;
@@ -24,13 +27,18 @@ const ROLE_INSTRUCTIONS = new Map<string, (row: TicketRow) => string>([
       `This thread applies a persisted code review to the PR of ${ticketLabel(row)}. Commit and push to the PR branch only, never force-push, never post to GitHub, and finish with \`bb kanban review-applied --commit <sha>\` (plus \`--skipped <ids>\` for findings you could not apply).`,
   ],
   [
+    "checks",
+    (row) =>
+      `This thread re-runs the checks of ${ticketLabel(row)} at the commit its agent reported ready. Change, commit and push nothing, do not move the card, never post to GitHub, and record the result with \`bb kanban checks-record --exit-code <code> --output-stdin\`.`,
+  ],
+  [
     "subtasks",
     (row) =>
       `This thread works through the subtasks of ${ticketLabel(row)}: list them with \`bb kanban subtasks --ticket ${row.id}\`, move each with \`bb kanban move <column> --ticket <subtask-id>\` as you go, and never move or finish a subtask you did not actually complete.`,
   ],
 ]);
 
-function cardInstructions(stmts: Statements, row: TicketRow): string {
+function cardInstructions(stmts: Statements, projectSettings: ProjectSettingsStore, row: TicketRow): string {
   const pr =
     row.pr_repo !== null && row.pr_number !== null
       ? ` It tracks GitHub PR ${JSON.stringify(`${row.pr_repo}#${row.pr_number}`)}.`
@@ -40,14 +48,17 @@ function cardInstructions(stmts: Statements, row: TicketRow): string {
   const childCount = stmts.childrenOf.all(row.id).length;
   const childNote = childCount === 0 ? "" : ` It has ${childCount} subtask(s): \`bb kanban subtasks\` lists them; add more with \`bb kanban add "<title>" --parent ${row.id}\`.`;
   const dueNote = row.due_date === null ? "" : ` It is due ${row.due_date}.`;
+  const workflow = parseLoopState(row.loop_state).monitored
+    ? builderContract(row.kind === "pr", projectSettings.projectSettings(row.project_id).checkCommand)
+    : "When you start working move it with `bb kanban move in-progress`; when the work is finished and verified, `bb kanban move done`. Run `bb kanban columns` to see the available columns.";
   return [
     `This thread is kanban ticket ${JSON.stringify(row.id)} titled ${JSON.stringify(row.title)}, currently in column ${JSON.stringify(row.column_id)}.${pr}${dueNote}${parentNote}${childNote}`,
-    "When you start working move it with `bb kanban move in-progress`; when the work is finished and verified, `bb kanban move done`. Run `bb kanban columns` to see the available columns.",
+    workflow,
   ].join(" ");
 }
 
-/** Instructions injected into every thread a card, review, apply, plan or subtask run owns. */
-export function registerAgentInstructions(ctx: KanbanContext): void {
+/** Instructions injected into every thread a card, review, apply, checks, plan or subtask run owns; a monitored card's own thread is held to the review loop's contract. */
+export function registerAgentInstructions(ctx: KanbanContext, { projectSettings }: { projectSettings: ProjectSettingsStore }): void {
   const { bb, stmts } = ctx;
 
   bb.agents.configure((context) => {
@@ -63,6 +74,6 @@ export function registerAgentInstructions(ctx: KanbanContext): void {
     const row = stmts.byId.get(ticketId);
     if (row === undefined) return { tools: [], skills: [] };
     const forRole = typeof role === "string" ? ROLE_INSTRUCTIONS.get(role) : undefined;
-    return { tools: [], skills: ["kanban"], instructions: forRole === undefined ? cardInstructions(stmts, row) : forRole(row) };
+    return { tools: [], skills: ["kanban"], instructions: forRole === undefined ? cardInstructions(stmts, projectSettings, row) : forRole(row) };
   });
 }
