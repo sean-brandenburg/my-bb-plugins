@@ -55,9 +55,22 @@ export const LOOP_ROUND_CAP = 3;
 export const loopFindingSchema = z.object({ id: z.string(), severity: findingSeveritySchema, title: z.string() });
 export type LoopFinding = z.infer<typeof loopFindingSchema>;
 
-/** One automatic fix round: the review it answers and the findings it handed over. */
-export const loopRoundSchema = z.object({ reviewId: z.string(), handed: z.array(z.string()) });
+/** The card thread's answer to one finding of a fix round. */
+export const findingAnswerSchema = z.discriminatedUnion("answer", [
+  z.object({ answer: z.literal("fixed") }),
+  z.object({ answer: z.literal("disputed"), reason: z.string().trim().min(1).max(4000) }),
+]);
+export type FindingAnswer = z.infer<typeof findingAnswerSchema>;
+
+/** One automatic fix round: the review it answers, the findings it handed over, and the thread's answer to each, by finding id. */
+export const loopRoundSchema = z.object({ reviewId: z.string(), handed: z.array(z.string()), answers: z.record(z.string(), findingAnswerSchema).default({}) });
 export type LoopRound = z.infer<typeof loopRoundSchema>;
+
+/** The handed findings of the round being fixed that the card's thread hasn't answered yet. */
+export function unansweredFindings(state: LoopState): string[] {
+  const round = state.phase === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+  return round === undefined ? [] : round.handed.filter((id) => round.answers[id] === undefined);
+}
 
 export const loopGatesSchema = z.object({
   /** Stop after the card's thread proposes a plan, until it's approved. */
@@ -83,7 +96,7 @@ export const loopStateSchema = z.object({
   /** The review running, or the one the current fix round answers. */
   reviewId: z.string().nullable().default(null),
   rounds: z.array(loopRoundSchema).default([]),
-  /** The minor findings still open when the loop ended clean at the cap. */
+  /** The minor findings left open when the loop ended clean: at the cap, or disputed and the dispute rejected. */
   openFindings: z.array(loopFindingSchema).default([]),
   /** Rounds the user started, which never count toward the cap. */
   humanRounds: z.number().int().default(0),

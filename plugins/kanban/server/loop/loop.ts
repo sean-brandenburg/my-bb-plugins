@@ -1,5 +1,5 @@
 import type { Ticket } from "../../shared/board";
-import { parseLoopState, type CheckCommand, type Evidence } from "../../shared/loop";
+import { parseLoopState, unansweredFindings, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
 import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
@@ -13,6 +13,9 @@ import { reduce, type CardPrompt, type LoopAction, type LoopEvent } from "./redu
 
 /** Thrown when a ready report can't name a check command; the CLI turns it into a hint. */
 export class NoCheckCommandError extends Error {}
+
+/** Thrown when the card's thread reports a fix round ready, or answers, out of turn; the CLI shows the message as is. */
+export class FindingAnswerError extends Error {}
 
 /**
  * The monitored review loop's adapter: it turns thread events, CLI calls and board actions into reducer events,
@@ -64,7 +67,7 @@ export function createLoop(
       case "spawn-review": {
         let reviewThreadId: string | null;
         try {
-          reviewThreadId = (await reviews.startReview(ticketId, null, action.mode, action.depth, action.commit)).reviewThreadId;
+          reviewThreadId = (await reviews.startReview(ticketId, null, action.mode, action.depth, action.commit, action.answers)).reviewThreadId;
         } catch (error) {
           bb.log.warn(`could not start a review for ticket ${ticketId}: ${errorMessage(error)}`);
           await dispatch(ticketId, { type: "thread-failed", role: "review", reviewId: null });
@@ -79,7 +82,7 @@ export function createLoop(
         return;
       case "record-fix": {
         const row = stmts.reviewById.get(action.reviewId);
-        if (row !== undefined) reviews.completeApply(row, action.commit, false, []);
+        if (row !== undefined) reviews.completeApply(row, action.commit, false, action.disputed);
         return;
       }
     }
@@ -149,10 +152,25 @@ export function createLoop(
     throw new NoCheckCommandError("The project sets no check command, so the ready report has to name the one you ran");
   }
 
+  /** The card's thread answers findings of the fix round it is in; returns the ones still unanswered. */
+  async function answerFindings(ticketId: string, findingIds: string[], answer: FindingAnswer): Promise<string[]> {
+    const ticket = getTicket(ticketId);
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    const round = state.phase === "fixing" ? state.rounds.find((entry) => entry.reviewId === state.reviewId) : undefined;
+    if (round === undefined) throw new FindingAnswerError(`Ticket ${ticket.id} isn't in a fix round, so there are no findings to answer.`);
+    const unknown = findingIds.filter((id) => !round.handed.includes(id));
+    if (unknown.length > 0) throw new FindingAnswerError(`This round handed over ${round.handed.join(", ")}; not ${unknown.join(", ")}.`);
+    await dispatch(ticket.id, { type: "answer", answers: Object.fromEntries(findingIds.map((id) => [id, answer])) });
+    return unansweredFindings(parseLoopState(stmts.byId.get(ticket.id)!.loop_state));
+  }
+
   /** The card's thread reports its work committed and verified; on a monitored card the checks start. */
   async function reportReady(ticketId: string, report: { commit: string; evidence: Evidence; checkCommand: string | null }): Promise<{ ticket: Ticket; checkCommand: CheckCommand | null }> {
     const ticket = getTicket(ticketId);
-    if (!parseLoopState(stmts.byId.get(ticket.id)!.loop_state).monitored) return { ticket, checkCommand: null };
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    if (!state.monitored) return { ticket, checkCommand: null };
+    const unanswered = unansweredFindings(state);
+    if (unanswered.length > 0) throw new FindingAnswerError(`Answer every finding of this round first; ${unanswered.join(", ")} ${unanswered.length === 1 ? "has" : "have"} no answer.`);
     const checkCommand = resolveCheckCommand(ticket, report.checkCommand);
     await dispatch(ticket.id, { type: "ready", commit: report.commit, evidence: report.evidence, checkCommand });
     return { ticket: getTicket(ticket.id), checkCommand };
@@ -183,11 +201,11 @@ export function createLoop(
       await dispatch(row.ticket_id, { type: "thread-failed", role: "review", reviewId: row.id });
       return;
     }
-    const findings = report.findings.map(({ id, severity, title, preExisting, triage }) => ({ id, severity, title, preExisting, triage }));
+    const findings = report.findings.map(({ id, severity, title, preExisting, triage, carriedFrom, dispute }) => ({ id, severity, title, preExisting, triage, carriedFrom, dispute }));
     await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings });
   }
 
-  return { setMonitored, reportReady, recordChecks, handleIdle, reviewFinished };
+  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, reviewFinished };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

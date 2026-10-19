@@ -64,7 +64,9 @@ export function fixPromptText(ticket: Ticket, round: number, reviewedCommit: str
     "Fix exactly these findings, and nothing beyond them. A finding's locations are every instance of its bug class: fix the class in full, at every instance, but add no refactors, features or clean-ups the findings don't ask for. The next review checks that the fix commits stay within these findings.",
     "",
     ...findingLines(findings),
-    `${commit}, run the checks again, and report with \`bb kanban ready\` as before. Never move the card.`,
+    "Answer every finding before reporting ready: `bb kanban answer F1,F3 fixed` for the ones you fixed, and `bb kanban answer F2 disputed --reason \"<why>\"` for one you are sure is wrong or not this change's to fix, which you then leave as it is. The next review judges each dispute; one it rejects goes to the user, so dispute only with a reason that holds up.",
+    "",
+    `${commit}, run the checks again, and report with \`bb kanban ready\` as before; the board refuses it while a finding has no answer. Never move the card.`,
   ].join("\n");
 }
 

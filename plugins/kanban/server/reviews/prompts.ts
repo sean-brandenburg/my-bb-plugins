@@ -1,4 +1,5 @@
 import type { Ticket } from "../../shared/board";
+import type { FindingAnswer } from "../../shared/loop";
 import type { PrReviewSubject, Review, ReviewDepth, ReviewSubject } from "../../shared/review";
 import { finishSteps } from "../apply-steps";
 import { earlierFindings, earlierNotCovered } from "./findings";
@@ -95,7 +96,15 @@ function intentSection(subject: ReviewSubject, ticket: Ticket, intent: CardInten
  * to be checked out locally. The review runs in its own worktree and checks the head out detached, so it never
  * touches the branch checked out in the main project directory or the card's own environment.
  */
-export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Review | null, standing: Review[], intent: CardIntent, depth: ReviewDepth): string {
+export function reviewPrompt(
+  subject: ReviewSubject,
+  ticket: Ticket,
+  since: Review | null,
+  standing: Review[],
+  intent: CardIntent,
+  depth: ReviewDepth,
+  answers: Record<string, FindingAnswer> = {},
+): string {
   const setup = reviewSetup(subject, ticket);
   const sinceSha = since?.commitSha ?? null;
   const range = sinceSha === null ? setup.fullRange : `${sinceSha}..HEAD`;
@@ -118,7 +127,7 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
     `This review belongs to kanban ticket ${ticket.id}.`,
     "",
     ...intentSection(subject, ticket, intent),
-    ...(sinceSha === null ? [] : ["", ...earlierFindingsSection(standing)]),
+    ...(sinceSha === null ? [] : ["", ...earlierFindingsSection(standing, answers)]),
   ].join("\n");
 }
 
@@ -130,21 +139,22 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
 function incrementalSteps(range: string, fullRange: string, reviewStep: number, depth: ReviewDepth): string[] {
   return [
     `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill at depth \`${depth}\` with the range \`${range}\`, the pre-existing range \`${fullRange}\` and the card's intent below, so a finding in lines this change touched in an earlier commit is not tagged pre-existing. Also give it the fix findings: the earlier findings below whose \`applyRound\` says an apply round committed a fix, which the new commits answer, so its scope finder checks each fix commit stays within the findings it answers. Let it spawn its reviewers, verify and triage their findings and compile them; that report is an intermediate result, not your final message.`,
-    `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem is gone at every instance) or open (some instance is still present; give the current locations of every one left, since lines may have moved). It also checks each earlier not-covered entry, if any, and says which a check at HEAD now covers. Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check.`,
+    `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem is gone at every instance) or open (some instance is still present; give the current locations of every one left, since lines may have moved). It also checks each earlier not-covered entry, if any, and says which a check at HEAD now covers. Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check. An earlier finding whose \`answer\` is \`disputed\` was left unfixed on purpose: the card's thread gives its reason. Have the subagent judge that reason against the code at HEAD the way the skill's verifier judges a finding, and classify it disputed-accepted when the reason holds (the problem isn't real, or its fix falls outside the card's intent) or disputed-rejected when it doesn't, with a one-sentence note either way.`,
     `${reviewStep + 2}. Compile one merged report in the code-review skill's exact format (the markdown sections, the \`Reviewed commit:\` and \`Range:\` lines, and the trailing \`\`\`json review-findings block), with these additions:`,
     `   - \`findings\` holds the new findings from step ${reviewStep} plus every open earlier finding, merged into one where a new finding is the same problem as an earlier one, ordered by severity and renumbered \`F1\`, \`F2\`, ….`,
-    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class and triage unless the new commits made them inaccurate, takes every instance still present at HEAD as its locations, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
+    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class, triage and dispute unless the new commits made them inaccurate, takes every instance still present at HEAD as its locations, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
+    '   - A disputed-rejected finding is carried like an open one, with `"dispute": { "reason": "<the thread\'s reason>", "outcome": "rejected", "note": "<why it doesn\'t hold>" }`; its markdown line ends with `(dispute rejected: <note>)`. Every other finding has `"dispute": null` unless it carries one forward.',
     `   - \`"filtered"\` holds only the findings step ${reviewStep} filtered out; earlier reviews' filtered findings are neither re-checked nor carried.`,
     `   - \`"notCovered"\` holds step ${reviewStep}'s list plus each earlier entry below that still holds at HEAD, once each.`,
-    '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`.',
+    '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>", "dispute": null }`, and each disputed-accepted one the same way with `"dispute": { "reason": "<the thread\'s reason>", "outcome": "accepted", "note": "<why it holds>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`, an accepted dispute\'s line ending with `(disputed, accepted)`.',
     `   - \`"range"\` is \`${range}\`, \`"depth"\` is \`${depth}\`, and \`"reviewers"\` lists only the reviewers step ${reviewStep} ran (none when nothing changed).`,
     "",
     "Your final message must be that merged report, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card, rendered from that JSON, and replaces the earlier reviews' findings on the board.",
   ];
 }
 
-function earlierFindingsSection(standing: Review[]): string[] {
-  const findings = earlierFindings(standing);
+function earlierFindingsSection(standing: Review[], answers: Record<string, FindingAnswer>): string[] {
+  const findings = earlierFindings(standing, answers);
   const freeForm = standing.filter((review) => review.report === null && review.body !== null && review.body.trim() !== "");
   const notCovered = earlierNotCovered(standing);
   const notCoveredLines = notCovered.length === 0 ? [] : ["", "### Not covered by the earlier reviews", "", ...notCovered.map((entry) => `- ${entry}`)];
@@ -152,7 +162,7 @@ function earlierFindingsSection(standing: Review[]): string[] {
   if (findings.length === 0 && freeForm.length === 0) return [...lines, "The earlier reviews left no open findings, so `resolved` is empty and every finding is new.", ...notCoveredLines];
   if (findings.length > 0) {
     lines.push(
-      "Each is keyed by its `handle`; `applyRound` says what the board's apply round did with it.",
+      "Each is keyed by its `handle`; `applyRound` says what the board's apply round did with it, and `answer` is what the card's thread said of it in the last fix round (`fixed`, or `disputed` with its reason), when it was handed one.",
       "",
       "```json",
       JSON.stringify(findings, null, 2),

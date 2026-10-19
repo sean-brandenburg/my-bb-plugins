@@ -121,7 +121,7 @@ describe("review prompt", () => {
   it("judges a re-review's new findings pre-existing against the whole change, and keeps carried findings' verification", () => {
     const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "standard");
     expect(prompt).toContain(`invoke the \`code-review\` skill at depth \`standard\` with the range \`${since}..HEAD\`, the pre-existing range \`main...HEAD\` and the card's intent below`);
-    expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class and triage");
+    expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class, triage and dispute");
     expect(prompt).toContain('`"filtered"` holds only the findings step 3 filtered out');
     const pr = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()], noIntent, "standard");
     expect(pr).toContain(`with the range \`${since}..HEAD\`, the pre-existing range \`origin/$BASE...HEAD\``);
@@ -214,7 +214,7 @@ describe("card intent", () => {
     expect(prompt).toContain("the card's intent below");
     expect(prompt).toContain("## Card intent");
     expect(prompt).toContain("each fix commit stays within the findings it answers");
-    expect(prompt).toMatch(/category, class and triage unless/u);
+    expect(prompt).toMatch(/category, class, triage and dispute unless/u);
   });
 });
 

@@ -125,8 +125,14 @@ its PR is reviewed and its review findings and comments are handed to agents.
   card's thread with the output and no review is run, and a second failure in
   a row stops the loop at Needs you. Every finding the review triaged apply,
   whatever its severity, goes back to the card's thread in one fix prompt
-  (deferred, dropped and pre-existing ones never do); the fix commit is
-  checked and re-reviewed incrementally, and a clean review moves the card to
+  (deferred, dropped and pre-existing ones never do). The thread answers each
+  with `bb kanban answer <ids> fixed` or `bb kanban answer <id> disputed
+  --reason "<why>"`, and the board refuses its ready report until every one
+  is answered. The fix commit is checked and re-reviewed incrementally, and
+  the re-review judges each dispute: an accepted one closes the finding, a
+  rejected one stops the loop with reason "dispute" (or, on a minor finding,
+  stays open as a minor), and a finding answered fixed that is still there
+  stops it with reason "not converging". A clean review moves the card to
   Needs you. After three fix rounds the loop stops: at Needs you with reason
   "cap" while a critical or important finding is open, or as clean with the
   open minors listed. A checks thread that ends without a result stops it as

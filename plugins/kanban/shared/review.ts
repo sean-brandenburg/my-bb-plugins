@@ -56,6 +56,17 @@ export const REVIEW_DEPTH_LABEL: Record<ReviewDepth, string> = { quick: "Quick",
  */
 const triageSchema = z.object({ decision: z.enum(["apply", "defer", "drop"]), reason: z.string().default("") });
 
+/** A re-review's verdict on a finding the card's thread disputed instead of fixing. */
+export const disputeSchema = z.object({
+  /** The card thread's reason. */
+  reason: z.string().default(""),
+  /** Accepted closes the finding; rejected keeps it open. */
+  outcome: z.enum(["accepted", "rejected"]),
+  /** The re-check's reasoning for the outcome. */
+  note: z.string().default(""),
+});
+export type Dispute = z.infer<typeof disputeSchema>;
+
 export const findingSchema = z.object({
   id: z.string(),
   severity: findingSeveritySchema,
@@ -93,6 +104,8 @@ export const findingSchema = z.object({
   class: z.string().nullable().default(null),
   /** Null for findings triage doesn't judge: pre-existing, filtered and unverified ones, and every one in older reports. */
   triage: triageSchema.nullable().default(null),
+  /** Set by a re-review on a finding the card's thread disputed, and kept while it is carried forward. */
+  dispute: disputeSchema.nullable().default(null),
 });
 export type Finding = z.infer<typeof findingSchema>;
 
@@ -124,8 +137,10 @@ export const reviewReportSchema = z.object({
   notCovered: z.array(z.string()).default([]),
   /** Set by re-reviews: `findings` also holds every earlier finding still open, so older reviews are superseded. */
   carriesForward: z.boolean().default(false),
-  /** Earlier findings (`<reviewId>/<findingId>`) a re-review found addressed at the reviewed commit. */
-  resolved: z.array(z.object({ id: z.string(), title: z.string().default(""), note: z.string().default("") })).default([]),
+  /** Earlier findings (`<reviewId>/<findingId>`) a re-review found addressed at the reviewed commit, or closed by an accepted dispute. */
+  resolved: z
+    .array(z.object({ id: z.string(), title: z.string().default(""), note: z.string().default(""), dispute: disputeSchema.nullable().default(null) }))
+    .default([]),
 });
 export type ReviewReport = z.infer<typeof reviewReportSchema>;
 

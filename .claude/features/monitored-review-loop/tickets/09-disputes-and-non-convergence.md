@@ -10,10 +10,10 @@ A finding answered "fixed" that's still present at re-check escalates right away
 
 **Blocked by:** 08 — Loop review and fix rounds.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The response command records an answer per finding for the round. The fix round isn't complete until every listed finding has one.
-- [ ] The re-review prompt includes each answer, and the report records each dispute's outcome.
-- [ ] The reducer closes accepted disputes, escalates rejected critical or important ones, and keeps rejected minors open.
-- [ ] A finding answered fixed that's still open escalates with reason "not converging".
-- [ ] Reducer tests cover each outcome.
+- [x] The response command records an answer per finding for the round. The fix round isn't complete until every listed finding has one.
+- [x] The re-review prompt includes each answer, and the report records each dispute's outcome.
+- [x] The reducer closes accepted disputes, escalates rejected critical or important ones, and keeps rejected minors open.
+- [x] A finding answered fixed that's still open escalates with reason "not converging".
+- [x] Reducer tests cover each outcome.

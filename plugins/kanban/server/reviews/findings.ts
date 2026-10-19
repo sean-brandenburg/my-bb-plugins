@@ -1,4 +1,5 @@
 import { locationLabel } from "../../shared/finding-location";
+import type { FindingAnswer } from "../../shared/loop";
 import { findingEditsSchema, selectionSchema, type Finding, type FindingEdit, type FindingSeverity, type Review, type ReviewReport, type ReviewScores, type ReviewSummary, type SeverityCounts } from "../../shared/review";
 
 /**
@@ -118,17 +119,27 @@ export function standingReviews(reviews: Review[]): Review[] {
   return standing.reverse();
 }
 
-/** The standing findings a re-review must re-check, keyed by the `<reviewId>/<findingId>` handle it carries them forward under. */
-export function earlierFindings(standing: Review[]): Array<Omit<Finding, "id" | "carriedFrom"> & { handle: string; applyRound: string | null }> {
+/**
+ * The standing findings a re-review must re-check, keyed by the `<reviewId>/<findingId>` handle it carries them forward
+ * under. `answers` are the card thread's answers to the last fix round, by handle.
+ */
+export function earlierFindings(
+  standing: Review[],
+  answers: Record<string, FindingAnswer> = {},
+): Array<Omit<Finding, "id" | "carriedFrom"> & { handle: string; applyRound: string | null; answer: FindingAnswer | null }> {
   return standing.flatMap((review) =>
     (review.report?.findings ?? []).map(({ id, carriedFrom: _carriedFrom, ...finding }) => {
+      const handle = `${review.id}/${id}`;
+      const answer = answers[handle] ?? null;
       const apply = review.apply;
       const applyRound = review.appliedFindingIds.includes(id)
         ? `an apply round committed a fix for it${apply?.pushedCommit == null ? "" : ` (the latest round's commit is ${apply.pushedCommit.slice(0, 7)})`}; verify it worked`
-        : apply === null || apply.completedAt === null
-          ? null
-          : "deliberately left out of the apply rounds";
-      return { handle: `${review.id}/${id}`, ...finding, applyRound };
+        : answer?.answer === "disputed"
+          ? "the card's thread disputed it instead of fixing it; judge its answer"
+          : apply === null || apply.completedAt === null
+            ? null
+            : "deliberately left out of the apply rounds";
+      return { handle, ...finding, applyRound, answer };
     }),
   );
 }

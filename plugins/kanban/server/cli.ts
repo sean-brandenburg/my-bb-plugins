@@ -2,12 +2,12 @@ import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
-import { evidenceSchema, phaseChip, type Evidence } from "../shared/loop";
+import { evidenceSchema, findingAnswerSchema, phaseChip, type Evidence } from "../shared/loop";
 import { DEFAULT_REVIEW_DEPTH, REVIEW_DEPTH_LABEL, reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
-import { NoCheckCommandError } from "./loop/loop";
+import { FindingAnswerError, NoCheckCommandError } from "./loop/loop";
 import { countSeverities } from "./reviews/findings";
 import type { Services } from "./services";
 import { normalizeTags, shortId } from "./util";
@@ -23,7 +23,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { diffThreadRoot } = services.diffComments;
   const { startChildren } = services.subtasks;
   const { runSync } = services.sourceSync;
-  const { setMonitored, reportReady, recordChecks } = services.loop;
+  const { setMonitored, answerFindings, reportReady, recordChecks } = services.loop;
 
   const COMMIT_SHA = /^[0-9a-f]{7,40}$/iu;
 
@@ -381,6 +381,9 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             try {
               result = await reportReady(ticket.id, { commit: options.commit, evidence, checkCommand: options["check-command"] ?? null });
             } catch (error) {
+              if (error instanceof FindingAnswerError) {
+                throw new PluginCliError(error.message, { code: "unanswered_findings", hint: 'Run `bb kanban answer <ids> fixed`, or `bb kanban answer <id> disputed --reason "<why>"`, for each.' });
+              }
               if (!(error instanceof NoCheckCommandError)) throw error;
               throw new PluginCliError(error.message, { code: "check_command_required", hint: 'Pass --check-command "<the command you ran>".' });
             }
@@ -393,6 +396,33 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               exitCode: 0,
               stdout: `Ready at ${options.commit}. The board is re-running \`${result.checkCommand.command}\`${chosen} in a fresh worktree; stop here, and anything that fails comes back to this thread.`,
             };
+          },
+        }),
+        answer: cliCommand({
+          summary: "Answer findings of a monitored card's fix round (run by the card's own thread): fixed, or disputed with a reason",
+          positionals: [
+            { name: "findings", description: "Comma-separated finding ids from the fix prompt, e.g. F1,F3", required: true },
+            { name: "answer", description: "`fixed` or `disputed`", required: true },
+          ],
+          options: { ...ticketOption, reason: { type: "string", description: "Why the finding is wrong or not this change's to fix; required with `disputed`" } },
+          async run({ positionals, options }, ctx) {
+            const ticket = ticketForContext(options.ticket, ctx.threadId);
+            const findingIds = positionals.findings.split(",").map((id) => id.trim()).filter((id) => id !== "");
+            const parsed = findingAnswerSchema.safeParse({ answer: positionals.answer.toLowerCase(), reason: options.reason });
+            if (!parsed.success) {
+              throw new PluginCliError(`Expected \`fixed\`, or \`disputed\` with --reason, got "${positionals.answer}"${options.reason === undefined ? "" : " with that reason"}`, {
+                code: "invalid_answer",
+              });
+            }
+            let unanswered: string[];
+            try {
+              unanswered = await answerFindings(ticket.id, findingIds, parsed.data);
+            } catch (error) {
+              if (!(error instanceof FindingAnswerError)) throw error;
+              throw new PluginCliError(error.message, { code: "invalid_finding" });
+            }
+            const rest = unanswered.length === 0 ? "every finding is answered; report with `bb kanban ready`" : `still to answer: ${unanswered.join(", ")}`;
+            return { exitCode: 0, stdout: `Answered ${findingIds.join(", ")} as ${parsed.data.answer}; ${rest}` };
           },
         }),
         "checks-record": cliCommand({

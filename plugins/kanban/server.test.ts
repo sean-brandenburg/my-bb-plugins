@@ -1861,7 +1861,10 @@ describe("monitored review loop", () => {
     expect(fix.text).not.toContain("No eviction");
     expect(fix.text).not.toContain("Old race");
     expect(fix.text).toContain("bb kanban ready");
+    expect(fix.text).toContain("bb kanban answer");
 
+    expect((await ready(fixSha)).exitCode).not.toBe(0);
+    expect((await current().harness.behavior.runCli(["answer", "F1", "fixed"], ctx("thr_1"))).stdout).toContain("every finding is answered");
     await ready(fixSha);
     await recordChecks("thr_4", 0);
     const rereview = String(spawned[4]!.prompt);
@@ -1872,6 +1875,46 @@ describe("monitored review loop", () => {
 
     await completeReview("thr_5", reviewBody(fixSha, [], { carriesForward: true, resolved: [] }), fixSha);
     await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "clean", round: 1 } }));
+  });
+
+  it("takes the card thread's dispute to the re-review, leaves it unapplied, and escalates a rejected important one", async () => {
+    await monitoredCard();
+    await ready();
+    await recordChecks("thr_2", 0);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.any(String) }));
+    const apply = { confidence: 90, triage: { decision: "apply", reason: "" } };
+    await completeReview(
+      "thr_3",
+      reviewBody(sha, [
+        { id: "F1", severity: "minor", title: "Misleading name", locations: [], ...apply },
+        { id: "F2", severity: "important", title: "Stale reads", locations: [], ...apply },
+      ]),
+      sha,
+    );
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "fixing", rounds: [{ handed: ["F1", "F2"] }] }));
+    const reviewId = (await card()).loop!.rounds[0]!.reviewId;
+
+    expect((await current().harness.behavior.runCli(["answer", "F9", "fixed"], ctx("thr_1"))).exitCode).not.toBe(0);
+    expect((await current().harness.behavior.runCli(["answer", "F2", "disputed"], ctx("thr_1"))).exitCode).not.toBe(0);
+    await current().harness.behavior.runCli(["answer", "F1", "fixed"], ctx("thr_1"));
+    await current().harness.behavior.runCli(["answer", "F2", "disputed", "--reason", "Entries are per-request, so nothing goes stale"], ctx("thr_1"));
+    await ready(fixSha);
+    const fixed = (await current().harness.behavior.callRpc("review_list", { ticketId: (await card()).id })) as { reviews: Review[] };
+    expect(fixed.reviews.find((review) => review.id === reviewId)!.appliedFindingIds).toEqual(["F1"]);
+
+    await recordChecks("thr_4", 0);
+    const rereview = String(spawned[4]!.prompt);
+    expect(rereview).toContain("Entries are per-request, so nothing goes stale");
+    expect(rereview).toContain("the card's thread disputed it instead of fixing it");
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.not.stringMatching(reviewId) }));
+
+    const rejected = { reason: "Entries are per-request, so nothing goes stale", outcome: "rejected", note: "The map is module-level" };
+    await completeReview(
+      "thr_5",
+      reviewBody(fixSha, [{ id: "F1", severity: "important", title: "Stale reads", locations: [], carriedFrom: `${reviewId}/F2`, dispute: rejected, ...apply }], { carriesForward: true }),
+      fixSha,
+    );
+    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "dispute" } }));
   });
 
   it("sends failing checks back to the card's thread with their output, and escalates a second failure in a row", async () => {

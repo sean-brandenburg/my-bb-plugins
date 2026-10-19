@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_LOOP_STATE, type LoopState } from "../../shared/loop";
+import { INITIAL_LOOP_STATE, type FindingAnswer, type LoopState } from "../../shared/loop";
 import { reduce, type LoopAction, type LoopEvent, type ReviewedFinding } from "./reducer";
 
 const sha = "0123456789abcdef0123456789abcdef01234567";
@@ -8,13 +8,26 @@ const evidence = { commands: [{ command: "pnpm test", exitCode: 0, outputTail: "
 const ready = (commit = sha): LoopEvent => ({ type: "ready", commit, evidence, checkCommand: { command: "pnpm check", source: "project" } });
 const checks = (exitCode: number, commit = sha): LoopEvent => ({ type: "checks-result", commit, exitCode, outputTail: exitCode === 0 ? "ok" : "1 failed" });
 
-const finding = (id: string, severity: ReviewedFinding["severity"], decision: "apply" | "defer" | "drop" | null = "apply", preExisting = false): ReviewedFinding => ({
+const finding = (
+  id: string,
+  severity: ReviewedFinding["severity"],
+  decision: "apply" | "defer" | "drop" | null = "apply",
+  preExisting = false,
+  carried: Pick<ReviewedFinding, "carriedFrom" | "dispute"> = { carriedFrom: null, dispute: null },
+): ReviewedFinding => ({
   id,
   severity,
   title: `Finding ${id}`,
   preExisting,
   triage: decision === null ? null : { decision },
+  ...carried,
 });
+/** A finding a re-review carried forward from `handle`, with the outcome of its dispute if it had one. */
+const carried = (id: string, severity: ReviewedFinding["severity"], handle: string, outcome: "accepted" | "rejected" | null = null): ReviewedFinding =>
+  finding(id, severity, "apply", false, { carriedFrom: handle, dispute: outcome === null ? null : { outcome } });
+const answer = (answers: Record<string, FindingAnswer>): LoopEvent => ({ type: "answer", answers });
+const fixed = { answer: "fixed" } as const;
+const disputed = { answer: "disputed", reason: "The cache is per-request" } as const;
 const reviewed = (reviewId: string, findings: ReviewedFinding[]): LoopEvent => ({ type: "review-completed", reviewId, findings });
 /** A monitored card whose first ready commit passed its checks and whose review `rev1` started. */
 const reviewing: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), { type: "review-started", reviewId: "rev1" }];
@@ -55,10 +68,10 @@ describe("loop reducer", () => {
   it("reviews a commit that passes its checks, in full and at the loop's depth", () => {
     const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), checks(0)]);
     expect(state).toMatchObject({ phase: "reviewing", round: 0, checks: [{ commit: sha, exitCode: 0, passed: true }] });
-    expect(actions[2]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard" }]);
+    expect(actions[2]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
 
     expect(run([{ type: "monitor", hasThread: true }, ready(), checks(0)], { ...INITIAL_LOOP_STATE, depth: "deep" }).actions[2]).toEqual([
-      { type: "spawn-review", commit: sha, mode: "full", depth: "deep" },
+      { type: "spawn-review", commit: sha, mode: "full", depth: "deep", answers: {} },
     ]);
   });
 
@@ -82,23 +95,27 @@ describe("loop reducer", () => {
   });
 
   it("checks and incrementally re-reviews the fix, then ends clean", () => {
-    const { state, actions } = run([...reviewing, reviewed("rev1", [finding("F1", "important")]), ...fixedAndReviewing(fixSha, "rev2"), reviewed("rev2", [])]);
-    expect(actions[5]).toEqual([
-      { type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"] },
+    const { state, actions } = run([...reviewing, reviewed("rev1", [finding("F1", "important")]), answer({ F1: fixed }), ...fixedAndReviewing(fixSha, "rev2"), reviewed("rev2", [])]);
+    expect(actions[6]).toEqual([
+      { type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] },
       { type: "move", column: "checking" },
       { type: "spawn-checks", commit: fixSha, checkCommand: { command: "pnpm check", source: "project" } },
     ]);
-    expect(actions[6]).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard" }]);
+    expect(actions[7]).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard", answers: { "rev1/F1": fixed } }]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 1, commit: fixSha });
   });
 
+  /** Each round's re-review finds something new, so no round repeats a finding answered fixed. */
   const threeRounds = (last: ReviewedFinding[]): LoopEvent[] => [
     ...reviewing,
     reviewed("rev1", [finding("F1", "important")]),
+    answer({ F1: fixed }),
     ...fixedAndReviewing("a".repeat(40), "rev2"),
     reviewed("rev2", [finding("F1", "important")]),
+    answer({ F1: fixed }),
     ...fixedAndReviewing("b".repeat(40), "rev3"),
     reviewed("rev3", [finding("F1", "minor")]),
+    answer({ F1: fixed }),
     ...fixedAndReviewing("c".repeat(40), "rev4"),
     reviewed("rev4", last),
   ];
@@ -113,6 +130,45 @@ describe("loop reducer", () => {
   it("ends clean at the cap when only minor findings are open, listing them", () => {
     const { state } = run(threeRounds([finding("F1", "minor"), finding("F2", "important", "defer")]));
     expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 3, openFindings: [{ id: "F1", severity: "minor", title: "Finding F1" }] });
+  });
+
+  describe("answers and disputes", () => {
+    const fixing: LoopEvent[] = [...reviewing, reviewed("rev1", [finding("F1", "important"), finding("F2", "minor")])];
+
+    it("keeps the round open until every handed finding is answered, and leaves the disputed ones unfixed", () => {
+      const early = run([...fixing, answer({ F1: fixed, F9: fixed }), ready(fixSha)]);
+      expect(early.state).toMatchObject({ phase: "fixing", rounds: [{ answers: { F1: fixed } }] });
+      expect(early.actions.at(-1)).toEqual([]);
+
+      const { actions } = run([...fixing, answer({ F1: fixed }), answer({ F2: disputed }), ready(fixSha)]);
+      expect(actions.at(-1)![0]).toEqual({ type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1", "F2"], disputed: ["F2"] });
+    });
+
+    const rereviewed = (findings: ReviewedFinding[]) => run([...fixing, answer({ F1: fixed, F2: disputed }), ...fixedAndReviewing(fixSha, "rev2"), reviewed("rev2", findings)]);
+
+    it("closes an accepted dispute", () => {
+      expect(rereviewed([]).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [] });
+      // A re-review that still lists the settled finding doesn't send it back.
+      expect(rereviewed([carried("F1", "minor", "rev1/F2", "accepted")]).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [] });
+    });
+
+    it("escalates a rejected dispute on a critical or important finding", () => {
+      expect(rereviewed([carried("F1", "important", "rev1/F2", "rejected")]).state).toMatchObject({ phase: "needs-you", reason: "dispute" });
+    });
+
+    it("keeps a rejected minor dispute open without sending it back, through later rounds", () => {
+      const settled = carried("F1", "minor", "rev1/F2", "rejected");
+      expect(rereviewed([settled]).state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [{ id: "F1", severity: "minor", title: "Finding F1" }] });
+
+      const next = rereviewed([settled, finding("F2", "important")]);
+      expect(next.state).toMatchObject({ phase: "fixing", round: 2, rounds: [{}, { reviewId: "rev2", handed: ["F2"] }] });
+      const later = run([answer({ F2: fixed }), ...fixedAndReviewing("a".repeat(40), "rev3"), reviewed("rev3", [carried("F1", "minor", "rev2/F1", "rejected")])], next.state);
+      expect(later.state).toMatchObject({ phase: "needs-you", reason: "clean", openFindings: [{ id: "F1" }] });
+    });
+
+    it("escalates a finding answered fixed that is still open as not converging, whatever its severity", () => {
+      expect(rereviewed([carried("F1", "minor", "rev1/F1")]).state).toMatchObject({ phase: "needs-you", reason: "not-converging", round: 1 });
+    });
   });
 
   it("ignores a review it didn't start, and escalates its own review ending without a report", () => {
