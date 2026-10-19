@@ -6,7 +6,7 @@ import { Checkbox } from "../ui/checkbox";
 import { cn } from "../utils";
 import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { SEVERITY_LABEL, type InlineFinding } from "./findings";
-import { returnToDiff, useFindingControls, useIsFocused, useIsReading } from "../keys/review-keys-context";
+import { useFindingControls, useIsFocused, useIsReading } from "../keys/review-keys-context";
 
 const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
 const SEVERITY_BORDER: Record<FindingSeverity, string> = { critical: "border-red-500/70", important: "border-amber-500/70", minor: "border-border" };
@@ -57,12 +57,8 @@ export function FindingAnnotation({
     }
   };
   useFindingControls(anchorId, { toggle, edit: beginEdit });
-  // Escape cancels the edit like the Cancel button and hands the keyboard back to the diff; ⌘↩ saves.
   const onFieldKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft.title.trim() !== "") void save();
-    if (event.key !== "Escape") return;
-    returnToDiff(event.currentTarget);
-    setEditing(false);
   };
   const field = "w-full rounded-md border border-border bg-background px-2 py-1 text-xs";
   const reveal = useOpenedSinceMount(expanded) ? cn(enter.rise, FAST) : undefined;
@@ -111,7 +107,8 @@ export function FindingAnnotation({
         </div>
       ) : null}
       {editing ? (
-        <div className={cn("flex flex-col gap-1.5 pb-1.5", enter.fade, FAST)}>
+        // Escape cancels the edit like the Cancel button and hands the keyboard back to the diff; ⌘↩ saves.
+        <div data-escape-cancels="always" className={cn("flex flex-col gap-1.5 pb-1.5", enter.fade, FAST)}>
           <input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} onKeyDown={onFieldKeyDown} className={field} aria-label="Finding title" />
           <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} onKeyDown={onFieldKeyDown} rows={4} className={cn(field, "font-mono")} aria-label="Finding description" placeholder="Description (Markdown)" />
           <textarea value={draft.fix ?? ""} onChange={(event) => setDraft({ ...draft, fix: event.target.value })} onKeyDown={onFieldKeyDown} rows={3} className={cn(field, "font-mono")} aria-label="Suggested fix" placeholder="Suggested fix (optional)" />
@@ -119,7 +116,7 @@ export function FindingAnnotation({
             <Button type="button" className={COMPACT} disabled={saving || draft.title.trim() === ""} onClick={() => void save()}>
               Save
             </Button>
-            <Button type="button" variant="ghost" className={COMPACT} onClick={() => setEditing(false)}>
+            <Button type="button" variant="ghost" className={COMPACT} data-escape-cancel="" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>

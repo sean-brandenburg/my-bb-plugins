@@ -32,12 +32,13 @@ import { NarrativeView } from "./narrative/narrative-view";
 import { useNarrativeStory } from "./narrative/use-narrative-story";
 import type { NarrativeRef } from "../narrative";
 import { cursorAt, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
-import { KeyHelp, Picker, fileItems } from "./keys/overlays";
+import { KeysOverlay, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
 import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
 import { ReviewKeysContext, createReviewKeys, useReviewKeysState } from "./keys/review-keys-context";
 import { cn } from "./utils";
 import { enter } from "./ui/motion";
+import { focusRow, focusWhenShown } from "./ui/vim-keys";
 import { SkeletonLines } from "./ui/skeleton";
 
 export type { DiffSource, DiffViewLabels } from "./source";
@@ -77,6 +78,11 @@ const FOCUS_REQUEST_TTL_MS = 5_000;
 const LINE_PX = 20;
 /** How long after a wheel or touch event a scroll still counts as the reader's. */
 const SCROLL_INTENT_MS = 250;
+
+/** How long focus waits for the new-comment box, which Pierre mounts a beat late. */
+const COMPOSER_MOUNT_MS = 500;
+/** How long focus waits for the rows of a file list just shown. */
+const FILE_TREE_MOUNT_MS = 200;
 
 /** The file list shows from the `@3xl` container width (48rem) up. */
 const FILE_TREE_MIN_REM = 48;
@@ -188,18 +194,12 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   useEffect(() => {
     if (!composerOpened.current || composer === null) return;
     composerOpened.current = false;
-    let frames = 0;
-    let frame = 0;
-    const focus = () => {
-      const box = rootRef.current?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea');
-      if (box !== null && box !== undefined) {
+    return focusWhenShown(() => rootRef.current?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ?? null, {
+      timeoutMs: COMPOSER_MOUNT_MS,
+      focus: (box) => {
         if (document.activeElement !== box) box.focus();
-        return;
-      }
-      if (++frames < 30) frame = requestAnimationFrame(focus);
-    };
-    frame = requestAnimationFrame(focus);
-    return () => cancelAnimationFrame(frame);
+      },
+    });
   }, [composer]);
   const parkCursor = (path: string) => {
     const want = keys.get().cursor?.want ?? "RIGHT";
@@ -393,6 +393,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const notify = (message: string) => toast.message(message, { duration: 1800 });
   const fileTreeFits = () => (rootRef.current?.clientWidth ?? 0) >= FILE_TREE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
   const returnFromFileTree = () => rootRef.current?.focus({ preventScroll: true });
+  const stopFocusingTree = useRef(() => {});
+  useEffect(() => () => stopFocusingTree.current(), []);
   const runCommand: Parameters<typeof useReviewKeys>[3] = (command, count) => {
     if (command.kind === "narrative") {
       if (narrativeAvailable) setMode("narrative");
@@ -461,18 +463,15 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
         if (!fileTreeFits()) return false;
         if (!preferences.fileTreeOpen) setDiffPreferences({ fileTreeOpen: true });
         const path = keys.get().cursor?.path ?? null;
+        stopFocusingTree.current();
         // A list that was hidden renders after this key; wait for its rows.
-        let frames = 0;
-        const focus = () => {
-          const tree = rootRef.current?.querySelector<HTMLElement>("[data-file-tree]") ?? null;
-          const visible = tree !== null && tree.getClientRects().length > 0;
-          const row = !visible ? null : ((path === null ? null : tree.querySelector<HTMLElement>(`[data-file-tree-path="${CSS.escape(path)}"]`)) ?? tree.querySelector<HTMLElement>("[data-tree-row]"));
-          if (row !== null) {
-            row.focus();
-            row.scrollIntoView({ block: "nearest" });
-          } else if (++frames < 10) requestAnimationFrame(focus);
-        };
-        focus();
+        stopFocusingTree.current = focusWhenShown(
+          () => {
+            const tree = rootRef.current?.querySelector<HTMLElement>("[data-file-tree]") ?? null;
+            return (path === null ? null : (tree?.querySelector<HTMLElement>(`[data-file-tree-path="${CSS.escape(path)}"]`) ?? null)) ?? tree?.querySelector<HTMLElement>("[data-nav-row]") ?? null;
+          },
+          { timeoutMs: FILE_TREE_MOUNT_MS, focus: focusRow },
+        );
         return true;
       },
       findingFilter: allFindings.length === 0 ? null : { value: findingFilter, set: (filter) => setDiffPreferences({ findingFilter: filter }) },
@@ -692,7 +691,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 </main>
                 <ScrollMarkers markers={markers} mainRef={mainRef} />
                 <ModeLabel />
-                {overlay?.kind === "help" ? <KeyHelp onClose={closeOverlay} /> : null}
+                {overlay?.kind === "help" ? <KeysOverlay onClose={closeOverlay} /> : null}
                 {overlay?.kind === "files" && diff !== null ? (
                   <Picker
                     label="Search file names"

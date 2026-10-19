@@ -119,7 +119,67 @@ function withinSelection(env: ReviewEnv, next: Cursor): boolean {
   return visual === null || (next.path === visual.path && next.line !== null);
 }
 
+/** Closes every open symbol peek; false when none was open. */
+function closePeeks(env: ReviewEnv): boolean {
+  return Array.from(env.keys.models.values()).filter((model) => model.symbols?.close() === true).length > 0;
+}
+
+/**
+ * Commands about the view rather than a line, which work before there is a line to put the cursor on: a diff still
+ * loading, or one with no changes. False for the rest.
+ */
+function runViewCommand(command: ReviewCommand, env: ReviewEnv): boolean {
+  switch (command.kind) {
+    case "target":
+      if (env.target === null) env.notify("Comments here can only stay local");
+      else {
+        const next = env.target.value === "github" ? "local" : "github";
+        env.target.set(next);
+        env.notify(next === "github" ? "New comments go to the GitHub PR" : "New comments stay local");
+      }
+      return true;
+    case "layout":
+      env.toggleLayout();
+      return true;
+    case "fileTree":
+      env.toggleFileTree();
+      return true;
+    case "findingFilter": {
+      if (env.findingFilter === null) {
+        env.notify("No review findings");
+        return true;
+      }
+      const next = nextFindingFilter(env.findingFilter.value);
+      env.findingFilter.set(next);
+      env.notify(next === "off" ? "Review findings hidden" : `Review findings: ${FINDING_FILTER_LABEL[next]}`);
+      return true;
+    }
+    case "refresh":
+      env.refresh();
+      return true;
+    case "send":
+      if (!env.focusSendBar()) env.notify("No comments waiting to be sent");
+      return true;
+    case "findFile":
+      if (env.files.length === 0) env.notify("No changed files to search");
+      else env.openOverlay("files");
+      return true;
+    case "help":
+      env.openOverlay("help");
+      return true;
+    case "escape":
+      // One thing per Escape, the one on top first: a peek, the send bar, the line selection, an empty comment box.
+      if (closePeeks(env) || env.leaveSendBar()) return true;
+      if (env.keys.get().visual !== null) env.keys.set({ visual: null });
+      else env.closeEmptyComposer();
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function runReviewCommand(command: ReviewCommand, count: number, env: ReviewEnv): void {
+  if (runViewCommand(command, env)) return;
   const state = env.keys.get();
   if (command.kind === "follow") {
     const next = env.seat();
@@ -391,39 +451,6 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       go(env, moveFile(folded, { ...cursor, line: null }, 1, 1));
       return;
     }
-    case "target":
-      if (env.target === null) env.notify("Comments here can only stay local");
-      else {
-        const next = env.target.value === "github" ? "local" : "github";
-        env.target.set(next);
-        env.notify(next === "github" ? "New comments go to the GitHub PR" : "New comments stay local");
-      }
-      return;
-    case "layout":
-      env.toggleLayout();
-      return;
-    case "fileTree":
-      env.toggleFileTree();
-      return;
-    case "findingFilter": {
-      if (env.findingFilter === null) {
-        env.notify("No review findings");
-        return;
-      }
-      const next = nextFindingFilter(env.findingFilter.value);
-      env.findingFilter.set(next);
-      env.notify(next === "off" ? "Review findings hidden" : `Review findings: ${FINDING_FILTER_LABEL[next]}`);
-      return;
-    }
-    case "refresh":
-      env.refresh();
-      return;
-    case "send":
-      if (!env.focusSendBar()) env.notify("No comments waiting to be sent");
-      return;
-    case "findFile":
-      env.openOverlay("files");
-      return;
     case "searchNext": {
       if (env.search === null) {
         env.notify("Search file names with / first");
@@ -451,16 +478,8 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       }
       return;
     }
-    case "help":
-      env.openOverlay("help");
-      return;
     // The view switches modes before a command reaches here.
     case "narrative":
-      return;
-    case "escape":
-      if (env.leaveSendBar()) return;
-      if (state.visual !== null) env.keys.set({ visual: null });
-      else env.closeEmptyComposer();
       return;
   }
 }

@@ -13,8 +13,11 @@ export interface FileNavModel {
   moreContext?: (row: number) => void;
   /** Open the fold at `row` (an `expander` row); returns the lines the cursor goes to, which stay on the fold while it has more. */
   expand?: (row: number) => { left: number | null; right: number | null } | null;
-  /** The identifiers on one side of `row`, and a peek at one of them under it; absent where the renderer has no peeks. */
-  symbols?: { at: (row: number, side: DiffSide) => string[]; peek: (row: number, symbol: string) => void };
+  /**
+   * The identifiers on one side of `row`, a peek at one of them under it, and closing the open peek (false when none
+   * is open); absent where the renderer has no peeks.
+   */
+  symbols?: { at: (row: number, side: DiffSide) => string[]; peek: (row: number, symbol: string) => void; close: () => boolean };
 }
 
 /** What a comment thread lets the keyboard do to it. */
@@ -215,4 +218,18 @@ export function useFindingControls(id: string, controls: FindingControls): void 
 /** Hands focus from a comment box back to the diff around it, so the review keys work again. */
 export function returnToDiff(from: Element | null): void {
   from?.closest<HTMLElement>("[data-diff-root]")?.focus({ preventScroll: true });
+}
+
+/**
+ * Escape in a text box in the diff hands the keyboard back to the diff. In a form marked `data-escape-cancels` it also
+ * presses the form's `data-escape-cancel` button: always (an edit), or with "empty" only while the box holds no text,
+ * so a draft survives.
+ */
+export function escapeFromText(field: HTMLElement, root: HTMLElement | null): void {
+  root?.focus({ preventScroll: true });
+  const form = field.closest<HTMLElement>("[data-escape-cancels]");
+  if (form === null) return;
+  const text = field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement ? field.value : (field.textContent ?? "");
+  if (form.dataset.escapeCancels === "empty" && text.trim() !== "") return;
+  form.querySelector<HTMLElement>("[data-escape-cancel]")?.click();
 }

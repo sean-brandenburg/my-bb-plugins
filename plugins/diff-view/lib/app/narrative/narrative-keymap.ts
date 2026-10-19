@@ -1,4 +1,4 @@
-import type { Keymap } from "../ui/vim-keys";
+import type { KeyHelpSection, Keymap } from "../ui/vim-keys-core";
 
 /** What a key asks the narrative view to do. */
 export type NarrativeCommand =
@@ -53,22 +53,23 @@ export const NARRATIVE_KEYMAP: Keymap<NarrativeCommand> = {
   "?": { kind: "help" },
 };
 
-export const NARRATIVE_KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys: string[]; action: string }> }> = [
+export const NARRATIVE_KEY_HELP: readonly KeyHelpSection[] = [
   {
-    group: "Step",
+    title: "Step",
     keys: [
       { keys: ["l", "h"], action: "Next / previous step, across chapters (a count repeats: 3l)" },
       { keys: ["]]", "[["], action: "Next / previous chapter: an earlier narrative, what changed since, the current one" },
       { keys: ["gg", "G"], action: "First / last step" },
       { keys: ["j", "k"], action: "Scroll the step" },
-      { keys: ["⌃d", "⌃u"], action: "Half a page down / up (⌃f / ⌃b a whole page)" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
+      { keys: ["Ctrl-f", "Ctrl-b"], action: "A whole page down / up" },
       { keys: ["/"], action: "Search steps by title and text" },
       { keys: ["n", "N"], action: "Next / previous step matching the search" },
       { keys: ["t"], action: "Show or hide the outline" },
     ],
   },
   {
-    group: "Code",
+    title: "Code",
     keys: [
       { keys: ["]f", "[f"], action: "Next / previous excerpt in the step" },
       { keys: ["gf"], action: "Open the excerpt in the files view, cursor on its first line" },
@@ -78,11 +79,11 @@ export const NARRATIVE_KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyAr
     ],
   },
   {
-    group: "Narrative",
+    title: "Narrative",
     keys: [
       { keys: ["U"], action: "Write a narrative, or an update that explains what changed since the last one" },
       { keys: ["S", "Esc"], action: "Back to the files view (S there comes back)" },
-      { keys: ["Tab"], action: "Move between the step's links and excerpt headers; ↩ follows one" },
+      { keys: ["Tab"], action: "Move between the step's links and excerpt headers; Enter follows one" },
       { keys: ["?"], action: "This sheet" },
     ],
   },

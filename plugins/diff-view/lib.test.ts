@@ -11,15 +11,16 @@ import { detectMoves } from "./lib/app/structural/moves";
 import { hunkSpan, structuralRows, visibleRows } from "./lib/app/structural/rows";
 import { buildLineAnnotations } from "./lib/app/text/line-annotations";
 import { navRows, patchRows, selectionRange } from "./lib/app/text/patch-rows";
-import { REVIEW_KEYMAP } from "./lib/app/keys/keymap";
-import { createKeyReader, keymapConflicts } from "../vim-mode/lib/index.ts";
+import { FILE_TREE_KEYMAP, KEY_HELP, REVIEW_KEYMAP } from "./lib/app/keys/keymap";
+import { createKeyReader, keymapConflicts, unboundHelpKeys } from "../vim-mode/lib/index.ts";
 import { anchorsAtCursor, hunkSpanAt, moveChange, moveFile, moveHunk, moveLines, nextAnchor, visualRange, type Cursor, type NavFile } from "./lib/app/keys/nav";
 import { rankFiles } from "./lib/app/keys/rank-files";
 import { runReviewCommand, type ReviewEnv } from "./lib/app/keys/review-commands";
+import type { FileNavModel } from "./lib/app/keys/review-keys-context";
 import { checkedLineRange, locationLabel, longLineLabel, shortLineLabel } from "./lib/line-range";
 import { changedLines, excerptPatch, narrativeCoverage, refsForUncovered, uncoveredText } from "./lib/narrative";
 import { UNCOVERED_STEP_ID, affectedAddress, buildChapters, initialAddress, moveChapter, movePage, narratedFiles } from "./lib/app/narrative/chapters";
-import { NARRATIVE_KEYMAP } from "./lib/app/narrative/narrative-keymap";
+import { NARRATIVE_KEY_HELP, NARRATIVE_KEYMAP } from "./lib/app/narrative/narrative-keymap";
 import type { NarrativeRevision, NarrativeStep, NarrativeStory } from "./lib/types";
 import { splitUnifiedDiff } from "./lib/server";
 import type { DiffComment, DiffFile, Finding, GithubComment, Review, StructuralDiff } from "./lib/types";
@@ -679,6 +680,125 @@ describe("h into the file list", () => {
   });
 });
 
+describe("file list keys", () => {
+  const read = (tokens: string[]) => {
+    const reader = createKeyReader(FILE_TREE_KEYMAP, { counts: true });
+    return tokens.map((token) => reader.read(token, 0)).at(-1);
+  };
+
+  it("moves over rows with counts, and keeps a count typed in the list from reaching the diff", () => {
+    expect(read(["j"])).toMatchObject({ kind: "command", command: { kind: "list", motion: "down" } });
+    expect(read(["3", "k"])).toMatchObject({ kind: "command", command: { kind: "list", motion: "up" }, count: 3 });
+    expect(read(["5"])).toEqual({ kind: "pending", keys: "5" });
+    expect(read(["g", "g"])).toMatchObject({ kind: "command", command: { kind: "list", motion: "top" } });
+    expect(read(["<C-d>"])).toMatchObject({ kind: "command", command: { kind: "scroll", step: 1 } });
+    expect(read(["<Esc>"])).toMatchObject({ kind: "command", command: { kind: "leave" } });
+    expect(read(["t"])).toMatchObject({ kind: "command", command: { kind: "hide" } });
+    expect(keymapConflicts(FILE_TREE_KEYMAP)).toEqual([]);
+  });
+
+  it("leaves the diff's search and help keys to the diff", () => {
+    expect(read(["/"])).toEqual({ kind: "none" });
+    expect(read(["?"])).toEqual({ kind: "none" });
+    expect(read(["2", "?"])).toEqual({ kind: "none" });
+  });
+
+  it("lists only keys the diff or the file list binds", () => {
+    expect(unboundHelpKeys(KEY_HELP, [REVIEW_KEYMAP, FILE_TREE_KEYMAP], ["⌘↩"])).toEqual([]);
+  });
+});
+
+describe("review commands before there is a line", () => {
+  const run = (command: Parameters<typeof runReviewCommand>[0], overrides: Partial<ReviewEnv> = {}, models = new Map()) => {
+    let state = { cursor: null, visual: null, pending: "", focused: null } as ReturnType<ReviewEnv["keys"]["get"]>;
+    const calls: string[] = [];
+    const env = {
+      keys: { get: () => state, set: (patch: Partial<typeof state>) => (state = { ...state, ...patch }), models, threads: new Map(), findings: new Map() },
+      files: [],
+      threads: [],
+      findings: [],
+      target: null,
+      findingFilter: null,
+      seat: () => null,
+      onScreen: () => null,
+      openOverlay: (overlay: string) => calls.push(`overlay:${overlay}`),
+      refresh: () => calls.push("refresh"),
+      toggleFileTree: () => calls.push("fileTree"),
+      toggleLayout: () => calls.push("layout"),
+      focusSendBar: () => false,
+      leaveSendBar: () => false,
+      closeEmptyComposer: () => calls.push("closeComposer") > 0,
+      notify: (message: string) => calls.push(message),
+      ...overrides,
+    } as unknown as ReviewEnv;
+    runReviewCommand(command, 1, env);
+    return { calls, state };
+  };
+
+  it("opens the help and the file list, refreshes, and switches the layout while the diff is empty or loading", () => {
+    expect(run({ kind: "help" }).calls).toEqual(["overlay:help"]);
+    expect(run({ kind: "refresh" }).calls).toEqual(["refresh"]);
+    expect(run({ kind: "fileTree" }).calls).toEqual(["fileTree"]);
+    expect(run({ kind: "layout" }).calls).toEqual(["layout"]);
+    expect(run({ kind: "send" }).calls).toEqual(["No comments waiting to be sent"]);
+    expect(run({ kind: "escape" }).calls).toEqual(["closeComposer"]);
+  });
+
+  it("searches file names only once there are files to search", () => {
+    expect(run({ kind: "findFile" }).calls).toEqual(["No changed files to search"]);
+    expect(run({ kind: "findFile" }, { files: [{ path: "a.ts", collapsed: false, rows: null }] }).calls).toEqual(["overlay:files"]);
+  });
+
+  it("does nothing for line motions with no line to stand on", () => {
+    expect(run({ kind: "line", direction: 1 })).toEqual({ calls: [], state: { cursor: null, visual: null, pending: "", focused: null } });
+  });
+});
+
+describe("Escape", () => {
+  const peekModel = (open: { value: boolean }): FileNavModel => ({
+    rows: [],
+    cutToHunk: false,
+    element: () => null,
+    symbols: {
+      at: () => [],
+      peek: () => {},
+      close: () => {
+        const was = open.value;
+        open.value = false;
+        return was;
+      },
+    },
+  });
+  const run = (models: Map<string, FileNavModel>, visual: Cursor | null, leaveSendBar = false) => {
+    let state = { cursor: null, visual, pending: "", focused: null } as ReturnType<ReviewEnv["keys"]["get"]>;
+    const calls: string[] = [];
+    const env = {
+      keys: { get: () => state, set: (patch: Partial<typeof state>) => (state = { ...state, ...patch }), models, threads: new Map(), findings: new Map() },
+      files: [],
+      leaveSendBar: () => leaveSendBar && calls.push("sendBar") > 0,
+      closeEmptyComposer: () => calls.push("closeComposer") > 0,
+    } as unknown as ReviewEnv;
+    runReviewCommand({ kind: "escape" }, 1, env);
+    return { calls, visual: state.visual };
+  };
+  const visual: Cursor = { path: "a.ts", side: "RIGHT", line: 1, want: "RIGHT" };
+
+  it("closes every open symbol peek and does nothing else", () => {
+    const first = { value: true };
+    const second = { value: true };
+    const models = new Map<string, FileNavModel>([["a.ts", peekModel(first)], ["b.ts", peekModel(second)], ["c.ts", { rows: [], cutToHunk: false, element: () => null }]]);
+    expect(run(models, visual, true)).toEqual({ calls: [], visual });
+    expect([first.value, second.value]).toEqual([false, false]);
+  });
+
+  it("with no peek open, leaves the send bar, then the line selection, then closes an empty comment box", () => {
+    const models = new Map([["a.ts", peekModel({ value: false })]]);
+    expect(run(models, visual, true)).toEqual({ calls: ["sendBar"], visual });
+    expect(run(models, visual)).toEqual({ calls: [], visual: null });
+    expect(run(models, null)).toEqual({ calls: ["closeComposer"], visual: null });
+  });
+});
+
 describe("fetchChangeTotals", () => {
   const file = (path: string, insertions: number | null, deletions: number | null) => ({ path, insertions, deletions });
   const sdkReturning = (status: unknown) => {
@@ -867,7 +987,8 @@ describe("narrative chapters", () => {
     expect(narratedFiles(chapters[2]!, new Set(["swap"]))).toEqual(["x.ts"]);
   });
 
-  it("has no keys that shadow each other", () => {
+  it("has no keys that shadow each other, and its ? sheet lists only keys it binds", () => {
     expect(keymapConflicts(NARRATIVE_KEYMAP)).toEqual([]);
+    expect(unboundHelpKeys(NARRATIVE_KEY_HELP, NARRATIVE_KEYMAP, ["Tab"])).toEqual([]);
   });
 });

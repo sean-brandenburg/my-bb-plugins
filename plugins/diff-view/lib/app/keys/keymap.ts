@@ -1,4 +1,4 @@
-import type { Keymap } from "../ui/vim-keys";
+import { type KeyHelpSection, type Keymap, type ListMotion, mapKeymap, ROW_KEYS } from "../ui/vim-keys-core";
 
 /** What a key sequence asks the view to do. Motions repeat by the count typed before them. */
 export type ReviewCommand =
@@ -104,10 +104,21 @@ export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   "<Esc>": { kind: "escape" },
 };
 
-/** The `?` sheet, in the order a review goes. */
-export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys: string[]; action: string }> }> = [
+export type FileTreeCommand = { kind: "list"; motion: ListMotion } | { kind: "scroll"; step: 1 | -1 } | { kind: "leave" } | { kind: "hide" };
+
+/** The file list's own keys, taken before the review keys; the rest (`?`, `/`) go on to the diff. */
+export const FILE_TREE_KEYMAP: Keymap<FileTreeCommand> = {
+  ...mapKeymap(ROW_KEYS, (motion): FileTreeCommand => ({ kind: "list", motion })),
+  "<C-d>": { kind: "scroll", step: 1 },
+  "<C-u>": { kind: "scroll", step: -1 },
+  "<Esc>": { kind: "leave" },
+  t: { kind: "hide" },
+};
+
+/** The `?` sheet, in the order a review goes. Keys are written as the keymaps display them, so a test can check them. */
+export const KEY_HELP: readonly KeyHelpSection[] = [
   {
-    group: "Move",
+    title: "Move",
     keys: [
       { keys: ["j", "k"], action: "Next / previous line, stopping at each comment when a line has several (a count repeats: 5j)" },
       { keys: ["h", "l"], action: "Old / new side; h past the old side (or on a file header) goes to the file list" },
@@ -117,44 +128,44 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["c", "C"], action: "Next / previous comment or review finding, one at a time on a shared line" },
       { keys: ["]d", "[d"], action: "Next / previous review finding" },
       { keys: ["gg", "G"], action: "First / last line" },
-      { keys: ["⌃d", "⌃u"], action: "Half a page down / up (⌃f / ⌃b a whole page)" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up (Ctrl-f / Ctrl-b a whole page)" },
       { keys: ["zz", "zt", "zb"], action: "Scroll the cursor to the middle / top / bottom" },
       { keys: ["/"], action: "Search file names and jump to one" },
       { keys: ["n", "N"], action: "Next / previous file matching the search" },
     ],
   },
   {
-    group: "Comment",
+    title: "Comment",
     keys: [
       { keys: ["i"], action: "Comment on the line (or the selected lines); on a file header, on the file" },
       { keys: ["V"], action: "Select lines; move, then i to comment on them" },
       { keys: ["O"], action: "Comment on the file" },
       { keys: ["a"], action: "Reply to the comment thread under the cursor" },
-      { keys: ["↩", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file)" },
+      { keys: ["Enter", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file)" },
       { keys: ["e"], action: "Edit your unsent comment in that thread, or the finding's wording" },
       { keys: ["dd"], action: "Delete your unsent comment in that thread" },
       { keys: ["M"], action: "Move that comment between local and the GitHub PR" },
       { keys: ["gx", "go"], action: "Open the thread on GitHub / the agent thread that replied" },
       { keys: ["T"], action: "Switch where new comments go: local or the GitHub PR" },
-      { keys: ["s"], action: "Go to the send bar (h / l pick an option such as the review type, ↩ sends, Tab for the next action, Esc back)" },
+      { keys: ["s"], action: "Go to the send bar (h / l pick an option such as the review type, Enter sends, Tab for the next action, Esc back)" },
       { keys: ["⌘↩"], action: "In a comment box: add it; editing a finding: save" },
       { keys: ["Esc"], action: "In a comment box: back to the diff (an empty one closes); editing a comment or finding: cancel the edit" },
     ],
   },
   {
-    group: "File list",
+    title: "File list",
     keys: [
       { keys: ["t"], action: "Show or hide the file list" },
       { keys: ["j", "k"], action: "Next / previous file or folder" },
       { keys: ["h", "l"], action: "Close / open a folder (h on a file goes to its folder)" },
       { keys: ["gg", "G"], action: "First / last row" },
-      { keys: ["⌃d", "⌃u"], action: "Half a list down / up" },
-      { keys: ["↩", "l"], action: "Jump to the file (↩ on a folder opens or closes it)" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a list down / up" },
+      { keys: ["Enter", "o", "l"], action: "Jump to the file (Enter on a folder opens or closes it)" },
       { keys: ["Esc"], action: "Back to the diff" },
     ],
   },
   {
-    group: "Review",
+    title: "Review",
     keys: [
       { keys: ["v"], action: "Mark the file viewed (collapses it) or not" },
       { keys: ["zo", "zc"], action: "Expand / collapse the file" },
@@ -167,7 +178,7 @@ export const KEY_HELP: ReadonlyArray<{ group: string; keys: ReadonlyArray<{ keys
       { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },
       { keys: ["S"], action: "Step through the narrative review (S or Esc there comes back)" },
       { keys: ["R"], action: "Refresh the diff" },
-      { keys: ["Esc"], action: "Leave line selection" },
+      { keys: ["Esc"], action: "Close a symbol peek, or leave line selection" },
       { keys: ["?"], action: "This sheet" },
     ],
   },

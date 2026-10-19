@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { DiffFile } from "../../types";
@@ -9,7 +9,8 @@ import { cn } from "../utils";
 import { isGeneratedFile } from "../generated";
 import { RISK_DOT, riskTint } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
-import { keyToken } from "../ui/vim-keys";
+import { runListMotion, runListScroll, useKeyHandler } from "../ui/vim-keys";
+import { FILE_TREE_KEYMAP, type FileTreeCommand } from "../keys/keymap";
 import { FileGlyph, FileStatusLetter } from "../file-marks";
 import { useNerdFont } from "../ui/nerd-font";
 
@@ -20,8 +21,6 @@ interface Cascade {
 
 const ROW_ENTER = cn(enter.rise, FAST, STAGGER);
 const ROW_FOCUS = "outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/70";
-/** As the diff's `gg`: how long the first `g` waits for the second. */
-const PENDING_TIMEOUT_MS = 1000;
 
 /** A truncating label whose tooltip (the full text, plus optional extra lines) appears only when the text is actually clipped. */
 function TruncatedName({ text, full, className, extra }: { text: string; full: string; className?: string; extra?: string | null }) {
@@ -86,76 +85,38 @@ export function FileTree({
       return next;
     });
   };
-  const pendingG = useRef(0);
-  // Vim keys over the visible rows, in the order they are drawn; Enter is the focused button's own click.
-  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
-    const token = keyToken(event.nativeEvent);
-    if (token === null) return;
-    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-tree-row]"));
-    const current = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-tree-row]") : null;
-    const index = current === null ? -1 : rows.indexOf(current);
-    const focusRow = (next: number) => {
-      const row = rows[Math.max(0, Math.min(rows.length - 1, next))];
-      row?.focus();
-      row?.scrollIntoView({ block: "nearest" });
-    };
-    const isDir = current?.dataset.treeRow === "dir";
-    const isOpen = current?.getAttribute("aria-expanded") === "true";
-    const halfList = Math.max(1, Math.floor((event.currentTarget.parentElement?.clientHeight ?? 0) / (current?.offsetHeight || 24) / 2));
-    const secondG = token === "g" && performance.now() - pendingG.current < PENDING_TIMEOUT_MS;
-    pendingG.current = token === "g" && !secondG ? performance.now() : 0;
-    switch (token) {
-      case "j":
-      case "<Down>":
-        focusRow(index + 1);
-        break;
-      case "k":
-      case "<Up>":
-        focusRow(index - 1);
-        break;
-      case "g":
-        if (secondG) focusRow(0);
-        break;
-      case "G":
-        focusRow(rows.length - 1);
-        break;
-      case "<C-d>":
-        focusRow(index + halfList);
-        break;
-      case "<C-u>":
-        focusRow(index - halfList);
-        break;
-      case "l":
-      case "<Right>":
-        if (isDir && isOpen) focusRow(index + 1);
-        else current?.click();
-        break;
-      case "h":
-      case "<Left>":
-        if (isDir && isOpen) current?.click();
-        else current?.closest("li")?.parentElement?.closest("li")?.querySelector<HTMLButtonElement>(":scope > [data-tree-row]")?.focus();
-        break;
-      case "<Esc>":
-        onLeave();
-        break;
-      case "t":
-        onHide();
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
-  };
+  const listRef = useRef<HTMLUListElement | null>(null);
+  // Before the review keys, so j and k move here and a count typed here stays here; Enter is the focused row's own click.
+  const onKeyDown = useKeyHandler<FileTreeCommand>({
+    keymap: FILE_TREE_KEYMAP,
+    counts: true,
+    onCommand: (command, { count }) => {
+      const list = listRef.current;
+      if (list === null) return false;
+      switch (command.kind) {
+        case "list":
+          return runListMotion(list, command.motion, { count });
+        case "scroll":
+          return runListScroll(list, command.step, 0.5);
+        case "leave":
+          onLeave();
+          return;
+        case "hide":
+          onHide();
+          return;
+      }
+    },
+  });
   const renderDir = (dir: FileTreeDir, depth: number, cascade: Cascade): ReactNode => {
     const isClosed = closed.has(dir.path);
     return (
-      <li key={`dir:${dir.path}`}>
+      <li key={`dir:${dir.path}`} data-nav-group="">
         <button
           type="button"
           onClick={() => toggle(dir.path)}
           className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs text-muted-foreground hover:bg-state-hover", ROW_ENTER, ROW_FOCUS)}
           style={{ paddingLeft: 8 + depth * 12, ...stagger(cascade.next++) }}
-          data-tree-row="dir"
+          data-nav-row="group"
           aria-expanded={!isClosed}
           data-bbm-open={!isClosed}
         >
@@ -181,7 +142,7 @@ export function FileTree({
           onClick={() => onSelect(file.path)}
           className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", ROW_ENTER, riskTint(fileRisk), file.path === activePath && "bg-state-active", ROW_FOCUS)}
           style={{ paddingLeft: 8 + depth * 12 + 16, ...stagger(cascade.next++) }}
-          data-tree-row="file"
+          data-nav-row="item"
           data-file-tree-path={file.path}
         >
           {isViewed ? <Icon name="Check" className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" /> : fileRisk !== null ? <span className={cn("size-1.5 shrink-0 rounded-full", RISK_DOT[fileRisk])} aria-hidden="true" /> : null}
@@ -209,7 +170,7 @@ export function FileTree({
   ];
   return (
     <Tooltip.Provider>
-      <ul onKeyDown={onKeyDown}>{renderChildren(tree, 0, { next: 0 })}</ul>
+      <ul ref={listRef} onKeyDown={onKeyDown}>{renderChildren(tree, 0, { next: 0 })}</ul>
     </Tooltip.Provider>
   );
 }

@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DiffFile } from "../../types";
 import { cn } from "../utils";
 import { FAST, enter } from "../ui/motion";
+import { type Keymap, useKeyHandler, usePickerKeys } from "../ui/vim-keys";
+import type { KeyHelpSection } from "../ui/vim-keys-core";
 import { KEY_HELP } from "./keymap";
 import { rankFiles } from "./rank-files";
 
 const PANEL = "absolute inset-x-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg";
 
+const CLOSE_KEYMAP: Keymap<"close"> = { "<Esc>": "close", "?": "close", q: "close" };
+
 /** The `?` sheet. Escape, `?` or `q` closes it. */
-export function KeyHelp({ onClose, sections = KEY_HELP }: { onClose: () => void; sections?: typeof KEY_HELP }) {
+export function KeysOverlay({ onClose, sections = KEY_HELP }: { onClose: () => void; sections?: readonly KeyHelpSection[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => ref.current?.focus({ preventScroll: true }), []);
+  const onKeyDown = useKeyHandler({ keymap: CLOSE_KEYMAP, onCommand: () => onClose() });
   return (
     <div
       ref={ref}
@@ -19,13 +24,7 @@ export function KeyHelp({ onClose, sections = KEY_HELP }: { onClose: () => void;
       role="dialog"
       aria-label="Keyboard shortcuts"
       className={cn(PANEL, "outline-none", enter.drop, FAST)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" || event.key === "?" || event.key === "q") {
-          event.preventDefault();
-          event.stopPropagation();
-          onClose();
-        }
-      }}
+      onKeyDown={onKeyDown}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) onClose();
       }}
@@ -35,9 +34,9 @@ export function KeyHelp({ onClose, sections = KEY_HELP }: { onClose: () => void;
         <span className="ml-auto text-right text-xs font-normal text-muted-foreground">Esc to close · keys work anywhere in the diff outside a text box</span>
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-4 overflow-y-auto p-3 text-xs">
-        {sections.map(({ group, keys }) => (
-          <section key={group} className="flex min-w-0 flex-col gap-1.5">
-            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{group}</h3>
+        {sections.map(({ title, keys }) => (
+          <section key={title} className="flex min-w-0 flex-col gap-1.5">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
             <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1">
               {keys.map(({ keys: combo, action }) => (
                 <div key={action} className="contents">
@@ -65,7 +64,7 @@ export interface PickerItem {
   detail?: ReactNode;
 }
 
-/** A list filtered as you type: ↑/↓ (or ⌃n/⌃p) to choose, Enter to pick, Escape to close. */
+/** A list filtered as you type: ↑/↓ (or Ctrl-n/p) to choose, Enter to pick, Escape to close. */
 export function Picker({
   label,
   placeholder,
@@ -84,8 +83,16 @@ export function Picker({
   const [query, setQuery] = useState(initialQuery);
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLUListElement | null>(null);
+  const optionId = useId();
   const matches = rank(query);
   const chosen = Math.min(index, Math.max(0, matches.length - 1));
+  const { onFilterKeyDown } = usePickerKeys({
+    length: () => matches.length,
+    highlight: () => (matches.length === 0 ? null : chosen),
+    setHighlight: setIndex,
+    pick: (at) => onPick(matches[at]!.id, query),
+    onFilterEscape: onClose,
+  });
   useEffect(() => {
     listRef.current?.children[chosen]?.scrollIntoView({ block: "nearest" });
   }, [chosen]);
@@ -95,6 +102,10 @@ export function Picker({
         autoFocus
         // Vim keys would take Escape and the arrows; this box has its own.
         data-vim-ignore=""
+        role="combobox"
+        aria-expanded="true"
+        aria-controls={`${optionId}-list`}
+        aria-activedescendant={matches.length === 0 ? undefined : `${optionId}-${chosen}`}
         value={query}
         placeholder={placeholder}
         aria-label={label}
@@ -105,23 +116,14 @@ export function Picker({
           setIndex(0);
         }}
         onBlur={onClose}
-        onKeyDown={(event) => {
-          const down = event.key === "ArrowDown" || (event.ctrlKey && event.key === "n");
-          const up = event.key === "ArrowUp" || (event.ctrlKey && event.key === "p");
-          if (!down && !up && event.key !== "Enter" && event.key !== "Escape") return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (down) setIndex(Math.min(matches.length - 1, chosen + 1));
-          else if (up) setIndex(Math.max(0, chosen - 1));
-          else if (event.key === "Enter" && matches[chosen] !== undefined) onPick(matches[chosen].id, query);
-          else onClose();
-        }}
+        onKeyDown={onFilterKeyDown}
       />
-      <ul ref={listRef} className="overflow-y-auto py-1 text-xs" role="listbox" aria-label={label}>
+      <ul ref={listRef} id={`${optionId}-list`} className="overflow-y-auto py-1 text-xs" role="listbox" aria-label={label}>
         {matches.length === 0 ? <li className="px-3 py-1.5 text-muted-foreground">No matches</li> : null}
         {matches.map((item, position) => (
           <li
             key={item.id}
+            id={`${optionId}-${position}`}
             role="option"
             aria-selected={position === chosen}
             className={cn("flex cursor-pointer items-center gap-2 px-3 py-1 font-mono", position === chosen ? "bg-state-active text-foreground" : "text-muted-foreground")}

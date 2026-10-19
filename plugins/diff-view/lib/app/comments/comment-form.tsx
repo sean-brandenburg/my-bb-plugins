@@ -44,7 +44,7 @@ export function DiffCommentForm({
     }
   };
   return (
-    <div data-comment-form={reply ? "reply" : "new"} className={cn("my-1 flex min-w-0 max-w-full flex-col gap-2 rounded-md border bg-card p-2.5 text-sm", enter.drop, FAST, target === "github" ? "border-sky-500/50" : "border-primary/40")}>
+    <div data-comment-form={reply ? "reply" : "new"} data-escape-cancels="empty" className={cn("my-1 flex min-w-0 max-w-full flex-col gap-2 rounded-md border bg-card p-2.5 text-sm", enter.drop, FAST, target === "github" ? "border-sky-500/50" : "border-primary/40")}>
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <Icon name="MessageSquare" className="size-3.5" />
         {reply ? <span>Reply</span> : (
@@ -63,10 +63,6 @@ export function DiffCommentForm({
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit();
-          if (event.key !== "Escape") return;
-          // A draft survives Escape: the box stays open with its text, and the diff gets the keyboard back.
-          returnToDiff(event.currentTarget);
-          if (body.trim() === "") onCancel();
         }}
         placeholder={target === "github" ? "Comment for the PR (⌘↩ to add, Esc to cancel)" : "What should the agent change here? (⌘↩ to add, Esc to cancel)"}
         aria-label="Comment"
@@ -78,6 +74,7 @@ export function DiffCommentForm({
           type="button"
           variant="ghost"
           className={COMPACT}
+          data-escape-cancel=""
           onClick={(event) => {
             returnToDiff(event.currentTarget);
             onCancel();

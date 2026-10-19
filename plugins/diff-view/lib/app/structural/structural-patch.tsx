@@ -236,6 +236,11 @@ export function StructuralPatch({
           const element = rowElement(row);
           if (element instanceof HTMLElement) latestSymbols.current.lookupSymbol(symbol, element);
         },
+        close: () => {
+          if (latestSymbols.current.peek === null) return false;
+          latestSymbols.current.closePeek();
+          return true;
+        },
       },
     };
   }, [error, diff, shape, text, reveal]);

@@ -6,7 +6,7 @@ import { cn } from "../utils";
 import { readPreference, writePreference } from "../state";
 import { FAST, PRESS, enter } from "../ui/motion";
 import { useKeyScope } from "../ui/vim-keys";
-import { KeyHelp, Picker } from "../keys/overlays";
+import { KeysOverlay, Picker } from "../keys/overlays";
 import { NARRATIVE_KEYMAP, NARRATIVE_KEY_HELP, type NarrativeCommand } from "./narrative-keymap";
 import { UNCOVERED_STEP_ID, affectedAddress, buildChapters, initialAddress, moveChapter, movePage, narratedFiles, pages, searchSteps, type NarrativeChapter, type StepAddress } from "./chapters";
 import { StepExcerpts, stepExcerpts, type StepExcerpt } from "./step-excerpts";
@@ -337,7 +337,7 @@ export function NarrativeView({
           ) : null}
         </div>
       </div>
-      {overlay === "help" ? <KeyHelp onClose={closeOverlay} sections={NARRATIVE_KEY_HELP} /> : null}
+      {overlay === "help" ? <KeysOverlay onClose={closeOverlay} sections={NARRATIVE_KEY_HELP} /> : null}
       {overlay === "search" ? (
         <Picker
           label="Search steps"

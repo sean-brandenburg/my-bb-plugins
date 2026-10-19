@@ -74,13 +74,15 @@ plugins embed.
   the step it led to, `v` marks fully narrated files viewed, `t` the outline,
   `/` and `n`/`N` search steps, `U` writes or updates the narrative, `S` or
   Escape returns),
-  `gd` peeks at a symbol on the line, `gl` switches line-diff files between
+  `gd` peeks at a symbol on the line (Escape closes it), `gl` switches line-diff files between
   split and unified, `R` refreshes, and
   `?` lists every key.
-  `t` shows or hides the file list. In it, `j`/`k` move, `h`/`l` close and
-  open folders (`h` on a file goes to its folder), `gg`/`G` and Ctrl-D/U jump,
-  Enter or `l` jumps to the file with the cursor on its header, and Escape
-  returns to the diff.
+  `t` shows or hides the file list. In it, `j`/`k` move (a count repeats),
+  `h`/`l` close and open folders (`h` on a file goes to its folder), `gg`/`G`
+  and Ctrl-D/U jump, Enter, `o` or `l` jumps to the file with the cursor on its
+  header, and Escape returns to the diff. `?`, `/` and `t` keep working there;
+  the help, search, refresh, layout and file-list keys work before a diff has
+  loaded.
 
 Settings: hide vendored files (default on) and the `difft` path. Comments and
 viewed marks live in this plugin's database and are deleted with their thread.

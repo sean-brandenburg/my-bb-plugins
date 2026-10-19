@@ -145,7 +145,8 @@ function ThreadEntryView({
         </span>
       </div>
       {editing ? (
-        <div className={cn("flex flex-col gap-1.5 pb-1", enter.fade, FAST)}>
+        // Escape cancels the edit like the Cancel button; ⌘↩ is the way to keep it.
+        <div data-escape-cancels="always" className={cn("flex flex-col gap-1.5 pb-1", enter.fade, FAST)}>
           <textarea
             autoFocus
             value={draft}
@@ -154,17 +155,13 @@ function ThreadEntryView({
             className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs"
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void save();
-              if (event.key !== "Escape") return;
-              // Escape cancels the edit like the Cancel button; ⌘↩ is the way to keep it.
-              returnToDiff(event.currentTarget);
-              setEditing(false);
             }}
           />
           <div className="flex gap-2">
             <Button type="button" className={COMPACT} disabled={saving || draft.trim() === ""} onClick={() => void save()}>
               Save
             </Button>
-            <Button type="button" variant="ghost" className={COMPACT} onClick={() => setEditing(false)}>
+            <Button type="button" variant="ghost" className={COMPACT} data-escape-cancel="" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>

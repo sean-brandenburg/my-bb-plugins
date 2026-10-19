@@ -1,22 +1,26 @@
 import type { RefObject } from "react";
 import { REVIEW_KEYMAP, type ReviewCommand } from "./keys/keymap";
-import type { ReviewKeys } from "./keys/review-keys-context";
+import { escapeFromText, type ReviewKeys } from "./keys/review-keys-context";
 import { useKeyScope } from "./ui/vim-keys";
 
-/** The file list moves with its own keys; of the diff's, only these reach past it. */
+/**
+ * The file list takes its own keys first; of the diff's, only these work from it. The rest are swallowed rather than
+ * left to bb, as the tree is part of the diff.
+ */
 const FROM_FILE_TREE: ReadonlySet<ReviewCommand["kind"]> = new Set(["help", "findFile"]);
 const MAX_COUNT = 9999;
 
 /**
  * Vim-style review keys, sent only to the view that last saw a pointer or focus when several are mounted, and only
- * when the key comes from inside the view (or from nowhere in particular), so text boxes, the thread list and other
- * panels keep theirs.
+ * when the key comes from inside the view (or from nowhere in particular), so the thread list and other panels keep
+ * theirs. Text boxes keep every key but Escape, which hands the keyboard back to the diff.
  */
 export function useReviewKeys(rootRef: RefObject<HTMLElement | null>, keys: ReviewKeys, enabled: boolean, onCommand: (command: ReviewCommand, count: number) => void): void {
   useKeyScope(rootRef, enabled, {
     keymap: REVIEW_KEYMAP,
     group: "diff-view",
     counts: true,
+    onTextEscape: (field) => escapeFromText(field, rootRef.current),
     onCommand: (command, { target, count }) => {
       if (target?.closest("[data-file-tree]") != null && !FROM_FILE_TREE.has(command.kind)) return;
       onCommand(command, Math.min(count ?? 1, MAX_COUNT));

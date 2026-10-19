@@ -80,14 +80,6 @@ export function useSymbolNavigation(source: DiffSource) {
   useEffect(() => {
     if (!symbolMode) setHover(null);
   }, [symbolMode]);
-  useEffect(() => {
-    if (peek === null) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPeek(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [peek]);
   return {
     symbolMode,
     peek,
