@@ -594,6 +594,7 @@ describe("project picker", () => {
     press(dialog, "k");
     expect(selected("Projects")).toBe("Unassociated");
     press(dialog, "g");
+    press(dialog, "Shift", { shiftKey: true });
     press(dialog, "g");
     expect(selected("Projects")).toBe("Open folder…");
     press(dialog, "G");
@@ -691,6 +692,13 @@ describe("project picker", () => {
     scroller.style.overflowY = "auto";
     Object.defineProperty(scroller, "clientHeight", { value: 400 });
     Object.defineProperty(scroller, "scrollHeight", { value: 2000 });
+    // jsdom has no Element.scrollBy, and doesn't clamp scrollTop as a browser does.
+    scroller.scrollBy = ((options: ScrollToOptions) => {
+      scroller.scrollTop = Math.min(
+        Math.max(scroller.scrollTop + (options.top ?? 0), 0),
+        scroller.scrollHeight - scroller.clientHeight,
+      );
+    }) as HTMLElement["scrollBy"];
     preview.prepend(scroller);
 
     press(dialog, "l");
@@ -711,6 +719,10 @@ describe("project picker", () => {
     press(dialog, "G");
     expect(scroller.scrollTop).toBe(1600);
     press(dialog, "u", { ctrlKey: true });
+    expect(scroller.scrollTop).toBe(1400);
+    press(dialog, "y", { ctrlKey: true });
+    expect(scroller.scrollTop).toBe(1360);
+    press(dialog, "e", { ctrlKey: true });
     expect(scroller.scrollTop).toBe(1400);
     press(dialog, "g");
     press(dialog, "g");
@@ -928,6 +940,27 @@ describe("project picker", () => {
     expect(inspection.sidebarActionCalls).toEqual([
       { method: "archive", threadId: "thr_parent" },
     ]);
+  });
+
+  it("undoes an archive with u once, ahead of the window's u", async () => {
+    setPreferencesMirrorStorageForTest(null);
+    const { installUndoArchiveKey } = await import("./app/undo-archive.js");
+    const uninstall = installUndoArchiveKey(document, window);
+    renderPicker();
+    const dialog = await openPickerOnApp();
+    const toast = document.createElement("li");
+    toast.setAttribute("data-sonner-toast", "");
+    toast.dataset.front = "true";
+    toast.innerHTML =
+      '<div data-testid="app-toast-title">Thread Archived</div><button>Undo</button>';
+    document.body.append(toast);
+    const undo = vi.fn();
+    toast.querySelector("button")!.addEventListener("click", undo);
+
+    press(dialog, "u");
+    expect(undo).toHaveBeenCalledOnce();
+    toast.remove();
+    uninstall();
   });
 
   it("sits beneath bb's dialogs and takes focus back when they close", async () => {

@@ -1,3 +1,5 @@
+import { bindKeys, OPEN_DIALOG } from "bb-vim-keys";
+
 // bb's archive toast has no plugin API, so its Undo button is found through
 // the shipped toast markup; a bb update that renames it leaves the button as
 // the only way to undo.
@@ -5,8 +7,6 @@ const TOAST = "[data-sonner-toast]";
 const TOAST_TITLE = '[data-testid="app-toast-title"]';
 const ARCHIVED_TITLE = "Thread Archived";
 const UNDO_LABEL = "Undo";
-const EDITABLE =
-  'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
 export const UNDO_ARCHIVE_KEY = "u";
 
@@ -37,25 +37,15 @@ export function undoLastArchive(doc: Document): boolean {
   return true;
 }
 
-/** `u` anywhere outside a text box undoes the archive while its toast shows. */
+/**
+ * `u` anywhere outside a text box undoes the archive while its toast shows.
+ * It listens in the window's bubble phase, so the picker's own `u` goes first.
+ */
 export function installUndoArchiveKey(doc: Document, win: Window): () => void {
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (
-      event.defaultPrevented ||
-      event.key !== UNDO_ARCHIVE_KEY ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey
-    ) {
-      return;
-    }
-    if (event.target instanceof Element && event.target.closest(EDITABLE)) {
-      return;
-    }
-    if (!undoLastArchive(doc)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  win.addEventListener("keydown", onKeyDown);
-  return () => win.removeEventListener("keydown", onKeyDown);
+  return bindKeys(win, {
+    keymap: { [UNDO_ARCHIVE_KEY]: "undo" },
+    // While one of bb's dialogs is open, its keys are the dialog's.
+    blocked: () => doc.querySelector(OPEN_DIALOG) !== null,
+    onCommand: () => undoLastArchive(doc),
+  });
 }

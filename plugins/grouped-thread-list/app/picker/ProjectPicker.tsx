@@ -4,9 +4,9 @@ import {
   useRef,
   useState,
   type AnimationEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { enter, exit, usePresence } from "bb-motion";
+import { type Motion, stepIndex, useKeyHandler } from "bb-vim-keys/react";
 import {
   experimental_useSidebarThreadActions,
   useBbContext,
@@ -41,14 +41,10 @@ import type { SidebarProject } from "../model/use-sidebar-data.js";
 import type { SidebarProjectIdResolver } from "../model/active-project.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
 import {
-  keyName,
+  FILTER_KEYMAP,
   pickerHints,
-  resolveFilterKey,
-  resolvePickerKey,
-  resolvePreviewKey,
-  type FilterCommand,
-  type PickerCommand,
-  type PreviewScroll,
+  pickerKeymap,
+  type PickerAction,
 } from "./picker-keymap.js";
 import { usePinnedToBottom } from "./use-pinned-to-bottom.js";
 import {
@@ -91,18 +87,13 @@ function initialSelection(
   };
 }
 
-function consume(event: ReactKeyboardEvent) {
-  event.preventDefault();
-  event.stopPropagation();
-}
-
 function PickerHints({ column }: { column: PickerColumn }) {
   return (
     <div className="flex h-7 shrink-0 items-center gap-3 border-t border-border px-3 text-[11px] text-muted-foreground">
-      {pickerHints(column).map(([keys, label]) => (
+      {pickerHints(column).map(({ display, label }) => (
         <span key={label} className="flex items-center gap-1">
           <kbd className="min-w-4 rounded border border-border px-1 text-center font-sans">
-            {keys}
+            {display}
           </kbd>
           {label}
         </span>
@@ -207,7 +198,6 @@ function ProjectPickerDialog({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const pendingKey = useRef<string | null>(null);
   const lastRight = useRef<{ threadId: string | null; index: number }>({
     threadId: null,
     index: 0,
@@ -285,9 +275,9 @@ function ProjectPickerDialog({
   const releasePreviewPin = usePinnedToBottom(previewRef, previewThreadId);
   const behindHostDialog = useHostDialogOpen(rootRef);
   useHoldFocus(rootRef, !exiting);
-  const scrollPreviewBy = (scroll: PreviewScroll) => {
+  const scrollPreviewBy = (motion: Motion, count: number | null) => {
     releasePreviewPin();
-    scrollPreview(previewRef.current, scroll);
+    scrollPreview(previewRef.current, motion, count);
   };
   const pathQuery = leftEntry?.kind === "path" ? query.trim() : "";
   const pathLookup = useFolderPathLookup(pathQuery, pathQuery !== "");
@@ -313,21 +303,17 @@ function ProjectPickerDialog({
     const row = rows[clampIndex(index, rows.length)];
     if (row) setThreadId(row.thread.id);
   };
-  const moveBy = (delta: number) => {
+  const move = (motion: Motion, count: number | null) => {
     if (column === "preview") {
-      scrollPreviewBy(delta > 0 ? "line-down" : "line-up");
-    } else if (column === "left") selectLeft(leftIndex + delta);
-    else selectRight(rightIndex + delta);
-  };
-  const moveTo = (edge: "first" | "last") => {
-    if (column === "preview") {
-      scrollPreviewBy(edge === "first" ? "top" : "bottom");
+      scrollPreviewBy(motion, count);
       return;
     }
-    const length = column === "left" ? leftEntries.length : rows.length;
-    const index = edge === "first" ? 0 : length - 1;
-    if (column === "left") selectLeft(index);
-    else selectRight(index);
+    const [length, current, select] =
+      column === "left"
+        ? [leftEntries.length, leftIndex, selectLeft]
+        : [rows.length, rightIndex, selectRight];
+    const next = stepIndex(length, current, motion, { count });
+    if (next !== null) select(next);
   };
   const focusColumn = (next: PickerColumn) => {
     if (next !== "left" && rows.length === 0) return;
@@ -407,14 +393,10 @@ function ProjectPickerDialog({
     rootRef.current?.focus();
   };
 
-  const pickerCommands: Record<PickerCommand, () => void> = {
-    down: () => moveBy(1),
-    up: () => moveBy(-1),
+  const pickerActions: Record<PickerAction, () => void> = {
     left: () => focusColumn(column === "preview" ? "right" : "left"),
     right: () => focusColumn(column === "left" ? "right" : "preview"),
     "switch-column": () => focusColumn(column === "left" ? "right" : "left"),
-    top: () => moveTo("first"),
-    bottom: () => moveTo("last"),
     activate,
     pin: togglePin,
     "mark-read": markRead,
@@ -431,43 +413,36 @@ function ProjectPickerDialog({
     close: closeProjectPicker,
   };
 
-  const filterCommands: Record<FilterCommand, () => void> = {
-    down: () => moveBy(1),
-    up: () => moveBy(-1),
-    accept: () => {
-      stopSearch();
-      activate();
+  // Every bound key is taken even when it does nothing here, so none reach bb
+  // behind the picker or undo-archive's window `u`.
+  const onRootKeyDown = useKeyHandler({
+    keymap: () => pickerKeymap(column),
+    active: () => !exiting,
+    leaveToPressables: false,
+    onCommand: (command, { count }) => {
+      if (command.kind === "move") move(command.motion, count);
+      else pickerActions[command.action]();
     },
-    cancel: stopSearch,
-  };
+  });
 
-  const onRootKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (exiting || event.target === inputRef.current) return;
-    if (event.metaKey || event.altKey) return;
-    const key = keyName(event);
-    // Every key, Shift included, ends a pending double tap.
-    const previousPendingKey = pendingKey.current;
-    pendingKey.current = null;
-    const previewScroll =
-      column === "preview" ? resolvePreviewKey(key) : undefined;
-    if (previewScroll !== undefined) {
-      scrollPreviewBy(previewScroll);
-      consume(event);
-      return;
-    }
-    const resolved = resolvePickerKey(key, previousPendingKey);
-    if (resolved.type === "unbound") return;
-    if (resolved.type === "pending") pendingKey.current = key;
-    else pickerCommands[resolved.command]();
-    consume(event);
-  };
-
-  const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    const command = resolveFilterKey(keyName(event));
-    if (command === undefined) return;
-    filterCommands[command]();
-    consume(event);
-  };
+  const onInputKeyDown = useKeyHandler({
+    keymap: FILTER_KEYMAP,
+    isText: () => false,
+    leaveToPressables: false,
+    onCommand: (command, { count }) => {
+      switch (command.kind) {
+        case "move":
+          move(command.motion, count);
+          return;
+        case "accept":
+          stopSearch();
+          activate();
+          return;
+        case "cancel":
+          stopSearch();
+      }
+    },
+  });
 
   return (
     <div

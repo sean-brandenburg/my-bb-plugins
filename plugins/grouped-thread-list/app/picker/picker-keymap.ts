@@ -1,14 +1,18 @@
+import {
+  displayToken,
+  type Keymap,
+  mapKeymap,
+  MOTION_KEYS,
+  type Motion,
+  TEXT_BOX_MOTION_KEYS,
+  tokenize,
+} from "bb-vim-keys";
 import type { PickerColumn } from "./picker-model.js";
 
-/** What a key does in the picker; the dialog maps each to its handler. */
-export type PickerCommand =
-  | "down"
-  | "up"
+export type PickerAction =
   | "left"
   | "right"
   | "switch-column"
-  | "top"
-  | "bottom"
   | "activate"
   | "pin"
   | "mark-read"
@@ -19,150 +23,127 @@ export type PickerCommand =
   | "escape"
   | "close";
 
-/** Keys while typing in the filter box. */
-export type FilterCommand = "down" | "up" | "accept" | "cancel";
+/** What a key does in the picker: moves the cursor (or scrolls the preview), or acts. */
+export type PickerCommand =
+  | { kind: "move"; motion: Motion }
+  | { kind: "action"; action: PickerAction };
 
-export type PreviewScroll =
-  | "line-down"
-  | "line-up"
-  | "half-down"
-  | "half-up"
-  | "page-down"
-  | "page-up"
-  | "top"
-  | "bottom";
+/** Keys while typing in the filter box; everything else is typing. */
+export type FilterCommand =
+  | { kind: "move"; motion: Motion }
+  | { kind: "accept" }
+  | { kind: "cancel" };
 
-interface KeyBinding<Command extends string> {
-  /** `event.key`, prefixed with `C-` when Ctrl is held. */
-  keys: readonly string[];
-  command: Command;
-  /** Only fires on the second press in a row, like vim's `gg`. */
-  doubleTap?: boolean;
-  /** Footer label per column it applies in, shown under the first key. */
-  hint?: Partial<Record<PickerColumn, string>>;
-}
+const move = (motion: Motion): PickerCommand => ({ kind: "move", motion });
+const act = (action: PickerAction): PickerCommand => ({
+  kind: "action",
+  action,
+});
 
-const ROW_COLUMNS = ["right", "preview"] as const;
-
-function hintIn(
-  columns: readonly PickerColumn[],
-  label: string,
-): Partial<Record<PickerColumn, string>> {
-  return Object.fromEntries(columns.map((column) => [column, label]));
-}
-
-export const PICKER_KEYMAP: readonly KeyBinding<PickerCommand>[] = [
-  { keys: ["j", "ArrowDown", "C-n"], command: "down" },
-  { keys: ["k", "ArrowUp", "C-p"], command: "up" },
-  { keys: ["h", "ArrowLeft"], command: "left", hint: { preview: "back" } },
-  {
-    keys: ["l", "ArrowRight"],
-    command: "right",
-    hint: { right: "preview" },
-  },
-  { keys: ["Tab"], command: "switch-column" },
-  { keys: ["g"], command: "top", doubleTap: true },
-  { keys: ["G"], command: "bottom" },
-  {
-    keys: ["Enter", "o"],
-    command: "activate",
-    hint: hintIn(["left", "right", "preview"], "open"),
-  },
-  { keys: ["p"], command: "pin", hint: hintIn(ROW_COLUMNS, "pin") },
-  { keys: ["r"], command: "mark-read", hint: hintIn(ROW_COLUMNS, "mark read") },
+const ACTION_KEYS: Keymap<PickerAction> = {
+  h: "left",
+  "<Left>": "left",
+  l: "right",
+  "<Right>": "right",
+  "<Tab>": "switch-column",
+  "<S-Tab>": "switch-column",
+  "<CR>": "activate",
+  o: "activate",
+  p: "pin",
+  r: "mark-read",
   // Labelled delete because that's the intent; archiving keeps it recoverable.
-  { keys: ["d"], command: "archive", hint: hintIn(ROW_COLUMNS, "delete") },
-  { keys: ["u"], command: "undo-archive", hint: hintIn(ROW_COLUMNS, "undo") },
-  {
-    keys: ["n"],
-    command: "new-thread",
-    hint: hintIn(["left", "right", "preview"], "new thread"),
-  },
-  { keys: ["/"], command: "filter", hint: { left: "filter" } },
-  { keys: ["Escape"], command: "escape", hint: { left: "close" } },
-  { keys: ["q"], command: "close" },
-];
-
-export const FILTER_KEYMAP: readonly KeyBinding<FilterCommand>[] = [
-  { keys: ["ArrowDown", "C-n"], command: "down" },
-  { keys: ["ArrowUp", "C-p"], command: "up" },
-  { keys: ["Enter"], command: "accept" },
-  { keys: ["Escape"], command: "cancel" },
-];
-
-/** Only while the preview is focused; elsewhere these keys stay unhandled. */
-export const PREVIEW_KEYMAP: readonly KeyBinding<PreviewScroll>[] = [
-  { keys: ["C-d"], command: "half-down", hint: { preview: "scroll down" } },
-  { keys: ["C-u"], command: "half-up", hint: { preview: "scroll up" } },
-  { keys: ["C-f"], command: "page-down" },
-  { keys: ["C-b"], command: "page-up" },
-  { keys: ["C-e"], command: "line-down" },
-  { keys: ["C-y"], command: "line-up" },
-];
-
-const KEY_LABELS: Readonly<Record<string, string>> = {
-  Enter: "↵",
-  Escape: "esc",
+  d: "archive",
+  u: "undo-archive",
+  n: "new-thread",
+  "/": "filter",
+  "<Esc>": "escape",
+  q: "close",
 };
 
-function keyLabel(key: string): string {
-  return KEY_LABELS[key] ?? key.replace(/^C-/u, "⌃");
+/** The projects and threads columns. */
+export const LIST_KEYMAP: Keymap<PickerCommand> = {
+  ...mapKeymap(TEXT_BOX_MOTION_KEYS, move),
+  j: move("down"),
+  k: move("up"),
+  gg: move("top"),
+  G: move("bottom"),
+  ...mapKeymap(ACTION_KEYS, act),
+};
+
+/** The focused preview, where the moves scroll it and the actions still act on the highlighted thread. */
+export const PREVIEW_KEYMAP: Keymap<PickerCommand> = {
+  ...LIST_KEYMAP,
+  ...mapKeymap(MOTION_KEYS, move),
+  "<C-e>": move("down"),
+  "<C-y>": move("up"),
+};
+
+export const FILTER_KEYMAP: Keymap<FilterCommand> = {
+  ...mapKeymap(
+    TEXT_BOX_MOTION_KEYS,
+    (motion): FilterCommand => ({ kind: "move", motion }),
+  ),
+  "<CR>": { kind: "accept" },
+  "<Esc>": { kind: "cancel" },
+};
+
+export function pickerKeymap(column: PickerColumn): Keymap<PickerCommand> {
+  return column === "preview" ? PREVIEW_KEYMAP : LIST_KEYMAP;
 }
 
-export type PickerHint = readonly [key: string, label: string];
+function sameCommand(a: PickerCommand, b: PickerCommand): boolean {
+  return a.kind === "move"
+    ? b.kind === "move" && a.motion === b.motion
+    : b.kind === "action" && a.action === b.action;
+}
+
+const EVERY_COLUMN = ["left", "right", "preview"] as const;
+const ROW_COLUMNS = ["right", "preview"] as const;
+
+/** The footer, in the order it reads, by command; each shows the first key bound to it. */
+const HINTS: readonly {
+  command: PickerCommand;
+  label: string;
+  columns: readonly PickerColumn[];
+}[] = [
+  { command: move("halfDown"), label: "scroll down", columns: ["preview"] },
+  { command: move("halfUp"), label: "scroll up", columns: ["preview"] },
+  { command: act("left"), label: "back", columns: ["preview"] },
+  { command: act("right"), label: "preview", columns: ["right"] },
+  { command: act("activate"), label: "open", columns: EVERY_COLUMN },
+  { command: act("pin"), label: "pin", columns: ROW_COLUMNS },
+  { command: act("mark-read"), label: "mark read", columns: ROW_COLUMNS },
+  { command: act("archive"), label: "delete", columns: ROW_COLUMNS },
+  { command: act("undo-archive"), label: "undo", columns: ROW_COLUMNS },
+  { command: act("new-thread"), label: "new thread", columns: EVERY_COLUMN },
+  { command: act("filter"), label: "filter", columns: ["left"] },
+  { command: act("escape"), label: "close", columns: ["left"] },
+];
+
+const FOOTER_TOKENS: Readonly<Record<string, string>> = {
+  "<CR>": "↵",
+  "<Esc>": "esc",
+};
+
+function footerToken(token: string): string {
+  return FOOTER_TOKENS[token] ?? displayToken(token).replace(/^Ctrl-/u, "⌃");
+}
+
+export interface PickerHint {
+  /** In vim notation, as bound in the column's keymap. */
+  keys: string;
+  /** How the footer shows it: ↵, esc, ⌃d. */
+  display: string;
+  label: string;
+}
 
 /** The footer for the focused column: only keys that do something there. */
 export function pickerHints(column: PickerColumn): PickerHint[] {
-  const bindings: readonly KeyBinding<string>[] =
-    column === "preview" ? [...PREVIEW_KEYMAP, ...PICKER_KEYMAP] : PICKER_KEYMAP;
-  return bindings.flatMap((binding) => {
-    const label = binding.hint?.[column];
-    return label === undefined ? [] : [[keyLabel(binding.keys[0]), label] as const];
+  const bindings = Object.entries(pickerKeymap(column));
+  return HINTS.flatMap(({ command, label, columns }) => {
+    if (!columns.includes(column)) return [];
+    const keys = bindings.find(([, bound]) => sameCommand(bound, command))?.[0];
+    if (keys === undefined) return [];
+    return [{ keys, display: tokenize(keys).map(footerToken).join(""), label }];
   });
-}
-
-export function keyName(event: { key: string; ctrlKey: boolean }): string {
-  return event.ctrlKey ? `C-${event.key}` : event.key;
-}
-
-function indexBindings<Command extends string>(
-  keymap: readonly KeyBinding<Command>[],
-): ReadonlyMap<string, KeyBinding<Command>> {
-  const byKey = new Map<string, KeyBinding<Command>>();
-  for (const binding of keymap) {
-    for (const key of binding.keys) byKey.set(key, binding);
-  }
-  return byKey;
-}
-
-const PICKER_BINDINGS = indexBindings(PICKER_KEYMAP);
-const FILTER_BINDINGS = indexBindings(FILTER_KEYMAP);
-const PREVIEW_BINDINGS = indexBindings(PREVIEW_KEYMAP);
-
-export type PickerKeyResolution =
-  | { type: "command"; command: PickerCommand }
-  /** The first press of a double-tap binding: swallow it and wait. */
-  | { type: "pending" }
-  | { type: "unbound" };
-
-/**
- * `pendingKey` is the previous key when that press was left pending, and null
- * otherwise, so any other key in between cancels a double tap.
- */
-export function resolvePickerKey(
-  key: string,
-  pendingKey: string | null,
-): PickerKeyResolution {
-  const binding = PICKER_BINDINGS.get(key);
-  if (binding === undefined) return { type: "unbound" };
-  if (binding.doubleTap && pendingKey !== key) return { type: "pending" };
-  return { type: "command", command: binding.command };
-}
-
-export function resolveFilterKey(key: string): FilterCommand | undefined {
-  return FILTER_BINDINGS.get(key)?.command;
-}
-
-export function resolvePreviewKey(key: string): PreviewScroll | undefined {
-  return PREVIEW_BINDINGS.get(key)?.command;
 }

@@ -68,7 +68,23 @@ describe("installUndoArchiveKey", () => {
     pressU(input);
     pressU(editor);
     pressU(document.body, { metaKey: true });
+    pressU(document.body, { ctrlKey: true });
     expect(undo).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("leaves u to an open dialog", () => {
+    const undo = toast("Thread Archived");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.dataset.state = "open";
+    document.body.append(dialog);
+    const cleanup = installUndoArchiveKey(document, window);
+    expect(pressU(dialog).defaultPrevented).toBe(false);
+    expect(undo).not.toHaveBeenCalled();
+    dialog.remove();
+    pressU();
+    expect(undo).toHaveBeenCalledOnce();
     cleanup();
   });
 });

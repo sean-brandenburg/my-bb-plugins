@@ -6,6 +6,7 @@ settings:
 
 overrides:
   bb-motion: link:../motion/lib
+  bb-vim-keys: link:../vim-mode/lib
 
 importers:
 
@@ -32,6 +33,9 @@ importers:
       bb-motion:
         specifier: link:../motion/lib
         version: link:../motion/lib
+      bb-vim-keys:
+        specifier: link:../vim-mode/lib
+        version: link:../vim-mode/lib
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

@@ -1,26 +1,15 @@
 import { experimental_useSidebarThreads, experimental_useSidebarThreadActions, useRpc } from "@get-bb/plugin-sdk/app";
 import { cx, enter, speed } from "bb-motion";
-import { KeyHelp, type KeyHelpSection, type Keymap, runListMotion, useKeyScope } from "bb-vim-keys/react";
+import { KeyHelp, type KeyHelpSection, type Keymap, type ListMotion, ROW_KEYS, runListMotion, useKeyScope } from "bb-vim-keys/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { rpcContract, Usage as UsageData, UsageSession } from "../rpc-contract.js";
 import { type LimitStatus, type Tokens, totalTokens } from "../usage-model.js";
 import { describeTokens, formatClock, formatDay, formatSpan, formatTokens } from "./format.js";
 
-type Command = "down" | "up" | "top" | "bottom" | "left" | "right" | "open" | "refresh" | "compose" | "help" | "escape";
+type Command = ListMotion | "refresh" | "compose" | "help" | "escape";
 
-const KEYMAP: Keymap<Command> = {
-  j: "down",
-  "<Down>": "down",
-  k: "up",
-  "<Up>": "up",
-  gg: "top",
-  G: "bottom",
-  h: "left",
-  "<Left>": "left",
-  l: "right",
-  "<Right>": "right",
-  "<CR>": "open",
-  o: "open",
+export const KEYMAP: Keymap<Command> = {
+  ...ROW_KEYS,
   r: "refresh",
   i: "compose",
   "?": "help",
@@ -129,7 +118,7 @@ export function Usage(_props: { projectId: string | null }) {
   const [readout, setReadout] = useState<Readout>(null);
   useFooterRow(root);
 
-  const runCommand = (command: Command): boolean => {
+  const runCommand = (command: Command, count: number | null): boolean => {
     if (root === null) return false;
     const container = navContainer(root);
     switch (command) {
@@ -139,7 +128,7 @@ export function Usage(_props: { projectId: string | null }) {
       case "bottom":
       case "left":
       case "right":
-        return runListMotion(container, command);
+        return runListMotion(container, command, { count });
       case "open": {
         // bb's pickers are Radix triggers, which open on a key or pointer press rather than a click.
         const active = root.ownerDocument.activeElement;
@@ -165,7 +154,7 @@ export function Usage(_props: { projectId: string | null }) {
     }
   };
 
-  useKeyScope(root, true, { keymap: KEYMAP, alsoWithin: FOOTER, onCommand: (command) => runCommand(command) });
+  useKeyScope(root, true, { keymap: KEYMAP, alsoWithin: FOOTER, counts: true, onCommand: (command, { count }) => runCommand(command, count) });
 
   const now = usage?.scannedAt ?? Date.now();
   const window = usage?.window ?? null;

@@ -5,11 +5,11 @@ import {
   type PluginSidebarPullRequest,
 } from "@get-bb/plugin-sdk/app";
 import { enter, speed } from "bb-motion";
+import { type Motion, scrollPane } from "bb-vim-keys";
 import { cn } from "@/lib/utils";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import type { PreviewScroll } from "./picker-keymap.js";
 import { formatAge } from "./picker-model.js";
 import { findTranscriptScroller } from "./use-pinned-to-bottom.js";
 
@@ -33,25 +33,15 @@ export function usePreviewThreadId(threadId: string | null): string | null {
 
 // ThreadChat owns its scroller, so find it when a key needs it rather than
 // holding a ref across its re-renders.
-export function scrollPreview(root: HTMLElement | null, scroll: PreviewScroll) {
+export function scrollPreview(
+  root: HTMLElement | null,
+  motion: Motion,
+  count: number | null,
+) {
   if (root === null) return;
   const scroller = findTranscriptScroller(root);
   if (scroller === null) return;
-  const page = scroller.clientHeight;
-  const by = {
-    "line-down": PREVIEW_LINE_PX,
-    "line-up": -PREVIEW_LINE_PX,
-    "half-down": page / 2,
-    "half-up": -page / 2,
-    "page-down": page - PREVIEW_LINE_PX,
-    "page-up": PREVIEW_LINE_PX - page,
-    top: -scroller.scrollHeight,
-    bottom: scroller.scrollHeight,
-  }[scroll];
-  scroller.scrollTop = Math.max(
-    0,
-    Math.min(scroller.scrollTop + by, scroller.scrollHeight - page),
-  );
+  scrollPane(scroller, motion, { count, line: PREVIEW_LINE_PX });
 }
 
 const PR_ATTENTION_LABELS: Partial<
