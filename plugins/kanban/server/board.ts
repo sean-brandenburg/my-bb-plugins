@@ -7,6 +7,7 @@ import type { KanbanContext } from "./context";
 import { rowToComment, rowToReview, rowToTicket, type TicketRow } from "./db/rows";
 import { defaultGates, INITIAL_LOOP_STATE } from "../shared/loop";
 import { reduce } from "./loop/reducer";
+import type { Spend } from "./spend/spend";
 import { errorMessage, normalizeTags, parseStringArray, shortId } from "./util";
 
 /** Columns a brand-new card lands in, by what the card is. */
@@ -65,7 +66,7 @@ interface DeletedTicket {
 }
 
 /** Cards, columns, sources and tags: the board's own storage. */
-export function createBoardStore(ctx: KanbanContext) {
+export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }) {
   const { bb, db, stmts, publish } = ctx;
 
   function latestReviewFor(ticketId: string): Review | null {
@@ -109,6 +110,7 @@ export function createBoardStore(ctx: KanbanContext) {
       canPostToGithub: canPostToGithub(row),
       defaultCommentTarget: defaultCommentTarget(row),
       children: childCounts(row),
+      spend: spend.spendOf(row.id),
     });
   }
 

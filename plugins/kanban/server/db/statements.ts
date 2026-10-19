@@ -135,6 +135,17 @@ export function prepareStatements(db: KanbanDatabase) {
        UNION SELECT thread_id FROM checks_runs
        UNION SELECT thread_id FROM classify_runs`,
     ),
+    /** Every thread a card started: its own, and each checks, classify, review, apply, narrative and explanation thread. */
+    cardThreads: db.prepare<[], { ticket_id: string; thread_id: string }>(
+      `SELECT id AS ticket_id, thread_id FROM tickets WHERE thread_id IS NOT NULL
+       UNION SELECT ticket_id, thread_id FROM reviews
+       UNION SELECT ticket_id, apply_thread_id FROM reviews WHERE apply_thread_id IS NOT NULL
+       UNION SELECT ticket_id, thread_id FROM comment_applies
+       UNION SELECT ticket_id, thread_id FROM narratives
+       UNION SELECT ticket_id, thread_id FROM hunk_explanations
+       UNION SELECT ticket_id, thread_id FROM checks_runs
+       UNION SELECT ticket_id, thread_id FROM classify_runs`,
+    ),
     reviewByThread: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1`,
     ),

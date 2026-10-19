@@ -4,9 +4,9 @@
 
 **Blocked by:** 11 — Attention level drives depth.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Needs you cards are ordered by level, then by time in the column.
-- [ ] Arrival in Needs you sends one notification per arrival when the API supports it. Without it, no error.
-- [ ] Card token totals sum every thread the card started, update as threads run, and show on the card and in the brief.
-- [ ] Tests cover the sort and the token summing over fake transcripts.
+- [x] Needs you cards are ordered by level, then by time in the column.
+- [x] Arrival in Needs you sends one notification per arrival when the API supports it. Without it, no error. (The plugin SDK has no notification API, so none is sent.)
+- [x] Card token totals sum every thread the card started, update as threads run, and show on the card and in the brief.
+- [x] Tests cover the sort and the token summing over fake transcripts.

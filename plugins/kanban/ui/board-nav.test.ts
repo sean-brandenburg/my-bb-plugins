@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { cursorAfter, movePlacement, placementIndex } from "./board-nav";
+import type { Ticket } from "../shared/board";
+import { loopStateSchema, type AttentionLevel } from "../shared/loop";
+import { byAttention, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 
 const layout = [["a1", "a2", "a3"], [], ["c1"], ["d1", "d2"]];
 
@@ -65,5 +67,30 @@ describe("placementIndex", () => {
   it("places it last when it goes after every visible card", () => {
     expect(placementIndex(column, visible, 3)).toBe(5);
     expect(placementIndex([], [], 0)).toBe(0);
+  });
+});
+
+describe("byAttention", () => {
+  const card = (id: string, level: AttentionLevel | null, columnEnteredAt: number, override: AttentionLevel | null = null) =>
+    ({
+      id,
+      columnEnteredAt,
+      position: 0,
+      loop: loopStateSchema.parse({
+        attention: level === null ? null : { level, reasons: [] },
+        levelOverride: override === null ? null : { level: override, reason: "mine", from: level, commit: null },
+      }),
+    }) as Ticket;
+
+  it("puts Scrutinize first, then Read, Glance and unlevelled cards, each longest-waiting first", () => {
+    const cards = [
+      card("glance", "glance", 1),
+      card("none", null, 0),
+      card("read-new", "read", 30),
+      card("scrutinize", "scrutinize", 50),
+      card("read-old", "read", 10),
+      card("overridden", "glance", 40, "scrutinize"),
+    ];
+    expect(cards.sort(byAttention).map((ticket) => ticket.id)).toEqual(["overridden", "scrutinize", "read-old", "read-new", "glance", "none"]);
   });
 });

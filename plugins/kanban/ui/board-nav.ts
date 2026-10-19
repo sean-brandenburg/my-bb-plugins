@@ -1,4 +1,6 @@
 import type { Direction, KeyHelpSection, Keymap } from "bb-vim-keys";
+import type { Ticket } from "../shared/board";
+import { effectiveLevel, type AttentionLevel } from "../shared/loop";
 
 /** Ticket ids per column, left to right, top to bottom, as the board shows them. */
 export type BoardLayout = readonly (readonly string[])[];
@@ -270,4 +272,15 @@ export function placementIndex(columnIds: readonly string[], visibleIds: readonl
   const next = visibleIds[visibleIndex];
   const index = next === undefined ? -1 : columnIds.indexOf(next);
   return index === -1 ? columnIds.length : index;
+}
+
+const LEVEL_RANK: Record<AttentionLevel, number> = { scrutinize: 0, read: 1, glance: 2 };
+
+/** Needs you's order: Scrutinize, then Read, then Glance, then cards with no level, each longest-waiting first. */
+export function byAttention(a: Ticket, b: Ticket): number {
+  const rank = (ticket: Ticket) => {
+    const level = ticket.loop === null ? null : effectiveLevel(ticket.loop);
+    return level === null ? 3 : LEVEL_RANK[level];
+  };
+  return rank(a) - rank(b) || a.columnEnteredAt - b.columnEnteredAt || a.position - b.position;
 }

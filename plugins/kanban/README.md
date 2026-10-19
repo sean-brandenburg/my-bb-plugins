@@ -193,6 +193,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Scrutinize Accept stays disabled, counting the plan files not yet marked
   Viewed. Change level (`L`) sets the level with a reason; it holds until
   the card's next ready at a new commit, and the reason is kept.
+  Needs you is sorted by level, Scrutinize first, then by how long each card
+  has waited there. bb's plugin API has no notifications, so the column and
+  its chips are the signal. Every card shows the tokens its threads have used
+  (its own, checks, classify, review, apply and narrative threads), read from
+  Claude Code's transcripts every 30 seconds; the brief shows the same total.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against

@@ -47,6 +47,7 @@ export function createDiffSubjects(ctx: KanbanContext, { board }: { board: Board
       position: 0,
       columnEnteredAt: now,
       loop: null,
+      spend: null,
       createdAt: now,
       updatedAt: now,
     };

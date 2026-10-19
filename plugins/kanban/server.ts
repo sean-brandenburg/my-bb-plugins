@@ -47,11 +47,12 @@ export default async function plugin(bb: BbPluginApi) {
     publish: () => bb.realtime.publish(BOARD_CHANGED, { at: Date.now() }),
   };
   const services = createServices(ctx);
-  const { board, codeReviewThreads, reviews, sourceSync, projectSettings } = services;
+  const { board, codeReviewThreads, reviews, sourceSync, projectSettings, spend } = services;
 
   await projectSettings.loadProjectSettings();
   await board.keepPreLoopDefaults();
   sourceSync.registerService();
+  spend.registerService();
   board.setReviewTag((await settings.get()).reviewTag);
   board.setMonitorTags((await settings.get()).monitorTags);
   await codeReviewThreads.reconcileOnLoad();

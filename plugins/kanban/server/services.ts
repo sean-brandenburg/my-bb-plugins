@@ -12,13 +12,15 @@ import { createLoop } from "./loop/loop";
 import { createProjectSettings } from "./project-settings";
 import { createProjects } from "./projects";
 import { createReviews } from "./reviews/reviews";
+import { createSpend } from "./spend/spend";
 import { createSubtasks } from "./subtasks";
 import { createSourceSync } from "./sync";
 import { createTour } from "./tour";
 
 /** Builds every feature in dependency order; each one only sees the features it is handed. */
 export function createServices(ctx: KanbanContext) {
-  const board = createBoardStore(ctx);
+  const spend = createSpend(ctx);
+  const board = createBoardStore(ctx, { spend });
   const projectSettings = createProjectSettings(ctx);
   const subjects = createDiffSubjects(ctx, { board });
   const threads = createCardThreads(ctx, { board });
@@ -34,7 +36,7 @@ export function createServices(ctx: KanbanContext) {
   const subtasks = createSubtasks(ctx, { board, threads, projects });
   const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments });
   const loop = createLoop(ctx, { board, threads, codeReviewThreads, projectSettings, reviews, diffComments, prComments, changes, viewed, tour });
-  return { board, projectSettings, loop, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
+  return { spend, board, projectSettings, loop, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
 }
 
 export type Services = ReturnType<typeof createServices>;

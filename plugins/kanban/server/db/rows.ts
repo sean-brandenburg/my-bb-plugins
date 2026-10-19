@@ -348,7 +348,7 @@ export function rowToTicket(
   row: TicketRow,
   latestReview: Review | null,
   comments: Ticket["comments"],
-  extras: { pendingDiffComments: number; canPostToGithub: boolean; defaultCommentTarget: DiffCommentTarget; children: Ticket["children"] },
+  extras: { pendingDiffComments: number; canPostToGithub: boolean; defaultCommentTarget: DiffCommentTarget; children: Ticket["children"]; spend: Ticket["spend"] },
 ): Ticket {
   const pr: PullRequest | null =
     row.pr_repo !== null &&
@@ -404,6 +404,7 @@ export function rowToTicket(
     position: row.position,
     columnEnteredAt: row.column_entered_at ?? row.updated_at,
     loop: row.loop_state === null ? null : parseLoopState(row.loop_state),
+    spend: extras.spend,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -5,7 +5,8 @@ import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger, type Arr
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { cardSnippet, dueStatus, shortAge, threadStatusText } from "./format";
+import { totalTokens } from "../shared/spend";
+import { cardSnippet, dueStatus, shortAge, shortTokens, spendTitle, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
 import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph, ReviewBadge } from "./badges";
@@ -135,6 +136,7 @@ export function CardView({
           {ticket.pendingDiffComments > 0 ? (
             <CardCounter icon="kanban-diff" count={ticket.pendingDiffComments} tone="attention" title={`${ticket.pendingDiffComments} diff comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet`} />
           ) : null}
+          {ticket.spend !== null ? <CardCounter icon="Coins" count={shortTokens(totalTokens(ticket.spend))} tone="quiet" title={spendTitle(ticket.spend)} /> : null}
           <span className="tabular-nums" title={`In ${columnName} since ${new Date(ticket.columnEnteredAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}>
             {shortAge(ticket.columnEnteredAt, now)}
           </span>

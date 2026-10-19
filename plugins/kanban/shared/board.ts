@@ -3,6 +3,7 @@ import { COLUMN } from "./columns";
 import { dumpSchema } from "./dump";
 import { loopStateSchema, projectSettingsSchema } from "./loop";
 import { reviewSummarySchema } from "./review";
+import { tokensSchema } from "./spend";
 
 export const TICKET_TITLE_MAX_LENGTH = 200;
 
@@ -162,6 +163,8 @@ export const ticketSchema = z.object({
   columnEnteredAt: z.number(),
   /** The monitored review loop's state; null for a card that was never monitored. */
   loop: loopStateSchema.nullable(),
+  /** Tokens used by every thread the card started, from Claude Code's transcripts; null before any were used. */
+  spend: tokensSchema.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

@@ -1,4 +1,5 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { totalTokens, type Tokens } from "../shared/spend";
 
 export function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -100,6 +101,19 @@ export function shortAge(epochMs: number, now: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+/** A token count at a glance: `840`, `12k`, `1.4M`. */
+export function shortTokens(count: number): string {
+  if (count < 1000) return String(count);
+  const [value, unit] = count < 1_000_000 ? [count / 1000, "k"] : [count / 1_000_000, "M"];
+  return `${value < 10 ? value.toFixed(1).replace(/\.0$/u, "") : Math.round(value)}${unit}`;
+}
+
+/** What a card's token count is made of, for its tooltip. */
+export function spendTitle(tokens: Tokens): string {
+  const n = (count: number) => count.toLocaleString();
+  return `${n(totalTokens(tokens))} tokens across the card's threads: ${n(tokens.input)} input, ${n(tokens.output)} output, ${n(tokens.cacheRead)} cache read, ${n(tokens.cacheWrite)} cache write`;
 }
 
 /** A card description flattened to plain prose for a two-line preview: Markdown markers, links and code fences dropped. */

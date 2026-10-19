@@ -4,6 +4,7 @@ import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel, type 
 import type { PlanFile, ReadingPlan } from "../shared/reading-plan";
 import type { Ticket } from "../shared/board";
 import type { FindingSeverity, Review } from "../shared/review";
+import { totalTokens } from "../shared/spend";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -14,6 +15,7 @@ import { Badge, COMPACT, Group, SegmentedTabs } from "./primitives";
 import { toastError, type RunAction } from "./actions";
 import type { BriefAction } from "./board-nav";
 import { BRIEF_SECTION_TITLE, briefShown, handoffBrief, type BriefFinding, type BriefSection } from "./handoff-brief";
+import { shortTokens, spendTitle } from "./format";
 import { diffSubPath } from "./reading-plan";
 import { openInStepper, useReadingPlan } from "./use-reading-plan";
 
@@ -486,6 +488,11 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
   const noThread = ticket.threadId === null;
   return (
     <div data-kanban-brief="" className="flex flex-col gap-2">
+      {ticket.spend === null ? null : (
+        <p className="text-xs text-muted-foreground" title={spendTitle(ticket.spend)}>
+          {shortTokens(totalTokens(ticket.spend))} tokens spent across the card's threads
+        </p>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {awaiting.length === 0 ? null : (
           <ActionButton

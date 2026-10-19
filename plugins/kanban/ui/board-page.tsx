@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { SHIMMER, enter, speed, useArrivals } from "bb-motion";
 import { scrollKeepingCursor } from "bb-vim-keys";
 import type { Ticket } from "../shared/board";
-import { agedOut, doneColumnId } from "../shared/columns";
+import { COLUMN, agedOut, doneColumnId } from "../shared/columns";
 import { cn } from "@/lib/utils";
 import { ticketHasDiff, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { localDay } from "./format";
@@ -19,7 +19,7 @@ import { SourcesDialog } from "./sources-dialog";
 import { type TodoKeys, TodoView } from "./todo-view";
 import { ProposalsList, ProposalView } from "./proposals";
 import { toastError } from "./actions";
-import { type BoardCommand, cursorAfter, movePlacement, placementIndex } from "./board-nav";
+import { type BoardCommand, byAttention, cursorAfter, movePlacement, placementIndex } from "./board-nav";
 import { useBoardKeys } from "./board-keys";
 import { cardShown, requestCardFocus } from "./card-keys";
 import { bandStops, focusStop, focusedStop, moveAlongBand, nearestStop, pressStop } from "./stops";
@@ -66,7 +66,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
       list.push(ticket);
       shown.set(ticket.columnId, list);
     }
-    for (const list of shown.values()) list.sort(byPosition);
+    for (const [columnId, list] of shown) list.sort(columnId === COLUMN.review ? byAttention : byPosition);
     return { ticketsByColumn: shown, hiddenByColumn: hidden };
   }, [board, showSubtasks, revealed, now]);
   const toggleHidden = (columnId: string) => {
