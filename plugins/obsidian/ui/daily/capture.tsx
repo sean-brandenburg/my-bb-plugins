@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 import { toast } from "sonner";
 import { NUDGE, enter, exit, usePresence, useReplay } from "bb-motion";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import { returnToRow, useKeyHandler } from "bb-vim-keys/react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
@@ -10,6 +11,7 @@ import type { RoutineMode, rpcContract } from "../../rpc-contract";
 import { errorMessage } from "../../shared/errors";
 import { PANEL_PATH } from "../navigation";
 import type { VaultRpc } from "../vault-client";
+import { CAPTURE_BOX_KEYMAP } from "../vault-nav";
 
 type Navigate = ReturnType<typeof useBbNavigate>;
 
@@ -142,18 +144,24 @@ export function CaptureInput({
     onDone?.();
   };
 
+  const boxKeys = useKeyHandler({
+    keymap: CAPTURE_BOX_KEYMAP,
+    isText: () => false,
+    onCommand: () => {
+      const box = ref.current;
+      setText("");
+      // Back onto the box's row for the vault's j/k cursor, where there is one.
+      if (box !== null && !returnToRow(box)) box.blur();
+    },
+  });
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void submit();
+      return;
     }
-    if (event.key === "Escape") {
-      setText("");
-      // Back onto the box's row for the vault's j/k cursor, where there is one.
-      const row = ref.current?.closest<HTMLElement>("[data-nav-row]");
-      if (row) row.focus({ preventScroll: true });
-      else ref.current?.blur();
-    }
+    boxKeys(event);
   };
 
   return (

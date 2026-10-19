@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { CHEVRON, STAGGER, cx, enter, speed, stagger } from "bb-motion";
+import { returnToRow, useKeyHandler } from "bb-vim-keys/react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,7 +13,7 @@ import { cn } from "@/lib/utils";
 import type { VaultTree } from "../contract";
 import { basename, dirname, isNotePath, noteTitle } from "../shared/obsidian";
 import { fileIcon } from "./file-kinds";
-import { canMoveInto } from "./vault-nav";
+import { canMoveInto, NAME_BOX_KEYMAP } from "./vault-nav";
 
 interface TreeNode {
   name: string;
@@ -85,9 +86,16 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
     if (done.current) return;
     done.current = true;
     // The input is about to unmount; its row keeps the keys.
-    if (document.activeElement === ref.current) ref.current?.closest<HTMLElement>("[data-nav-row]")?.focus({ preventScroll: true });
+    if (ref.current !== null && document.activeElement === ref.current) returnToRow(ref.current);
     onDone(next);
   };
+  // Takes Escape, so the sidebar's own Escape doesn't move the cursor on to the open note.
+  const keys = useKeyHandler({
+    keymap: NAME_BOX_KEYMAP,
+    isText: () => false,
+    leaveToPressables: false,
+    onCommand: (command) => finish(command === "commit" ? value : null),
+  });
   return (
     <input
       ref={ref}
@@ -97,10 +105,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
       className={cx("ob-tree-rename", enter.fade, speed.fast)}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") finish(value);
-        if (event.key === "Escape") finish(null);
-      }}
+      onKeyDown={keys}
     />
   );
 }

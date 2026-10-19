@@ -8,6 +8,12 @@ import { getSearchStops, requestPanelTab, setKeysHelpOpen, setSearchStopIndex } 
 import { requestSurfaceFocus } from "./vault-keys";
 import type { VaultCommand } from "./vault-nav";
 
+/** `/` and ⌘⇧F: the file sidebar's search box. */
+export function searchVault(): void {
+  requestPanelTab("files");
+  requestSurfaceFocus("files", "search");
+}
+
 /** Keys that mean the same on every surface: search, panels, home, today, help. */
 export function useGlobalCommands(): (command: VaultCommand) => boolean {
   const openNote = useOpenNote();
@@ -16,8 +22,7 @@ export function useGlobalCommands(): (command: VaultCommand) => boolean {
     (command: VaultCommand) => {
       switch (command.kind) {
         case "search":
-          requestPanelTab("files");
-          requestSurfaceFocus("files", "search");
+          searchVault();
           return true;
         case "searchNext": {
           const { stops, index } = getSearchStops();

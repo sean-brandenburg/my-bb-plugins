@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { enter, speed } from "bb-motion";
+import { useKeyHandler } from "bb-vim-keys/react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dirname, isNotePath, noteTitle, type LinkResolver } from "../shared/obsidian";
 import type { SaveState } from "./useNoteDocument";
+import { NAME_BOX_KEYMAP } from "./vault-nav";
 
 export type ViewMode = "edit" | "read";
 
@@ -37,6 +39,22 @@ function TitleInput({ path, focus, onRename }: { path: string; focus: boolean; o
     }
     onRename(next);
   };
+  const keys = useKeyHandler({
+    keymap: NAME_BOX_KEYMAP,
+    isText: () => false,
+    leaveToPressables: false,
+    onCommand: (command) => {
+      if (command === "commit") {
+        ref.current?.blur();
+        return true;
+      }
+      setValue(title);
+      // A frame later, so the blur's commit sees the title put back rather than the typed name.
+      requestAnimationFrame(() => ref.current?.blur());
+      // Escape goes on to the page's keys, which put the cursor back once the title lets go.
+      return false;
+    },
+  });
   return (
     <input
       ref={ref}
@@ -46,16 +64,7 @@ function TitleInput({ path, focus, onRename }: { path: string; focus: boolean; o
       className="ob-title-input"
       onChange={(event) => setValue(event.target.value)}
       onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          ref.current?.blur();
-        }
-        if (event.key === "Escape") {
-          setValue(title);
-          requestAnimationFrame(() => ref.current?.blur());
-        }
-      }}
+      onKeyDown={keys}
     />
   );
 }

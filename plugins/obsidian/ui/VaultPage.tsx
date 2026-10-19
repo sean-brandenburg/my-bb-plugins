@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { NUDGE, cx, enter, speed, useReplay } from "bb-motion";
+import { editField, scrollPane } from "bb-vim-keys";
 import { experimental_useAppPanel, experimental_usePluginId } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -22,8 +23,8 @@ import { NoteView, type ViewMode } from "./NoteView";
 import { flushOpenNotes, setCurrentNotePath, useLocalStorageState, usePanelTabRequests, useSearchQuery, useTitleFocusPath } from "./state";
 import { useVaultActions } from "./vault-actions";
 import { usePreviewBase, useVault, type VaultRpc } from "./vault-client";
-import { editFieldAtCursor, fieldRowOf, focusRow, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
-import type { PanelTab, VaultCommand } from "./vault-nav";
+import { editFieldAtCursor, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys, useVaultPageCommands } from "./vault-keys";
+import { noteMotion, type PanelTab, type VaultCommand } from "./vault-nav";
 
 const RECENT_LIMIT = 12;
 
@@ -39,30 +40,12 @@ function noteScroller(root: HTMLElement): HTMLElement | null {
   return body.querySelector<HTMLElement>(".cm-scroller") ?? body;
 }
 
-function scrollNote(root: HTMLElement, command: VaultCommand): boolean {
+function scrollNote(root: HTMLElement, command: VaultCommand, count: number | null): boolean {
+  const motion = noteMotion(command);
   const scroller = noteScroller(root);
-  if (scroller === null) return false;
-  if (command.kind === "scroll") {
-    scroller.scrollBy({ top: command.step * scroller.clientHeight * (command.amount === "half" ? 0.5 : 0.9) });
-    return true;
-  }
-  if (command.kind !== "list") return false;
-  switch (command.motion) {
-    case "down":
-      scroller.scrollBy({ top: LINE_STEP_PX });
-      return true;
-    case "up":
-      scroller.scrollBy({ top: -LINE_STEP_PX });
-      return true;
-    case "top":
-      scroller.scrollTo({ top: 0 });
-      return true;
-    case "bottom":
-      scroller.scrollTo({ top: scroller.scrollHeight });
-      return true;
-    default:
-      return false;
-  }
+  if (motion === null || scroller === null) return false;
+  scrollPane(scroller, motion, { line: LINE_STEP_PX, count });
+  return true;
 }
 
 function SetupScreen({ rpc, onConfigured }: { rpc: VaultRpc; onConfigured: () => void }) {
@@ -152,23 +135,6 @@ export function VaultPage({ subPath }: { subPath: string }) {
   /** Shows the file sidebar. */
   const showExplorer = useCallback(() => openTab("files"), [openTab]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey;
-      if (mod && !event.shiftKey && event.key.toLowerCase() === "e") {
-        event.preventDefault();
-        setMode((current) => (current === "edit" ? "read" : "edit"));
-      }
-      if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        showExplorer();
-        requestSurfaceFocus("files", "search");
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setMode, showExplorer]);
-
   const { createNote, folderExists } = actions;
 
   const openLink = useCallback(
@@ -200,21 +166,10 @@ export function VaultPage({ subPath }: { subPath: string }) {
   const onDashboard = currentPath === null || folderExists(currentPath);
 
   useSurfaceFocusRequest("page", root, () => root?.focus({ preventScroll: true }));
+  useVaultPageCommands(root, () => setMode((current) => (current === "edit" ? "read" : "edit")));
 
-  const onCommand = (command: VaultCommand): boolean => {
+  const onCommand = (command: VaultCommand, count: number | null): boolean => {
     if (root === null || status === null || status.vaultPath === null) return false;
-    if (command.kind === "escape") {
-      if (!command.fromField) return false;
-      // After the field's own Escape handling, which may blur it on the next frame.
-      const field = document.activeElement;
-      requestAnimationFrame(() => {
-        if (document.activeElement !== field && document.activeElement !== document.body) return;
-        const row = fieldRowOf(field);
-        if (row !== null) focusRow(row);
-        else root.focus({ preventScroll: true });
-      });
-      return true;
-    }
     if (command.kind === "sidebar") {
       if (sidebarOpen) setSidebarOpen(false);
       else {
@@ -225,7 +180,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
     }
     // h steps left: across the home's buttons, then out into the file sidebar.
     if (command.kind === "list" && command.motion === "left") {
-      if (onDashboard && runListCommand(root, command)) return true;
+      if (onDashboard && runListCommand(root, command, { count })) return true;
       setSidebarOpen(true);
       requestSurfaceFocus("files");
       return true;
@@ -234,11 +189,13 @@ export function VaultPage({ subPath }: { subPath: string }) {
       switch (command.kind) {
         case "list":
         case "scroll":
-          return runListCommand(root, command);
-        case "edit":
+          return runListCommand(root, command, { count });
+        case "edit": {
           if (editFieldAtCursor()) return true;
-          root.querySelector<HTMLElement>(".ob-capture-input")?.focus();
+          const capture = root.querySelector<HTMLElement>(".ob-capture-input");
+          if (capture !== null) editField(capture);
           return true;
+        }
         case "newNote":
           actions.newNote(currentPath ?? "");
           return true;
@@ -254,7 +211,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
     switch (command.kind) {
       case "list":
       case "scroll":
-        return scrollNote(root, command);
+        return scrollNote(root, command, count);
       case "edit":
         if (!isNote) return false;
         if (mode === "edit") return focusEditor(path);
@@ -300,7 +257,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
         return global(command);
     }
   };
-  useVaultKeys("page", root, onCommand);
+  useVaultKeys("page", root, onCommand, () => root);
 
   const recent = useMemo(
     () => (tree === null ? [] : tree.files.filter((file) => isNotePath(file.path)).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, RECENT_LIMIT)),

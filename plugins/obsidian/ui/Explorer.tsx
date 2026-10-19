@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { STAGGER, cx, enter, speed, stagger } from "bb-motion";
 import { experimental_usePluginId } from "@get-bb/plugin-sdk/app";
+import { editField, useKeyHandler } from "bb-vim-keys/react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { SearchResults } from "../contract";
@@ -13,8 +14,8 @@ import { LoadingLines } from "./Loading";
 import { useOpenNote } from "./navigation";
 import { copyToClipboard, useGlobalCommands } from "./global-keys";
 import { getSearchStops, setSearchStopIndex, setSearchStops, useLocalStorageState, useSearchQuery } from "./state";
-import { editFieldAtCursor, fieldRowOf, focusRow, readRows, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
-import { canMoveInto, type SearchStop, type VaultCommand } from "./vault-nav";
+import { editFieldAtCursor, focusRow, readRows, requestSurfaceFocus, runListCommand, useSurfaceFocusRequest, useVaultKeys } from "./vault-keys";
+import { canMoveInto, SEARCH_BOX_KEYMAP, type SearchStop, type VaultCommand } from "./vault-nav";
 import type { VaultActions } from "./vault-actions";
 import type { Vault } from "./vault-client";
 
@@ -132,12 +133,18 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
     return current !== -1 ? current : Math.max(elements.findIndex((element) => element.dataset.navRow !== "toolbar" && element.dataset.navRow !== "field"), 0);
   };
 
-  const focusList = () => {
+  /** Where the cursor lands in the list: the open note's row, else the first. */
+  const listStart = (): HTMLElement | null => {
     const body = bodyRef.current;
-    if (body === null) return;
+    if (body === null) return null;
     const { elements } = readRows(body);
-    const row = elements[startIndex(elements)];
-    if (row !== undefined) focusRow(row);
+    return elements[startIndex(elements)] ?? null;
+  };
+
+  const focusList = () => {
+    if (bodyRef.current === null) return;
+    const row = listStart();
+    if (row !== null) focusRow(row);
     else root?.focus({ preventScroll: true });
   };
 
@@ -171,8 +178,7 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
   };
   const folderAt = (path: string | null) => (path === null ? currentFolder : folderExists(path) ? path : dirname(path));
 
-  const onCommand = (command: VaultCommand): boolean => {
-    const body = bodyRef.current;
+  const onCommand = (command: VaultCommand, count: number | null): boolean => {
     const path = cursorPath();
     switch (command.kind) {
       case "list":
@@ -180,6 +186,7 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
         if (root === null) return false;
         // The whole sidebar, so k from the top row climbs to the buttons above the search box.
         return runListCommand(root, command, {
+          count,
           start: startIndex,
           onActivate(row, motion) {
             const rowPath = row.getAttribute("role") === "treeitem" ? row.dataset.path : undefined;
@@ -193,7 +200,7 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
         });
       case "edit":
         if (editFieldAtCursor()) return true;
-        searchRef.current?.focus();
+        if (searchRef.current !== null) editField(searchRef.current);
         return true;
       case "newNote":
         treeActions.newNote(folderAt(path));
@@ -246,16 +253,6 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
         requestAnimationFrame(focusList);
         return true;
       case "escape":
-        if (command.fromField) {
-          const field = document.activeElement;
-          requestAnimationFrame(() => {
-            if (document.activeElement !== field && document.activeElement !== document.body) return;
-            const row = fieldRowOf(field);
-            if (row !== null) focusRow(row);
-            else focusList();
-          });
-          return true;
-        }
         if (cutPath !== null) {
           setCutPath(null);
           return true;
@@ -271,7 +268,30 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
         return global(command);
     }
   };
-  useVaultKeys("files", root, onCommand);
+  useVaultKeys("files", root, onCommand, () => listStart() ?? root);
+
+  /** Enter can beat the debounce; search right away instead of waiting on it. */
+  const openFirstMatch = () => {
+    const trimmed = query.trim();
+    if (trimmed === "") return;
+    const ready = results !== null ? Promise.resolve(results) : rpc.call("search", { query: trimmed });
+    ready.then(
+      (found) => {
+        const stops = searchStops(found);
+        setSearchStops(stops);
+        if (stops.length === 0) toast.message(`No matches for “${trimmed}”.`);
+        else openMatch(stops[0]!.path, stops[0]!.line, true);
+      },
+      (cause) => toast.error(errorMessage(cause)),
+    );
+  };
+
+  const searchBoxKeys = useKeyHandler({
+    keymap: SEARCH_BOX_KEYMAP,
+    isText: () => false,
+    leaveToPressables: false,
+    onCommand: (command) => (command === "results" ? focusList() : openFirstMatch()),
+  });
 
   return (
     <div ref={setRoot} tabIndex={-1} className="ob-explorer outline-none">
@@ -301,28 +321,7 @@ export function VaultExplorer({ vault, actions, onHide }: { vault: Vault; action
             ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                focusList();
-              }
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                const trimmed = query.trim();
-                if (trimmed === "") return;
-                // Enter can beat the debounce; search right away instead of waiting on it.
-                const ready = results !== null ? Promise.resolve(results) : rpc.call("search", { query: trimmed });
-                ready.then(
-                  (found) => {
-                    const stops = searchStops(found);
-                    setSearchStops(stops);
-                    if (stops.length === 0) toast.message(`No matches for “${trimmed}”.`);
-                    else openMatch(stops[0]!.path, stops[0]!.line, true);
-                  },
-                  (cause) => toast.error(errorMessage(cause)),
-                );
-              }
-            }}
+            onKeyDown={searchBoxKeys}
             placeholder="Search vault"
             aria-label="Search vault"
             data-vim-ignore

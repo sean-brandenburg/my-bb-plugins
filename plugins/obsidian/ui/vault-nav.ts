@@ -1,11 +1,14 @@
-import type { KeyHelpSection, Keymap, ListMotion } from "bb-vim-keys";
+import { type KeyHelpSection, type Keymap, type ListMotion, mapKeymap, type Motion, ROW_KEYS } from "bb-vim-keys";
 
 /** The right-panel tabs keys can jump to. */
 export type PanelTab = "files" | "outline" | "backlinks";
 
+/** vim's Ctrl-d/u and Ctrl-f/b. */
+export type PageMotion = Extract<Motion, "halfDown" | "halfUp" | "pageDown" | "pageUp">;
+
 export type VaultCommand =
   | { kind: "list"; motion: ListMotion }
-  | { kind: "scroll"; step: 1 | -1; amount: "half" | "page" }
+  | { kind: "scroll"; motion: PageMotion }
   | { kind: "search" }
   | { kind: "searchNext"; step: 1 | -1 }
   | { kind: "edit" }
@@ -25,21 +28,11 @@ export type VaultCommand =
   | { kind: "sidebar" }
   | { kind: "home" }
   | { kind: "today" }
-  | { kind: "escape"; fromField: boolean }
+  | { kind: "escape" }
   | { kind: "help" };
 
 export const KEYMAP: Keymap<VaultCommand> = {
-  j: { kind: "list", motion: "down" },
-  "<Down>": { kind: "list", motion: "down" },
-  k: { kind: "list", motion: "up" },
-  "<Up>": { kind: "list", motion: "up" },
-  G: { kind: "list", motion: "bottom" },
-  l: { kind: "list", motion: "right" },
-  "<Right>": { kind: "list", motion: "right" },
-  h: { kind: "list", motion: "left" },
-  "<Left>": { kind: "list", motion: "left" },
-  o: { kind: "list", motion: "open" },
-  "<CR>": { kind: "list", motion: "open" },
+  ...mapKeymap(ROW_KEYS, (motion): VaultCommand => ({ kind: "list", motion })),
   "/": { kind: "search" },
   n: { kind: "searchNext", step: 1 },
   N: { kind: "searchNext", step: -1 },
@@ -58,27 +51,53 @@ export const KEYMAP: Keymap<VaultCommand> = {
   W: { kind: "routine", mode: "wrap" },
   "-": { kind: "panel", tab: "files" },
   t: { kind: "sidebar" },
-  "<Esc>": { kind: "escape", fromField: false },
+  "<Esc>": { kind: "escape" },
   "?": { kind: "help" },
-  gg: { kind: "list", motion: "top" },
   gO: { kind: "panel", tab: "outline" },
   gb: { kind: "panel", tab: "backlinks" },
   gh: { kind: "home" },
   gt: { kind: "today" },
   dd: { kind: "delete" },
   zM: { kind: "collapseAll" },
-  "<C-d>": { kind: "scroll", step: 1, amount: "half" },
-  "<C-u>": { kind: "scroll", step: -1, amount: "half" },
-  "<C-f>": { kind: "scroll", step: 1, amount: "page" },
-  "<C-b>": { kind: "scroll", step: -1, amount: "page" },
+  "<C-d>": { kind: "scroll", motion: "halfDown" },
+  "<C-u>": { kind: "scroll", motion: "halfUp" },
+  "<C-f>": { kind: "scroll", motion: "pageDown" },
+  "<C-b>": { kind: "scroll", motion: "pageUp" },
 };
+
+/** How far a page motion moves a row cursor: which way, and what share of the pane. */
+export const PAGE_STEPS: Readonly<Record<PageMotion, { step: 1 | -1; share: number }>> = {
+  halfDown: { step: 1, share: 0.5 },
+  halfUp: { step: -1, share: 0.5 },
+  pageDown: { step: 1, share: 1 },
+  pageUp: { step: -1, share: 1 },
+};
+
+/** How a command scrolls an open note, which has no cursor; null for the keys a note doesn't scroll on. */
+export function noteMotion(command: VaultCommand): Motion | null {
+  if (command.kind === "scroll") return command.motion;
+  if (command.kind !== "list") return null;
+  const { motion } = command;
+  return motion === "down" || motion === "up" || motion === "top" || motion === "bottom" ? motion : null;
+}
+
+// Keymaps for text boxes take only bracketed keys, so everything printable stays typing.
+
+/** The vault search box: ↓ moves into the results and Enter opens the first match. Escape goes on to the sidebar's keys. */
+export const SEARCH_BOX_KEYMAP: Keymap<"results" | "openFirst"> = { "<Down>": "results", "<CR>": "openFirst" };
+
+/** A box that edits a name: a tree row's rename box, a note's title. */
+export const NAME_BOX_KEYMAP: Keymap<"commit" | "cancel"> = { "<CR>": "commit", "<Esc>": "cancel" };
+
+/** The log-to-today box's Escape. Its Enter stays the box's own: ⌘↵ sends too, and key tokens leave ⌘ chords out. */
+export const CAPTURE_BOX_KEYMAP: Keymap<"clear"> = { "<Esc>": "clear" };
 
 /** What the shortcuts dialog lists, in display order. */
 export const KEY_HELP: readonly KeyHelpSection[] = [
   {
     title: "Anywhere in the vault",
     keys: [
-      { keys: ["/"], action: "Search the vault; Enter opens the first match" },
+      { keys: ["/", "⌘⇧F"], action: "Search the vault; Enter opens the first match" },
       { keys: ["n", "N"], action: "Open the next / previous search match" },
       { keys: ["-"], action: "The file sidebar, with the cursor on the open note" },
       { keys: ["t"], action: "Show / hide the file sidebar" },

@@ -32,10 +32,10 @@ function PanelKeys({ surface, children }: { surface: Surface; children: ReactNod
     if (row !== undefined) focusRow(row);
     else root.focus({ preventScroll: true });
   });
-  useVaultKeys(surface, root, (command) => {
+  useVaultKeys(surface, root, (command, count) => {
     if (root === null) return false;
-    if (command.kind === "list" || command.kind === "scroll") return runListCommand(root, command);
-    if (command.kind === "escape" && !command.fromField) {
+    if (command.kind === "list" || command.kind === "scroll") return runListCommand(root, command, { count });
+    if (command.kind === "escape") {
       requestSurfaceFocus("page");
       return true;
     }

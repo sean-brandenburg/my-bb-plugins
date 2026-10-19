@@ -1,17 +1,13 @@
 // Vim-style keys for the Vault page and its right-panel tabs. Each surface is its own React
 // root, so routing between them goes through module state here.
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { fieldInput, type ListCommandOptions, runListMotion, runListScroll, useKeyScope } from "bb-vim-keys/react";
+import { editField, fieldInput, fieldRowOf, focusWhenShown, isShown, type ListCommandOptions, returnToRowAfterFrame, runListMotion, runListScroll, useKeyScope } from "bb-vim-keys/react";
 import { createStore } from "./state";
-import { KEYMAP, type VaultCommand } from "./vault-nav";
+import { KEYMAP, PAGE_STEPS, type VaultCommand } from "./vault-nav";
 
 export type Surface = "page" | "files" | "outline" | "backlinks";
 
-export { fieldRowOf, focusRow, readRows } from "bb-vim-keys";
-
-function isShown(element: HTMLElement | undefined): element is HTMLElement {
-  return element !== undefined && element.isConnected && element.getClientRects().length > 0;
-}
+export { focusRow, readRows } from "bb-vim-keys";
 
 /** What a surface should put focus on when the keys move to it; the default is its cursor row. */
 export type FocusIntent = "search";
@@ -23,8 +19,8 @@ export function requestSurfaceFocus(surface: Surface, intent?: FocusIntent): voi
   focusRequests.set({ surface, intent });
 }
 
-/** Frames to wait for a tab that is still opening to show. */
-const SHOW_WAIT_FRAMES = 30;
+/** How long a tab that is still opening may take to show. */
+const SHOW_WAIT_MS = 500;
 
 /**
  * Runs `onFocus` whenever focus is requested for `surface`, including a request made before
@@ -38,14 +34,8 @@ export function useSurfaceFocusRequest(surface: Surface, root: HTMLElement | nul
     if (request === null || request.surface !== surface || root === null) return;
     focusRequests.set(null);
     // Not cancelled on cleanup: clearing the request above re-runs this effect straight away.
-    let frames = 0;
-    const attempt = () => {
-      if (!root.isConnected) return;
-      if (isShown(root)) handler.current(request.intent);
-      else if (++frames < SHOW_WAIT_FRAMES) requestAnimationFrame(attempt);
-    };
     // A tab that just opened lays out on the next frame.
-    requestAnimationFrame(attempt);
+    requestAnimationFrame(() => focusWhenShown(() => root, { timeoutMs: SHOW_WAIT_MS, focus: () => handler.current(request.intent) }));
   }, [request, surface, root]);
 }
 
@@ -53,25 +43,32 @@ export function useSurfaceFocusRequest(surface: Surface, root: HTMLElement | nul
  * Vim-style keys for one surface. Keys count only when they come from inside it (or from nowhere
  * in particular, when it was the last surface used), so bb's sidebar, the composer and other
  * plugins keep theirs. `onCommand` returns false when the key did nothing, so it keeps its default.
+ * With `fieldFallback`, Escape in a text box puts the cursor on the box's row, else on what that returns.
  */
-export function useVaultKeys(surface: Surface, root: HTMLElement | null, onCommand: (command: VaultCommand) => boolean): void {
+export function useVaultKeys(
+  surface: Surface,
+  root: HTMLElement | null,
+  onCommand: (command: VaultCommand, count: number | null) => boolean,
+  fieldFallback?: () => HTMLElement | null,
+): void {
   useKeyScope(root, true, {
     keymap: KEYMAP,
     group: "vault",
     primary: surface === "page",
     // Arriving from bb's sidebar leaves focus on its link, where vault keys would be ignored.
     takeFocus: surface === "page",
-    onCommand,
-    onTextEscape: () => onCommand({ kind: "escape", fromField: true }),
+    counts: true,
+    onCommand: (command, { count }) => onCommand(command, count),
+    onTextEscape: fieldFallback === undefined ? undefined : (field) => returnToRowAfterFrame(field, fieldFallback),
   });
 }
 
 /** i on a text box's row: types in that box. False when the cursor isn't on one. */
 export function editFieldAtCursor(): boolean {
-  const row = document.activeElement instanceof HTMLElement && document.activeElement.dataset.navRow === "field" ? document.activeElement : null;
+  const row = fieldRowOf(document.activeElement);
   const input = row === null ? null : fieldInput(row);
   if (input === null) return false;
-  input.focus({ preventScroll: true });
+  editField(input);
   return true;
 }
 
@@ -80,7 +77,37 @@ export function editFieldAtCursor(): boolean {
  * and activating a row clicks it. False when the command isn't a list motion or there are no rows.
  */
 export function runListCommand(container: Element, command: VaultCommand, options: ListCommandOptions = {}): boolean {
-  if (command.kind === "scroll") return runListScroll(container, command.step, command.amount === "half" ? 0.5 : 1, options);
+  if (command.kind === "scroll") {
+    const { step, share } = PAGE_STEPS[command.motion];
+    return runListScroll(container, step, share, options);
+  }
   if (command.kind === "list") return runListMotion(container, command.motion, options);
   return false;
+}
+
+/** The mounted Vault pages, for their bb commands, which are registered outside React. */
+const vaultPages = new Set<{ root: HTMLElement; toggleMode: () => void }>();
+
+/** Lets the Vault page's bb commands reach it while `root` is mounted. */
+export function useVaultPageCommands(root: HTMLElement | null, toggleMode: () => void): void {
+  const toggle = useRef(toggleMode);
+  toggle.current = toggleMode;
+  useEffect(() => {
+    if (root === null) return;
+    const page = { root, toggleMode: () => toggle.current() };
+    vaultPages.add(page);
+    return () => void vaultPages.delete(page);
+  }, [root]);
+}
+
+function shownVaultPage() {
+  return [...vaultPages].find((page) => isShown(page.root));
+}
+
+export function vaultPageShown(): boolean {
+  return shownVaultPage() !== undefined;
+}
+
+export function toggleVaultViewMode(): void {
+  shownVaultPage()?.toggleMode();
 }
