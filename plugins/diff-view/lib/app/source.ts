@@ -43,6 +43,10 @@ export interface DiffSource {
     list(): Promise<Review[]>;
     setSelection(reviewId: string, findingId: string, selected: boolean): Promise<Review>;
     editFinding(reviewId: string, findingId: string, edit: FindingEdit | null): Promise<Review>;
+    /** Files a pre-existing finding as separate work; `created` is false when an earlier press already did. */
+    makeCard?(reviewId: string, findingId: string): Promise<{ cardId: string; title: string; created: boolean }>;
+    /** Shows a card `makeCard` returned. */
+    openCard?(cardId: string): void;
   };
   /** What changed since the head the reviewer last looked at. */
   delta?(): Promise<DiffDelta | null>;
@@ -66,6 +70,8 @@ export interface DiffViewLabels {
   makeLocal: string;
   /** No checkout to open or search a file in. */
   noCheckout: string;
+  /** Tooltip on the filtered findings' count: what kept them out. */
+  filteredFindings: string;
 }
 
 export const DEFAULT_LABELS: DiffViewLabels = {
@@ -74,6 +80,7 @@ export const DEFAULT_LABELS: DiffViewLabels = {
   localHint: "Stays here until you send it to an agent",
   makeLocal: "Keep this for an agent instead of posting it",
   noCheckout: "No local checkout of these changes.",
+  filteredFindings: "Findings the review's verifier did not believe were real; never applied",
 };
 
 export const DiffSourceContext = createContext<{ source: DiffSource; labels: DiffViewLabels } | null>(null);

@@ -112,7 +112,16 @@ describe("review prompt", () => {
     expect(prompt).toContain("5. Compile one merged report");
     expect(prompt).toContain("the new findings from step 3 plus every open earlier finding");
     expect(prompt).toContain("lists only the reviewers step 3 ran");
-    expect(prompt).not.toMatch(/step [45]\b|main\.\.\.HEAD/u);
+    expect(prompt).not.toMatch(/step [45]\b|with the range `main\.\.\.HEAD`/u);
+  });
+
+  it("judges a re-review's new findings pre-existing against the whole change, and keeps carried findings' verification", () => {
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()]);
+    expect(prompt).toContain(`invoke the \`code-review\` skill with the range \`${since}..HEAD\` and the pre-existing range \`main...HEAD\``);
+    expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy and category");
+    expect(prompt).toContain('`"filtered"` holds only the findings step 3 filtered out');
+    const pr = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()]);
+    expect(pr).toContain(`with the range \`${since}..HEAD\` and the pre-existing range \`origin/$BASE...HEAD\``);
   });
 
   it("numbers a PR re-review's steps after its four setup steps", () => {

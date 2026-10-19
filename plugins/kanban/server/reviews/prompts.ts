@@ -69,21 +69,26 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
           "",
           "Your final message must be the code-review skill's compiled report verbatim, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card and rendered from that JSON.",
         ]
-      : incrementalSteps(range, setup.steps.length + 1)),
+      : incrementalSteps(range, setup.fullRange, setup.steps.length + 1)),
     "Rules: do not change code, and do not post comments or reviews on GitHub; the compiled findings in this thread are the deliverable.",
     `This review belongs to kanban ticket ${ticket.id}.`,
     ...(sinceSha === null ? [] : ["", ...earlierFindingsSection(standing)]),
   ].join("\n");
 }
 
-/** A re-review is only complete when it also says which earlier findings are still open, so the latest review alone stands for the subject. */
-function incrementalSteps(range: string, reviewStep: number): string[] {
+/**
+ * A re-review is only complete when it also says which earlier findings are still open, so the latest review alone
+ * stands for the subject. Its findings are tagged pre-existing against the whole change, since lines an earlier commit
+ * of the same change touched are outside the delta but still the change's own.
+ */
+function incrementalSteps(range: string, fullRange: string, reviewStep: number): string[] {
   return [
-    `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\` and let it spawn its reviewers and compile their findings; that report is an intermediate result, not your final message.`,
+    `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\` and the pre-existing range \`${fullRange}\`, so a finding in lines this change touched in an earlier commit is not tagged pre-existing. Let it spawn its reviewers, verify their findings and compile them; that report is an intermediate result, not your final message.`,
     `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem no longer exists) or open (still present; give its current locations, since lines may have moved). Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check.`,
     `${reviewStep + 2}. Compile one merged report in the code-review skill's exact format (the markdown sections, the \`Reviewed commit:\` and \`Range:\` lines, and the trailing \`\`\`json review-findings block), with these additions:`,
     `   - \`findings\` holds the new findings from step ${reviewStep} plus every open earlier finding, merged into one where a new finding is the same problem as an earlier one, ordered by severity and renumbered \`F1\`, \`F2\`, ….`,
-    '   - A carried finding keeps its earlier title, description, fix, severity, scores, flaggedBy and category unless the new commits made them inaccurate, takes its locations at HEAD, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id.',
+    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy and category unless the new commits made them inaccurate, takes its locations at HEAD, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
+    `   - \`"filtered"\` holds only the findings step ${reviewStep} filtered out; earlier reviews' filtered findings are neither re-checked nor carried.`,
     '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`.',
     `   - \`"range"\` is \`${range}\` and \`"reviewers"\` lists only the reviewers step ${reviewStep} ran (none when nothing changed).`,
     "",

@@ -64,6 +64,10 @@ export interface ReviewEnv {
   focusFileTree: () => boolean;
   /** Which findings the diff shows; null when there are none to filter. */
   findingFilter: { value: FindingFilter; set: (filter: FindingFilter) => void } | null;
+  /** Whether the findings the verifier filtered out are listed; null when it filtered none. */
+  filteredFindings: { open: boolean; set: (open: boolean) => void } | null;
+  /** Moves the keyboard into the findings listed above the diff; false when there are none. */
+  focusOutsideFindings: () => boolean;
   refresh: () => void;
   focusSendBar: () => boolean;
   /** Hands the keyboard from the send bar back to the diff; false when focus is not in the bar. */
@@ -154,6 +158,19 @@ function runViewCommand(command: ReviewCommand, env: ReviewEnv): boolean {
       env.notify(next === "off" ? "Review findings hidden" : `Review findings: ${FINDING_FILTER_LABEL[next]}`);
       return true;
     }
+    case "filteredFindings": {
+      if (env.filteredFindings === null) {
+        env.notify("The review filtered out no findings");
+        return true;
+      }
+      const open = !env.filteredFindings.open;
+      env.filteredFindings.set(open);
+      env.notify(open ? "Filtered findings listed above the diff" : "Filtered findings folded");
+      return true;
+    }
+    case "outsideFindings":
+      if (!env.focusOutsideFindings()) env.notify("No pre-existing or filtered findings");
+      return true;
     case "refresh":
       env.refresh();
       return true;

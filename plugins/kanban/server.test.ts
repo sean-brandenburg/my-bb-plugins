@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -893,6 +893,61 @@ describe("parseReviewReport", () => {
     expect(parseReviewReport("```json review-findings\n{ not json\n```")).toBeNull();
     expect(parseReviewReport("```json review-findings\n{\"version\":1}\n```")).toBeNull();
   });
+
+  it("reads a verified report's confidence, pre-existing tags and filtered findings", () => {
+    const body = [
+      "## Review Findings",
+      "```json review-findings",
+      JSON.stringify({
+        version: 2,
+        summary: "s",
+        findings: [
+          { id: "F1", severity: "minor", title: "Nit", locations: [{ file: "a.ts", startLine: 1, endLine: 2 }], confidence: 95, preExisting: false, verification: "Read the line" },
+          { id: "F2", severity: "critical", title: "Old bug", locations: [{ file: "b.ts", startLine: 9 }], confidence: 85, preExisting: true },
+        ],
+        filtered: [{ id: "X1", severity: "important", title: "Misread", confidence: 20, verification: "The guard on line 4 handles it" }],
+      }),
+      "```",
+    ].join("\n");
+    const report = parseReviewReport(body)!;
+    expect(report.findings.map(({ id, confidence, preExisting }) => ({ id, confidence, preExisting }))).toEqual([
+      { id: "F1", confidence: 95, preExisting: false },
+      { id: "F2", confidence: 85, preExisting: true },
+    ]);
+    expect(report.findings[0]!.verification).toBe("Read the line");
+    expect(report.filtered).toMatchObject([{ id: "X1", confidence: 20, verification: "The guard on line 4 handles it", preExisting: false, locations: [] }]);
+  });
+
+  it("takes confidence from 0 to 100 and an unverified finding's null pre-existing tag, and rejects a report scored past 100", () => {
+    const block = (findings: unknown[]) => ["```json review-findings", JSON.stringify({ version: 2, findings }), "```"].join("\n");
+    const report = parseReviewReport(
+      block([
+        { id: "F1", severity: "minor", title: "a", confidence: 0 },
+        { id: "F2", severity: "minor", title: "b", confidence: 100 },
+        { id: "F3", severity: "minor", title: "c", confidence: null, preExisting: null },
+      ]),
+    )!;
+    expect(report.findings.map(({ confidence, preExisting }) => ({ confidence, preExisting }))).toEqual([
+      { confidence: 0, preExisting: false },
+      { confidence: 100, preExisting: false },
+      { confidence: null, preExisting: false },
+    ]);
+    expect(parseReviewReport(block([{ id: "F1", severity: "minor", title: "a", confidence: 150 }]))).toBeNull();
+  });
+
+  it("parses a report the code-review skill compiled with its verify pass", async () => {
+    const report = parseReviewReport(await readFile(join(import.meta.dirname, "server/reviews/fixtures/verified-review.md"), "utf8"))!;
+    expect(report).toMatchObject({ version: 2, findings: [] });
+    expect(report.filtered).toHaveLength(1);
+    expect(report.filtered[0]).toMatchObject({ id: "X1", confidence: 50, preExisting: true, importance: null });
+    expect(report.filtered[0]!.verification).toContain("matter of taste");
+  });
+
+  it("reads a stored report from before verification as unverified, introduced and unfiltered", () => {
+    const report = parseReviewReport(["```json review-findings", JSON.stringify({ version: 1, findings: [{ id: "F1", severity: "important", title: "Bug" }] }), "```"].join("\n"))!;
+    expect(report.findings[0]).toMatchObject({ confidence: null, preExisting: false, verification: null });
+    expect(report.filtered).toEqual([]);
+  });
 });
 
 describe("defaultSelected", () => {
@@ -907,6 +962,10 @@ describe("defaultSelected", () => {
     category: null,
     importance: null,
     scopeFit: null,
+    carriedFrom: null,
+    confidence: null,
+    preExisting: false,
+    verification: null,
     ...overrides,
   });
   it("pre-selects critical findings and well-scored ones, and falls back to severity when unscored", () => {
@@ -916,6 +975,11 @@ describe("defaultSelected", () => {
     expect(defaultSelected(finding({ severity: "important", importance: 2, scopeFit: 5 }))).toBe(false);
     expect(defaultSelected(finding({ severity: "important" }))).toBe(true);
     expect(defaultSelected(finding({ severity: "minor" }))).toBe(false);
+  });
+
+  it("never pre-selects a pre-existing finding, even a critical one", () => {
+    expect(defaultSelected(finding({ severity: "critical", importance: 5, scopeFit: 5, preExisting: true }))).toBe(false);
+    expect(defaultSelected(finding({ severity: "important", preExisting: true }))).toBe(false);
   });
 });
 
@@ -1279,6 +1343,83 @@ describe("persisted reviews", () => {
     [stored] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
     expect(stored!.appliedFindingIds).not.toContain("F2");
     await expect(current().harness.behavior.callRpc("review_set_applied", { reviewId, findingId: "F9", applied: true })).rejects.toThrow(/no finding F9/u);
+  });
+
+  it("makes a backlog card from a pre-existing finding once, in the reviewed card's project, and never pre-selects it", async () => {
+    const card = await reviewedCard();
+    const first = {
+      version: 2,
+      summary: "Adds X.",
+      commit: sha,
+      findings: [
+        { id: "F1", severity: "minor", title: "Nit", locations: [{ file: "a.go", startLine: 1 }], confidence: 90 },
+        { id: "F2", severity: "critical", title: "Old race", description: "Two writers interleave.", fix: "Take the lock", locations: [{ file: "store.go", startLine: 40, endLine: 52 }, { file: "cache.go" }], confidence: 85, preExisting: true },
+      ],
+      filtered: [{ id: "X1", severity: "important", title: "Misread", confidence: 10 }],
+    };
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
+      lastAssistantText: `## Review Findings\n\n\`\`\`json review-findings\n${JSON.stringify(first)}\n\`\`\``,
+    });
+    const reviewId = (await board()).tickets[0]!.latestReview!.id;
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ counts: { critical: 0, important: 0, minor: 1 } });
+    const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
+    expect(reviews[0]!.selection).toEqual({ F1: false, F2: false });
+    expect(reviews[0]!.report!.filtered.map((entry) => entry.id)).toEqual(["X1"]);
+
+    const made = (await current().harness.behavior.callRpc("review_make_card", { reviewId, findingId: "F2" })) as { ticket: Ticket; created: boolean };
+    expect(made.created).toBe(true);
+    expect(made.ticket).toMatchObject({ title: "Old race", columnId: "backlog", kind: "adhoc", projectId: card.projectId, threadId: null });
+    expect(made.ticket.description).toContain("Two writers interleave.");
+    expect(made.ticket.description).toContain("Take the lock");
+    expect(made.ticket.description).toContain("`store.go:40-52`");
+    expect(made.ticket.description).toContain("`cache.go`");
+    expect(made.ticket.description).toContain(`(finding ${reviewId}/F2)`);
+    expect((await board()).tickets.map((ticket) => ticket.title).sort()).toEqual(["Old race", "Refactor"]);
+
+    // A re-review that carries the finding forward finds the card already made from it.
+    await current().harness.behavior.runCli(["review-record", "--commit", sha], ctx("thr_2"));
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    await current().harness.behavior.runCli(["review-record", "--commit", newSha], ctx("thr_3"));
+    const carried = { ...first, commit: newSha, carriesForward: true, findings: [{ ...first.findings[1], id: "F1", carriedFrom: `${reviewId}/F2` }], filtered: [] };
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_3", projectId: "proj_acme" }),
+      lastAssistantText: `\`\`\`json review-findings\n${JSON.stringify(carried)}\n\`\`\``,
+    });
+    const [latest] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(latest!.id).not.toBe(reviewId);
+    expect(latest!.report!.findings[0]).toMatchObject({ preExisting: true, confidence: 85 });
+    const again = (await current().harness.behavior.callRpc("review_make_card", { reviewId: latest!.id, findingId: "F1" })) as { ticket: Ticket; created: boolean };
+    expect(again).toMatchObject({ created: false, ticket: { id: made.ticket.id } });
+    expect((await board()).tickets).toHaveLength(2);
+
+    // And so does one carried a second time, back through both hops.
+    await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id });
+    await current().harness.behavior.runCli(["review-record", "--commit", sha], ctx("thr_4"));
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_4", projectId: "proj_acme" }),
+      lastAssistantText: `\`\`\`json review-findings\n${JSON.stringify({ ...carried, commit: sha, findings: [{ ...carried.findings[0], id: "F3", carriedFrom: `${latest!.id}/F1` }] })}\n\`\`\``,
+    });
+    const [third] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(third!.id).not.toBe(latest!.id);
+    const twice = (await current().harness.behavior.callRpc("review_make_card", { reviewId: third!.id, findingId: "F3" })) as { ticket: Ticket; created: boolean };
+    expect(twice).toMatchObject({ created: false, ticket: { id: made.ticket.id } });
+    expect((await board()).tickets).toHaveLength(2);
+
+    await expect(current().harness.behavior.callRpc("review_make_card", { reviewId, findingId: "X1" })).rejects.toThrow(/no finding X1/u);
+  });
+
+  it("makes a card from a finding of the change itself too, saying so, with the title cut to a card title's length", async () => {
+    const card = await reviewedCard();
+    const long = "x".repeat(250);
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
+      lastAssistantText: `\`\`\`json review-findings\n${JSON.stringify({ version: 2, commit: sha, findings: [{ id: "F1", severity: "minor", title: long, description: "Rename it.", confidence: 90 }] })}\n\`\`\``,
+    });
+    const reviewId = (await board()).tickets[0]!.latestReview!.id;
+    const { ticket } = (await current().harness.behavior.callRpc("review_make_card", { reviewId, findingId: "F1" })) as { ticket: Ticket };
+    expect(ticket.title).toBe("x".repeat(200));
+    expect(ticket.description).toBe(`Rename it.\n\nFound by the code review of “Refactor” (finding ${reviewId}/F1).`);
   });
 
   it("applies without asking and deletes reviews with the card", async () => {

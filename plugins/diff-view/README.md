@@ -33,7 +33,11 @@ plugins embed.
   finding opens to its description, fix and scores on click, Enter, or while
   the keyboard cursor is on it. The findings chip above the diff, or `F`,
   cycles which show: all, important and up (the default), critical only, or
-  none; the chip counts the ones hidden.
+  none; the chip counts the ones hidden. Findings a host marks pre-existing
+  (already in the code before the change) stay out of the diff, and those its
+  verifier filtered out are folded under "N filtered"; both are listed above
+  the diff, the pre-existing ones with "Make a card" when the host can make
+  cards.
 - **Viewed marks** remember the file's patch; a mark lapses once the file
   changes again.
 - **Keyboard**: the whole review runs on vim-style keys, sent to the view that
@@ -67,6 +71,9 @@ plugins embed.
   Escape twice). `v` marks a file viewed and moves on,
   `zo`/`zc`/`zR`/`zM` fold files (`za` too on a line with nothing under it),
   `zr` shows more unchanged lines, `F` cycles which review findings show,
+  `gF` folds or unfolds the filtered findings, `gp` moves the keyboard into
+  the pre-existing and filtered list above the diff (`j`/`k` move, Enter
+  opens one or makes a card, Escape returns),
   `K` asks for an explanation of the hunk, `S` steps through the narrative
   review where the host has one (its own keys: `h`/`l` steps, `]]`/`[[`
   chapters, `j`/`k` and Ctrl-D/U scroll, `]f`/`[f` excerpts, `gf` opens

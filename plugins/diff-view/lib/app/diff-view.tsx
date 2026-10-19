@@ -23,7 +23,8 @@ import { threadIsOpen, type DiffThread } from "./comments/threads";
 import { useComments } from "./comments/use-comments";
 import { useExplanations } from "./explanations/use-explanations";
 import { FileTreeSidebar } from "./file-tree/file-tree-sidebar";
-import { distinctFindings, filterFindings, findingAnchorId, inlineFindingsByPath, type PlacedFinding } from "./findings/findings";
+import { distinctFindings, filterFindings, findingAnchorId, findingsOutsideDiff, inlineFindingsByPath, type ListedFinding, type PlacedFinding } from "./findings/findings";
+import { OUTSIDE_FINDINGS, OutsideFindings } from "./findings/outside-findings";
 import { useReviews } from "./findings/use-reviews";
 import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
@@ -36,6 +37,7 @@ import { KeysOverlay, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
 import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
 import { ReviewKeysContext, createReviewKeys, useReviewKeysState } from "./keys/review-keys-context";
+import { errorMessage } from "./format";
 import { cn } from "./utils";
 import { enter } from "./ui/motion";
 import { focusRow, focusWhenShown } from "./ui/vim-keys";
@@ -173,6 +175,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
 
   const allFindingsByPath = useMemo(() => inlineFindingsByPath(reviews, delta), [reviews, delta]);
+  const outsideFindings = useMemo(() => findingsOutsideDiff(reviews), [reviews]);
+  const [filteredOpen, setFilteredOpen] = useState(false);
   const findingsByPath = useMemo(() => filterFindings(allFindingsByPath, findingFilter), [allFindingsByPath, findingFilter]);
   const allFindings = useMemo(() => distinctFindings([...allFindingsByPath.values()].flat()), [allFindingsByPath]);
   const shownFindingCount = useMemo(() => distinctFindings([...findingsByPath.values()].flat()).length, [findingsByPath]);
@@ -393,6 +397,17 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const notify = (message: string) => toast.message(message, { duration: 1800 });
   const fileTreeFits = () => (rootRef.current?.clientWidth ?? 0) >= FILE_TREE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
   const returnFromFileTree = () => rootRef.current?.focus({ preventScroll: true });
+  const makeFindingCard = async ({ reviewId, finding }: ListedFinding): Promise<string | null> => {
+    try {
+      const card = await source.reviews!.makeCard!(reviewId, finding.id);
+      if (card.created) toast.success(`Added “${card.title}” to the board`);
+      else toast.message(`Already on the board as “${card.title}”`);
+      return card.cardId;
+    } catch (cause) {
+      toast.error(errorMessage(cause));
+      return null;
+    }
+  };
   const stopFocusingTree = useRef(() => {});
   useEffect(() => () => stopFocusingTree.current(), []);
   const runCommand: Parameters<typeof useReviewKeys>[3] = (command, count) => {
@@ -475,6 +490,12 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
         return true;
       },
       findingFilter: allFindings.length === 0 ? null : { value: findingFilter, set: (filter) => setDiffPreferences({ findingFilter: filter }) },
+      filteredFindings: outsideFindings.filtered.length === 0 ? null : { open: filteredOpen, set: setFilteredOpen },
+      focusOutsideFindings: () => {
+        const first = rootRef.current?.querySelector<HTMLElement>(`${OUTSIDE_FINDINGS} [data-nav-row]`) ?? null;
+        if (first !== null) focusRow(first);
+        return first !== null;
+      },
       refresh: () => requestReload(instanceKey),
       focusSendBar: () => {
         // The bar's first action, past any checkbox or toggle that only sets an option for it, unless the host marks a
@@ -658,6 +679,16 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                   ) : null}
                   {delta !== null && delta.files.length > 0 ? (
                     <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
+                  ) : null}
+                  {diff !== null && diff.files.length > 0 && (outsideFindings.preExisting.length > 0 || outsideFindings.filtered.length > 0) ? (
+                    <OutsideFindings
+                      preExisting={outsideFindings.preExisting}
+                      filtered={outsideFindings.filtered}
+                      filteredOpen={filteredOpen}
+                      onFilteredOpen={setFilteredOpen}
+                      onMakeCard={source.reviews?.makeCard === undefined ? null : makeFindingCard}
+                      onLeave={() => rootRef.current?.focus({ preventScroll: true })}
+                    />
                   ) : null}
                   {diff === null && error === null ? <SkeletonLines widths={DIFF_SKELETON} label="Loading changes" className="p-4" /> : null}
                   {diff !== null && diff.files.length === 0 ? (

@@ -104,6 +104,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     review_set_selection: ({ reviewId, findingId, selected }) => reviews.setSelection(reviewId, findingId, selected),
     review_set_applied: ({ reviewId, findingId, applied }) => reviews.setApplied(reviewId, findingId, applied),
     review_edit_finding: ({ reviewId, findingId, edit }) => reviews.editFinding(reviewId, findingId, edit),
+    review_make_card: ({ reviewId, findingId }) => reviews.makeFindingCard(reviewId, findingId),
     diff_get: async ({ ticketId, refresh }) => changes.ticketDiff(await resolveDiffSubject(ticketId), refresh),
     diff_structural: async ({ ticketId, path }) => changes.structuralDiff(await resolveDiffSubject(ticketId), path),
     symbol_definitions: async ({ ticketId, symbol }) => changes.symbolDefinitions(await resolveDiffSubject(ticketId), symbol),

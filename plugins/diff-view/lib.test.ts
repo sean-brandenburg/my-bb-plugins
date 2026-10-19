@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildDiffThreads, localCommentState, threadIsOpen, threadKeyActions } from "./lib/app/comments/threads";
 import { fetchChangeTotals, knownChangeTotals } from "./lib/app/change-totals";
 import { buildFileTree } from "./lib/app/file-tree/build-file-tree";
 import { statusMark } from "./lib/app/file-status";
-import { activeReviews, distinctFindings, filterFindings, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
+import { activeReviews, distinctFindings, filterFindings, findingsOutsideDiff, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
 import { isGeneratedFile } from "./lib/app/generated";
 import { riskByPath } from "./lib/app/risk";
 import { enclosingDefinition } from "./lib/app/structural/enclosing-definition";
@@ -11,7 +11,7 @@ import { detectMoves } from "./lib/app/structural/moves";
 import { hunkSpan, structuralRows, visibleRows } from "./lib/app/structural/rows";
 import { buildLineAnnotations } from "./lib/app/text/line-annotations";
 import { navRows, patchRows, selectionRange } from "./lib/app/text/patch-rows";
-import { FILE_TREE_KEYMAP, KEY_HELP, REVIEW_KEYMAP } from "./lib/app/keys/keymap";
+import { FILE_TREE_KEYMAP, KEY_HELP, OUTSIDE_FINDINGS_KEYMAP, REVIEW_KEYMAP } from "./lib/app/keys/keymap";
 import { createKeyReader, keymapConflicts, unboundHelpKeys } from "../vim-mode/lib/index.ts";
 import { anchorsAtCursor, hunkSpanAt, moveChange, moveFile, moveHunk, moveLines, nextAnchor, visualRange, type Cursor, type NavFile } from "./lib/app/keys/nav";
 import { rankFiles } from "./lib/app/keys/rank-files";
@@ -227,6 +227,36 @@ describe("inlineFindingsByPath carry-over", () => {
       { id: "F1", isNew: false, carriedFrom: "F3" },
       { id: "F2", isNew: true, carriedFrom: null },
     ]);
+  });
+});
+
+describe("findings outside the diff", () => {
+  it("keeps pre-existing findings out of the diff and lists them, open ones only, with every active review's filtered findings", () => {
+    const old = { ...finding("F2", [{ file: "a.ts", startLine: 40, endLine: 41 }], "critical"), preExisting: true };
+    const fixedOld = { ...finding("F3", [{ file: "c.ts", startLine: 1, endLine: 1 }]), preExisting: true };
+    const doubted = { ...finding("X1", [{ file: "a.ts", startLine: 2, endLine: 2 }], "important"), confidence: 30 };
+    const later = { ...finding("X1", []), confidence: 10 };
+    const reviews = [
+      review("full", 1, [finding("F1", [{ file: "a.ts", startLine: 1, endLine: 1 }]), old, fixedOld], { appliedFindingIds: ["F3"], report: { findings: [finding("F1", [{ file: "a.ts", startLine: 1, endLine: 1 }]), old, fixedOld], filtered: [doubted] } }),
+      review("inc", 2, [], { sinceCommitSha: "a", report: { findings: [], filtered: [later] } }),
+    ];
+    expect(inlineFindingsByPath(reviews, null).get("a.ts")!.map(({ item }) => item.finding.id)).toEqual(["F1"]);
+    const outside = findingsOutsideDiff(reviews);
+    expect(outside.preExisting.map(({ reviewId, finding: entry }) => `${reviewId}/${entry.id}`)).toEqual(["full/F2"]);
+    expect(outside.filtered.map(({ reviewId, finding: entry }) => `${reviewId}/${entry.id}`)).toEqual(["full/X1", "inc/X1"]);
+  });
+
+  it("lists only a carrying-forward re-review's own filtered findings, since it stands for the reviews before it", () => {
+    const reviews = [
+      review("full", 1, [], { report: { findings: [], filtered: [finding("X1", [])] } }),
+      review("inc", 2, [], { sinceCommitSha: "a", report: { findings: [], filtered: [finding("X1", [])] } }),
+      review("carried", 3, [], { sinceCommitSha: "b", report: { findings: [], filtered: [finding("X2", [])], carriesForward: true } }),
+    ];
+    expect(findingsOutsideDiff(reviews).filtered.map(({ reviewId, finding: entry }) => `${reviewId}/${entry.id}`)).toEqual(["carried/X2"]);
+  });
+
+  it("finds nothing in reviews from before verification", () => {
+    expect(findingsOutsideDiff([review("full", 1, [finding("F1", [])])])).toEqual({ preExisting: [], filtered: [] });
   });
 });
 
@@ -616,6 +646,8 @@ describe("review keys", () => {
     expect(read(["a"])).toMatchObject({ kind: "command", command: { kind: "reply" } });
     expect(read(["<CR>"])).toMatchObject({ kind: "command", command: { kind: "fold", action: "annotation" } });
     expect(read(["o"])).toEqual({ kind: "none" });
+    expect(read(["g", "F"])).toMatchObject({ kind: "command", command: { kind: "filteredFindings" } });
+    expect(read(["g", "p"])).toMatchObject({ kind: "command", command: { kind: "outsideFindings" } });
     expect(keymapConflicts(REVIEW_KEYMAP)).toEqual([]);
   });
 
@@ -637,6 +669,42 @@ describe("threadKeyActions", () => {
     expect(threadKeyActions(fileLevel!, true).moveTo).toBeNull();
     const [answered] = buildDiffThreads([local({ id: "r1", applyId: "a1" }), local({ id: "r2", inReplyTo: "r1", author: "agent", authorThreadId: "thr_x", createdAt: 5 })], []);
     expect(threadKeyActions(answered!, true)).toMatchObject({ ownUnsent: null, moveTo: null, agentThread: "thr_x" });
+  });
+});
+
+describe("keys for the findings outside the diff", () => {
+  const rows = navRows(patchRows(["@@ -1,1 +1,1 @@", "-a", "+b", ""].join("\n")), "split");
+  const cursor: Cursor = { path: "a.ts", side: "RIGHT", line: 1, want: "RIGHT" };
+  const run = (command: Parameters<typeof runReviewCommand>[0], extra: Partial<ReviewEnv>) => {
+    let state = { cursor, visual: null, pending: "", focused: null } as ReturnType<ReviewEnv["keys"]["get"]>;
+    const notes: string[] = [];
+    const env = {
+      keys: { get: () => state, set: (patch: Partial<typeof state>) => (state = { ...state, ...patch }), models: new Map([["a.ts", { rows, cutToHunk: false, element: () => null }]]), threads: new Map(), findings: new Map() },
+      files: [{ path: "a.ts", collapsed: false, rows }],
+      threads: [],
+      findings: [],
+      onScreen: () => true,
+      seat: () => cursor,
+      reveal: () => {},
+      notify: (message: string) => notes.push(message),
+      ...extra,
+    } as unknown as ReviewEnv;
+    runReviewCommand(command, 1, env);
+    return notes;
+  };
+
+  it("gF says when nothing was filtered, and otherwise folds or unfolds the filtered findings", () => {
+    expect(run({ kind: "filteredFindings" }, { filteredFindings: null })).toEqual(["The review filtered out no findings"]);
+    const set = vi.fn();
+    expect(run({ kind: "filteredFindings" }, { filteredFindings: { open: false, set } })).toEqual(["Filtered findings listed above the diff"]);
+    expect(set).toHaveBeenLastCalledWith(true);
+    expect(run({ kind: "filteredFindings" }, { filteredFindings: { open: true, set } })).toEqual(["Filtered findings folded"]);
+    expect(set).toHaveBeenLastCalledWith(false);
+  });
+
+  it("gp moves into the list, or says there is none", () => {
+    expect(run({ kind: "outsideFindings" }, { focusOutsideFindings: () => false })).toEqual(["No pre-existing or filtered findings"]);
+    expect(run({ kind: "outsideFindings" }, { focusOutsideFindings: () => true })).toEqual([]);
   });
 });
 
@@ -695,6 +763,7 @@ describe("file list keys", () => {
     expect(read(["<Esc>"])).toMatchObject({ kind: "command", command: { kind: "leave" } });
     expect(read(["t"])).toMatchObject({ kind: "command", command: { kind: "hide" } });
     expect(keymapConflicts(FILE_TREE_KEYMAP)).toEqual([]);
+    expect(keymapConflicts(OUTSIDE_FINDINGS_KEYMAP)).toEqual([]);
   });
 
   it("leaves the diff's search and help keys to the diff", () => {

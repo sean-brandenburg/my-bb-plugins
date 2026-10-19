@@ -3,6 +3,8 @@ import { COLUMN } from "./columns";
 import { dumpSchema } from "./dump";
 import { reviewSummarySchema } from "./review";
 
+export const TICKET_TITLE_MAX_LENGTH = 200;
+
 export const columnSchema = z.object({
   id: z.string().min(1).max(40),
   name: z.string().trim().min(1).max(60),

@@ -31,6 +31,11 @@ export const reviewApplySchema = z.object({
 export const findingSeveritySchema = z.enum(["critical", "important", "minor"]);
 export type FindingSeverity = z.infer<typeof findingSeveritySchema>;
 
+/** The verifier's confidence a finding needs to be reported rather than filtered; the code-review skill applies it. */
+export const CONFIDENCE_BAR = 80;
+/** The first report version whose findings went through the verify pass, so a missing confidence means unverified. */
+export const VERIFIED_REPORT_VERSION = 2;
+
 export const findingSchema = z.object({
   id: z.string(),
   severity: findingSeveritySchema,
@@ -54,6 +59,16 @@ export const findingSchema = z.object({
   scopeFit: z.number().int().min(1).max(5).nullable().default(null),
   /** `<reviewId>/<findingId>` of the earlier finding a re-review found still unaddressed and carried forward. */
   carriedFrom: z.string().nullable().default(null),
+  /** 0–100: how sure the verifier is that the problem is real. It never measures importance: a real nit scores as high as a real bug. */
+  confidence: z.number().int().min(0).max(100).nullable().default(null),
+  /** The problem was already there before the change: none of its lines are in the diff and the change did not cause it. An unverified finding may say null, which means not pre-existing. */
+  preExisting: z
+    .boolean()
+    .nullable()
+    .default(false)
+    .transform((value) => value ?? false),
+  /** The verifier's one-line reason for its confidence. */
+  verification: z.string().nullable().default(null),
 });
 export type Finding = z.infer<typeof findingSchema>;
 
@@ -77,6 +92,8 @@ export const reviewReportSchema = z.object({
   skippedReviewers: z.array(z.object({ name: z.string(), reason: z.string().default("") })).default([]),
   skippedFiles: z.array(z.string()).default([]),
   findings: z.array(findingSchema),
+  /** Findings the verifier scored below the confidence bar; kept for a look, never selected or applied. */
+  filtered: z.array(findingSchema).default([]),
   /** Set by re-reviews: `findings` also holds every earlier finding still open, so older reviews are superseded. */
   carriesForward: z.boolean().default(false),
   /** Earlier findings (`<reviewId>/<findingId>`) a re-review found addressed at the reviewed commit. */
@@ -144,3 +161,25 @@ export const reviewSummarySchema = reviewSchema
     scores: reviewScoresSchema.nullable(),
   });
 export type ReviewSummary = z.infer<typeof reviewSummarySchema>;
+
+/**
+ * How a review's findings stand, as the card panel lists them: the change's own (`introduced`) apart from the
+ * pre-existing ones, and how many of its own are open, selected for the next apply round, and applied. Pre-existing
+ * findings never count as selected, whatever the selection says.
+ */
+export function findingTallies(
+  report: Pick<ReviewReport, "findings">,
+  selection: Record<string, boolean>,
+  appliedFindingIds: readonly string[],
+): { introduced: Finding[]; preExisting: Finding[]; open: number; selected: number; applied: number } {
+  const applied = new Set(appliedFindingIds);
+  const introduced = report.findings.filter((finding) => !finding.preExisting);
+  const open = introduced.filter((finding) => !applied.has(finding.id));
+  return {
+    introduced,
+    preExisting: report.findings.filter((finding) => finding.preExisting),
+    open: open.length,
+    selected: open.filter((finding) => selection[finding.id] === true).length,
+    applied: introduced.length - open.length,
+  };
+}

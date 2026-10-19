@@ -5,10 +5,9 @@ import { Button, COMPACT } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { cn } from "../utils";
 import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
-import { SEVERITY_LABEL, type InlineFinding } from "./findings";
+import { SEVERITY_DOT, SEVERITY_LABEL, type InlineFinding } from "./findings";
 import { useFindingControls, useIsFocused, useIsReading } from "../keys/review-keys-context";
 
-const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
 const SEVERITY_BORDER: Record<FindingSeverity, string> = { critical: "border-red-500/70", important: "border-amber-500/70", minor: "border-border" };
 
 /**
@@ -66,6 +65,7 @@ export function FindingAnnotation({
     finding.id,
     SEVERITY_LABEL[finding.severity],
     finding.importance !== null && finding.scopeFit !== null ? `importance ${finding.importance}/5 · scope fit ${finding.scopeFit}/5` : null,
+    finding.confidence != null ? `confidence ${finding.confidence}` : null,
     item.carriedFrom !== null ? `still open from ${item.carriedFrom}` : null,
     item.edited ? "reworded by you" : null,
     item.overridden ? (item.selected ? "included by you" : "excluded by you") : null,

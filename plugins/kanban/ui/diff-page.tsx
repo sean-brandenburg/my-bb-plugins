@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { PRESS, enter, usePopOnChange } from "bb-motion";
@@ -6,6 +6,7 @@ import { DiffView, type DiffSource, type DiffViewLabels, type PendingComments } 
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
 import type { ReviewEvent } from "../shared/comments";
+import { CONFIDENCE_BAR } from "../shared/review";
 import { BOARD_CHANGED, THREAD_SUBJECT_PREFIX } from "../shared/events";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -25,11 +26,15 @@ const KANBAN_DIFF_LABELS: Partial<DiffViewLabels> = {
   localHint: "Stays on the board until you send it to an agent",
   makeLocal: "Keep this on the board for an agent instead of posting it",
   noCheckout: "No checkout to open this file in; start the card's thread first.",
+  filteredFindings: `Findings the review's verifier scored below ${CONFIDENCE_BAR} for being real; never selected or applied`,
 };
 
 /** The board's data for one diff subject (a card id or `thread:<threadId>`), as the shared diff view reads it. */
-function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: () => void): DiffSource {
+function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: () => void, onOpenTicket: (ticketId: string) => void): DiffSource {
   const rpc = useRpc<typeof rpcContract>();
+  // Read through a ref so a new callback each render doesn't rebuild the source, which would refetch the view.
+  const openTicket = useRef(onOpenTicket);
+  openTicket.current = onOpenTicket;
   const prTicketId = ticket !== null && ticket.pr !== null ? ticket.id : null;
   // Reviews hang off cards; a thread without one has none yet.
   const reviewSubjectId = ticket?.id ?? (subjectId.startsWith(THREAD_SUBJECT_PREFIX) ? null : subjectId);
@@ -68,6 +73,12 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: 
               list: async () => (await rpc.call("review_list", { ticketId: reviewSubjectId })).reviews,
               setSelection: (reviewId, findingId, selected) => rpc.call("review_set_selection", { reviewId, findingId, selected }),
               editFinding: (reviewId, findingId, edit) => rpc.call("review_edit_finding", { reviewId, findingId, edit }),
+              makeCard: async (reviewId, findingId) => {
+                const { ticket: card, created } = await rpc.call("review_make_card", { reviewId, findingId });
+                refetch();
+                return { cardId: card.id, title: card.title, created };
+              },
+              openCard: (cardId) => openTicket.current(cardId),
             },
           }),
       delta: async () => (await rpc.call("diff_delta", { ticketId: subjectId })).delta,
@@ -198,10 +209,20 @@ function RereviewDeltaButton({ ticket }: { ticket: Ticket }) {
 }
 
 /** A card's (or a bare thread's) changes in the shared diff view, with the board's comment routing and reviews. */
-export function KanbanDiffView({ subjectId, onBack, onOpenThread }: { subjectId: string; onBack: () => void; onOpenThread: (threadId: string) => void }) {
+export function KanbanDiffView({
+  subjectId,
+  onBack,
+  onOpenThread,
+  onOpenTicket,
+}: {
+  subjectId: string;
+  onBack: () => void;
+  onOpenThread: (threadId: string) => void;
+  onOpenTicket: (ticketId: string) => void;
+}) {
   const { board, refetch } = useBoard();
   const ticket = findDiffSubjectTicket(board, subjectId);
-  const source = useKanbanDiffSource(subjectId, ticket, refetch);
+  const source = useKanbanDiffSource(subjectId, ticket, refetch, onOpenTicket);
   const [boardChanges, setBoardChanges] = useState(0);
   useRealtime(BOARD_CHANGED, () => setBoardChanges((count) => count + 1));
   if (ticket === null && (board === null || !subjectId.startsWith(THREAD_SUBJECT_PREFIX))) {

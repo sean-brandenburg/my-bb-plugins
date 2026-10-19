@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
+import { toast } from "sonner";
+import { CHEVRON, OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
-import type { Finding, FindingSeverity, Review } from "../shared/review";
+import { CONFIDENCE_BAR, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -17,6 +18,8 @@ import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_I
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
+const CONFIDENCE_TITLE = "How sure the review's verifier is that it is real (0–100); it does not measure importance";
+const MAKE_CARD_TITLE = "Add a Backlog card carrying this finding's title, description, fix and locations";
 const SEVERITY_TONE: Record<FindingSeverity, "danger" | "warning" | "neutral"> = {
   critical: "danger",
   important: "warning",
@@ -43,25 +46,45 @@ function SeverityCountBadges({ counts, appliedCount }: { counts: NonNullable<Tic
 function FindingCard({
   finding,
   index,
-  selected,
-  overridden,
-  applied,
-  onToggle,
-  onApplied,
+  verified,
+  selected = null,
+  overridden = false,
+  applied = false,
+  onToggle = null,
+  onApplied = null,
+  action = null,
+  kind = "introduced",
 }: {
   finding: Finding;
   /** Position across all severity groups, so the whole report cascades as one list. */
   index: number;
-  selected: boolean | null;
-  overridden: boolean;
+  /** The report went through the verify pass, so a finding without a confidence is unverified rather than older. */
+  verified: boolean;
+  selected?: boolean | null;
+  overridden?: boolean;
   /** An apply round fixed it (or the user crossed it off); it is folded to its title and kept out of the next round. */
-  applied: boolean;
-  onToggle: ((selected: boolean) => void) | null;
-  onApplied: ((applied: boolean) => void) | null;
+  applied?: boolean;
+  onToggle?: ((selected: boolean) => void) | null;
+  onApplied?: ((applied: boolean) => void) | null;
+  /** A button at the end of the header line. */
+  action?: ReactNode;
+  /** Pre-existing ones are drawn dashed; filtered ones dimmed, with the verifier's reason. */
+  kind?: "introduced" | "pre-existing" | "filtered";
 }) {
   const appliedPop = usePopOnChange(applied);
   return (
-    <li style={stagger(index)} className={cn("rounded-md border border-border bg-card p-2.5", enter.rise, speed.fast, STAGGER, OPACITY_TRANSITION, (selected === false || applied) && "opacity-60")}>
+    <li
+      style={stagger(index)}
+      className={cn(
+        "rounded-md border border-border bg-card p-2.5",
+        enter.rise,
+        speed.fast,
+        STAGGER,
+        OPACITY_TRANSITION,
+        kind === "pre-existing" && "border-dashed",
+        (selected === false || applied || kind === "filtered") && "opacity-60",
+      )}
+    >
       <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
         {selected !== null && onToggle !== null && !applied ? (
           <Checkbox
@@ -77,6 +100,15 @@ function FindingCard({
         {finding.importance !== null && finding.scopeFit !== null ? (
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title="importance / scope fit (1–5)">
             {finding.importance}/{finding.scopeFit}
+          </span>
+        ) : null}
+        {finding.confidence !== null ? (
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={CONFIDENCE_TITLE}>
+            confidence {finding.confidence}
+          </span>
+        ) : verified ? (
+          <span className="shrink-0 text-xs text-muted-foreground" title="The verifier gave no verdict on this one">
+            unverified
           </span>
         ) : null}
         {finding.carriedFrom !== null ? (
@@ -103,7 +135,9 @@ function FindingCard({
             </span>
           </button>
         ) : null}
+        {action}
       </div>
+      {kind === "filtered" && finding.verification !== null && finding.verification !== "" ? <p className="mt-1 text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
       {applied ? null : <FindingDetails finding={finding} />}
     </li>
   );
@@ -139,34 +173,100 @@ function FindingDetails({ finding }: { finding: Finding }) {
   );
 }
 
+/** Make a card, or open the one made; disabled while the request runs so two presses can't race. */
+function CardAction({ card, onMakeCard, onOpenCard }: { card: string | null; onMakeCard: (() => Promise<void>) | null; onOpenCard: (ticketId: string) => void }) {
+  const [making, setMaking] = useState(false);
+  if (card !== null) {
+    return (
+      <Button type="button" variant="ghost" size="sm" className="-my-0.5 h-6 px-2 text-xs" onClick={() => onOpenCard(card)}>
+        <Icon name="ArrowUpRight" className="size-3.5" />
+        Open card
+      </Button>
+    );
+  }
+  if (onMakeCard === null) return null;
+  return (
+    <span title={MAKE_CARD_TITLE}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="-my-0.5 h-6 px-2 text-xs"
+        disabled={making}
+        onClick={() => {
+          setMaking(true);
+          void onMakeCard().finally(() => setMaking(false));
+        }}
+      >
+        <Icon name="Plus" className="size-3.5" />
+        Make a card
+      </Button>
+    </span>
+  );
+}
+
+/** Findings the verifier did not believe, folded under their count until asked for. */
+function FilteredFindings({ findings, verified }: { findings: Finding[]; verified: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-label="Filtered findings">
+      <button
+        type="button"
+        aria-expanded={open}
+        data-bbm-open={open}
+        className="flex items-center gap-1 rounded text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        title={`Findings the verifier scored below ${CONFIDENCE_BAR} for being real; never selected or applied`}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
+        <span className="tabular-nums">{findings.length}</span> filtered
+      </button>
+      {open ? (
+        <ul className="mt-1.5 flex flex-col gap-2">
+          {findings.map((finding, index) => (
+            <FindingCard key={finding.id} finding={finding} index={index} verified={verified} kind="filtered" />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function StructuredReview({
   review,
   onToggle,
   onReset,
   onApplied,
+  onMakeCard,
+  onOpenCard,
 }: {
   review: Review;
   /** Null makes the view read-only (old reviews). */
   onToggle: ((findingId: string, selected: boolean) => void) | null;
   onReset: (() => void) | null;
   onApplied: ((findingId: string, applied: boolean) => void) | null;
+  /** Resolves to the card made from the finding, new or made before. */
+  onMakeCard: ((findingId: string) => Promise<string | null>) | null;
+  onOpenCard: (ticketId: string) => void;
 }) {
   const report = review.report!;
+  const verified = report.version >= VERIFIED_REPORT_VERSION;
+  const tallies = findingTallies(report, review.selection, review.appliedFindingIds);
+  const { introduced, preExisting } = tallies;
+  const [cards, setCards] = useState<Record<string, string>>({});
   const grouped = (["critical", "important", "minor"] as const)
-    .map((severity) => ({ severity, findings: report.findings.filter((finding) => finding.severity === severity) }))
+    .map((severity) => ({ severity, findings: introduced.filter((finding) => finding.severity === severity) }))
     .filter((group) => group.findings.length > 0);
   const applied = new Set(review.appliedFindingIds);
-  const openCount = report.findings.filter((finding) => !applied.has(finding.id)).length;
-  const selectedCount = report.findings.filter((finding) => review.selection[finding.id] === true && !applied.has(finding.id)).length;
   const overriddenCount = Object.keys(review.selectionOverrides).length;
   return (
     <div className="flex flex-col gap-3">
       {report.summary !== "" ? <Markdown content={report.summary} className="text-sm" /> : null}
-      {report.findings.length > 0 ? (
+      {introduced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : "Suggested: critical, or importance ≥ 3 and scope ≥ 3"}>
-            <span className="font-medium text-foreground tabular-nums">{selectedCount}</span> of {openCount} open selected
-            {applied.size > 0 ? <> · <span className="tabular-nums">{report.findings.length - openCount}</span> applied</> : null}
+            <span className="font-medium text-foreground tabular-nums">{tallies.selected}</span> of {tallies.open} open selected
+            {tallies.applied > 0 ? <> · <span className="tabular-nums">{tallies.applied}</span> applied</> : null}
           </span>
           {onReset !== null && overriddenCount > 0 ? (
             <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
@@ -175,7 +275,7 @@ function StructuredReview({
           ) : null}
         </div>
       ) : null}
-      {grouped.length === 0 ? <p className={cn("text-sm text-muted-foreground", enter.fade)}>No findings.</p> : null}
+      {grouped.length === 0 ? <p className={cn("text-sm text-muted-foreground", enter.fade)}>{preExisting.length > 0 ? "No findings in this change." : "No findings."}</p> : null}
       {grouped.map(({ severity, findings }, groupIndex) => (
         <section key={severity} aria-label={SEVERITY_LABEL[severity]}>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -187,6 +287,7 @@ function StructuredReview({
                 key={finding.id}
                 finding={finding}
                 index={grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index}
+                verified={verified}
                 selected={review.selection[finding.id] ?? null}
                 overridden={finding.id in review.selectionOverrides}
                 applied={applied.has(finding.id)}
@@ -197,6 +298,40 @@ function StructuredReview({
           </ul>
         </section>
       ))}
+      {preExisting.length > 0 ? (
+        <section aria-label="Pre-existing">
+          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Pre-existing <span className="font-normal tabular-nums">{preExisting.length}</span>
+          </h3>
+          <p className="mb-1.5 text-xs text-muted-foreground">Already in the code before this change, so never part of an apply round.</p>
+          <ul className="flex flex-col gap-2">
+            {preExisting.map((finding, index) => (
+              <FindingCard
+                key={finding.id}
+                finding={finding}
+                index={introduced.length + index}
+                verified={verified}
+                kind="pre-existing"
+                action={
+                  <CardAction
+                    card={cards[finding.id] ?? null}
+                    onMakeCard={
+                      onMakeCard === null
+                        ? null
+                        : () =>
+                            onMakeCard(finding.id).then((ticketId) => {
+                              if (ticketId !== null) setCards((current) => ({ ...current, [finding.id]: ticketId }));
+                            })
+                    }
+                    onOpenCard={onOpenCard}
+                  />
+                }
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {report.filtered.length > 0 ? <FilteredFindings findings={report.filtered} verified={verified} /> : null}
       {report.resolved.length > 0 ? (
         <section aria-label="Resolved since the last review">
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -247,6 +382,7 @@ export function ReviewPanel({
   canReview,
   run,
   onOpenThread,
+  onOpenTicket,
 }: {
   ticket: Ticket;
   threads: ReadonlyMap<string, PluginSidebarThread>;
@@ -255,6 +391,7 @@ export function ReviewPanel({
   canReview: boolean;
   run: RunAction;
   onOpenThread: (threadId: string) => void;
+  onOpenTicket: (ticketId: string) => void;
 }) {
   const [push, setPush] = usePushPreference();
   const [reviews, setReviews] = useState<Review[] | null>(null);
@@ -284,6 +421,18 @@ export function ReviewPanel({
     rpc.call("review_reset_selection", { reviewId }).then(updateReview, toastError);
   const setApplied = (reviewId: string, findingId: string, applied: boolean) =>
     rpc.call("review_set_applied", { reviewId, findingId, applied }).then(updateReview, toastError);
+  const makeCard = (reviewId: string, findingId: string) =>
+    rpc.call("review_make_card", { reviewId, findingId }).then(
+      ({ ticket: card, created }) => {
+        if (created) toast.success(`Added “${card.title}” to the board`);
+        else toast(`Already on the board as “${card.title}”`);
+        return card.id;
+      },
+      (cause: unknown) => {
+        toastError(cause);
+        return null;
+      },
+    );
   const startReview = (mode: "full" | "incremental") =>
     void run(() => rpc.call("ticket_review_pr", { id: ticket.id, projectId: null, mode }), "Review started");
   const localReason = useReviewUnavailableReason(ticket);
@@ -405,6 +554,8 @@ export function ReviewPanel({
                         onToggle={(findingId, selected) => void toggleFinding(latest.id, findingId, selected)}
                         onReset={() => void resetSelection(latest.id)}
                         onApplied={(findingId, applied) => void setApplied(latest.id, findingId, applied)}
+                        onMakeCard={(findingId) => makeCard(latest.id, findingId)}
+                        onOpenCard={onOpenTicket}
                       />
                     ) : (
                       <Markdown content={latest.body} />
@@ -424,7 +575,7 @@ export function ReviewPanel({
                                 {new Date(entry.completedAt ?? entry.createdAt).toLocaleString()}
                               </summary>
                               <div className="mt-2">
-                                {entry.report !== null ? <StructuredReview review={entry} onToggle={null} onReset={null} onApplied={null} /> : <Markdown content={entry.body ?? ""} />}
+                                {entry.report !== null ? <StructuredReview review={entry} onToggle={null} onReset={null} onApplied={null} onMakeCard={null} onOpenCard={onOpenTicket} /> : <Markdown content={entry.body ?? ""} />}
                               </div>
                             </details>
                           ))}

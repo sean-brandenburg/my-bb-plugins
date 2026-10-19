@@ -25,6 +25,8 @@ export type ReviewCommand =
   | { kind: "openThread" }
   | { kind: "toggleFinding" }
   | { kind: "findingFilter" }
+  | { kind: "filteredFindings" }
+  | { kind: "outsideFindings" }
   | { kind: "explain" }
   | { kind: "viewed" }
   | { kind: "target" }
@@ -88,6 +90,8 @@ export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   go: { kind: "openThread" },
   x: { kind: "toggleFinding" },
   F: { kind: "findingFilter" },
+  gF: { kind: "filteredFindings" },
+  gp: { kind: "outsideFindings" },
   K: { kind: "explain" },
   v: { kind: "viewed" },
   T: { kind: "target" },
@@ -113,6 +117,14 @@ export const FILE_TREE_KEYMAP: Keymap<FileTreeCommand> = {
   "<C-u>": { kind: "scroll", step: -1 },
   "<Esc>": { kind: "leave" },
   t: { kind: "hide" },
+};
+
+/** The findings listed above the diff: rows of buttons, so h and l step across a row. */
+export type OutsideFindingsCommand = { kind: "list"; motion: ListMotion } | { kind: "leave" };
+
+export const OUTSIDE_FINDINGS_KEYMAP: Keymap<OutsideFindingsCommand> = {
+  ...mapKeymap(ROW_KEYS, (motion): OutsideFindingsCommand => ({ kind: "list", motion })),
+  "<Esc>": { kind: "leave" },
 };
 
 /** The `?` sheet, in the order a review goes. Keys are written as the keymaps display them, so a test can check them. */
@@ -173,6 +185,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["zr"], action: "Show more unchanged lines around the hunk, or the rest of a long new file (structural)" },
       { keys: ["x"], action: "Include or exclude the review finding under the cursor in the apply round" },
       { keys: ["F"], action: "Which review findings show: all, important and up, critical only, or none" },
+      { keys: ["gF"], action: "Show or hide the findings the review's verifier filtered out" },
+      { keys: ["gp"], action: "Go to the findings listed above the diff: pre-existing and filtered (j / k move, h / l across a row, Enter opens one or makes a card, Esc back)" },
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
       { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },

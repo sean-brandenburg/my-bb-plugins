@@ -2,6 +2,13 @@ import type { DiffDelta, Finding, FindingSeverity, Review } from "../../types";
 import { rangesOverlap } from "../ranges";
 
 export const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
+export const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
+
+/** `a.ts`, `a.ts:12` or `a.ts:12-18`, as the review's own report writes a location. */
+export function findingLocationLabel(location: Finding["locations"][number]): string {
+  if (location.startLine === null) return location.file;
+  return location.endLine === null || location.endLine === location.startLine ? `${location.file}:${location.startLine}` : `${location.file}:${location.startLine}-${location.endLine}`;
+}
 
 /** A review finding placed in the diff, with the apply-round selection it carries. */
 export interface InlineFinding {
@@ -55,7 +62,7 @@ export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null)
     if (review.report === null) continue;
     const applied = new Set(review.appliedFindingIds ?? []);
     for (const finding of review.report.findings) {
-      if (applied.has(finding.id)) continue;
+      if (applied.has(finding.id) || finding.preExisting === true) continue;
       const touched = finding.locations.some((location) => {
         const ranges = changedRanges.get(location.file);
         return ranges !== undefined && location.startLine !== null && rangesOverlap(location.startLine, location.endLine ?? location.startLine, ranges);
@@ -78,6 +85,24 @@ export function inlineFindingsByPath(reviews: Review[], delta: DiffDelta | null)
     }
   }
   return byPath;
+}
+
+/** A finding listed beside the diff rather than in it. */
+export interface ListedFinding {
+  reviewId: string;
+  finding: Finding;
+}
+
+/** The active reviews' open pre-existing findings, which are not the change's, and the findings their verifiers filtered out. */
+export function findingsOutsideDiff(reviews: Review[]): { preExisting: ListedFinding[]; filtered: ListedFinding[] } {
+  const preExisting: ListedFinding[] = [];
+  const filtered: ListedFinding[] = [];
+  for (const review of activeReviews(reviews)) {
+    const applied = new Set(review.appliedFindingIds ?? []);
+    for (const finding of review.report?.findings ?? []) if (finding.preExisting === true && !applied.has(finding.id)) preExisting.push({ reviewId: review.id, finding });
+    for (const finding of review.report?.filtered ?? []) filtered.push({ reviewId: review.id, finding });
+  }
+  return { preExisting, filtered };
 }
 
 /** The least severe finding shown in the diff, or none at all. */

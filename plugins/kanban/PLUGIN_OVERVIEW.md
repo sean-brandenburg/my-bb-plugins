@@ -27,7 +27,10 @@ A kanban board where every card is a BB thread.
   comments that stay local for an agent or post to the PR as GitHub drafts.
 - **Review pipeline**: run your `code-review` skill on a PR card or on any
   card's committed work, pick the findings worth fixing and apply them with
-  `apply-review` (a local card's own thread applies them); synced PR comments
+  `apply-review` (a local card's own thread applies them). Every finding is
+  verified first: doubtful ones fold under "N filtered", and ones already in
+  the code before the change are listed apart, each a click from a Backlog
+  card of its own. Synced PR comments
   (and your local ones) go to an `apply-pr-comments` thread. Findings and PR
   comment threads render inline in the diff.
 - An agent-written **narrative review** of the change: reading order, risk

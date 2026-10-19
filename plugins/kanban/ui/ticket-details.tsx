@@ -311,6 +311,7 @@ function TicketDetails({
         canReview={ticket.projectId !== null}
         run={run}
         onOpenThread={onOpenThread}
+        onOpenTicket={openTicket}
       />
 
       {ticket.pr !== null ? (

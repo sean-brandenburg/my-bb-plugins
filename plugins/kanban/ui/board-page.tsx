@@ -262,7 +262,7 @@ export function BoardPage({ subPath }: { subPath: string }) {
   useBoardKeys(view === "todo" ? todoRef : boardRef, diffTicketId === null && !proposalsList && proposalId === null && board !== null, runCommand, () => view === "todo" && (todoKeys.current?.leaveInput() ?? false));
 
   if (diffTicketId !== null) {
-    return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} />;
+    return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} onOpenTicket={showTicket} />;
   }
   if (proposalsList) {
     return (

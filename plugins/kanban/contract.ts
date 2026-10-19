@@ -1,6 +1,6 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
+import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
@@ -12,7 +12,7 @@ export const rpcContract = defineRpcContract({
   ticket_create: {
     input: z
       .object({
-        title: z.string().trim().min(1).max(200),
+        title: z.string().trim().min(1).max(TICKET_TITLE_MAX_LENGTH),
         description: z.string().max(10_000).default(""),
         columnId: z.string().optional(),
         tags: z.array(tagSchema).max(20).default([]),
@@ -26,7 +26,7 @@ export const rpcContract = defineRpcContract({
           .array(
             z
               .object({
-                title: z.string().trim().min(1).max(200),
+                title: z.string().trim().min(1).max(TICKET_TITLE_MAX_LENGTH),
                 description: z.string().max(10_000).default(""),
                 tags: z.array(tagSchema).max(20).default([]),
               })
@@ -99,7 +99,7 @@ export const rpcContract = defineRpcContract({
     input: z
       .object({
         id: z.string(),
-        title: z.string().trim().min(1).max(200).optional(),
+        title: z.string().trim().min(1).max(TICKET_TITLE_MAX_LENGTH).optional(),
         description: z.string().max(10_000).optional(),
       })
       .strict(),
@@ -297,6 +297,11 @@ export const rpcContract = defineRpcContract({
   review_edit_finding: {
     input: z.object({ reviewId: z.string(), findingId: z.string(), edit: findingEditSchema.nullable() }).strict(),
     output: reviewSchema,
+  },
+  /** A backlog card for a finding that is separate work (one that was already there before the change); the card made from it before, if any. */
+  review_make_card: {
+    input: z.object({ reviewId: z.string(), findingId: z.string() }).strict(),
+    output: z.object({ ticket: ticketSchema, created: z.boolean() }),
   },
   review_apply: {
     input: z

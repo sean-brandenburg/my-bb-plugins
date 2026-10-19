@@ -153,6 +153,19 @@ its PR is reviewed and its review findings and comments are handed to agents.
   whether they go to the apply round; the suggested selection is every
   critical finding plus anything with importance ≥ 3 and scope ≥ 3. Your
   changes persist per review, and "Reset to suggested" restores the heuristic.
+- **Verified findings**: the skill has a verifier check every finding and
+  score it 0–100 for being real (never for how much it matters, so a real
+  nit scores like a real bug). Findings under 80 fold into "N filtered"
+  below the rest, with the verifier's reason; the button (or Enter on it from
+  the keys) unfolds them. They are never selected or applied. Findings in code
+  the change didn't touch, and didn't cause, are tagged **pre-existing** and
+  listed apart: never pre-selected, left out of the card's counts, and each
+  has "Make a card", which adds a Backlog card in the same project carrying
+  the finding's title, description, fix and locations, then turns into "Open
+  card" (pressing it again, or on the same finding carried into a re-review,
+  finds that card instead of making another). Each finding shows its
+  "confidence N", or "unverified" when the verifier gave no verdict. Reviews
+  from before verification show as they did.
 - **Changes view**: "View changes" on a card (or the diff icon on hover)
   opens a full-page diff at `/plugins/kanban/board/diff/<id>`: every file in
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a
@@ -254,7 +267,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   findings chip above the diff (or `F`) cycles which show: all, important and
   up (the default), critical only, or none. File-level findings sit under the file header,
   the file tree shows a red count per file, and findings appear as amber
-  markers on the scroll track.
+  markers on the scroll track. Pre-existing and filtered findings are listed
+  above the diff instead, with "Make a card" on the pre-existing ones and the
+  filtered ones folded; `gp` moves the keyboard there (`j`/`k`, Enter, Escape
+  back) and `gF` unfolds the filtered ones.
 - **Review aids**: a per-file "Viewed" checkbox collapses the file and counts
   toward "n of m viewed" at the top (scoped to the PR head, so a push resets
   it); lockfiles, vendored and generated files collapse by default; the file

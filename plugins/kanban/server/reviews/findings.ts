@@ -2,11 +2,12 @@ import { locationLabel } from "../../shared/finding-location";
 import { findingEditsSchema, selectionSchema, type Finding, type FindingEdit, type FindingSeverity, type Review, type ReviewReport, type ReviewScores, type ReviewSummary, type SeverityCounts } from "../../shared/review";
 
 /**
- * Pre-selection for the apply round. Critical always; otherwise both scores
- * must clear 3 so low-value or scope-expanding fixes stay unticked. Unscored
- * reports fall back to severity.
+ * Pre-selection for the apply round. Never a pre-existing finding, which is not this change's to fix; critical always;
+ * otherwise both scores must clear 3 so low-value or scope-expanding fixes stay unticked. Unscored reports fall back
+ * to severity.
  */
 export function defaultSelected(finding: Finding): boolean {
+  if (finding.preExisting) return false;
   if (finding.severity === "critical") return true;
   if (finding.importance !== null && finding.scopeFit !== null) {
     return finding.importance >= 3 && finding.scopeFit >= 3;
@@ -14,9 +15,14 @@ export function defaultSelected(finding: Finding): boolean {
   return finding.severity === "important";
 }
 
+/** Counts and scores say what the change itself has wrong, so they leave out what was already there. */
+function introduced(report: ReviewReport): Finding[] {
+  return report.findings.filter((finding) => !finding.preExisting);
+}
+
 export function rollupScores(report: ReviewReport | null): ReviewScores | null {
   if (report === null) return null;
-  const scored = report.findings.filter(
+  const scored = introduced(report).filter(
     (finding): finding is Finding & { importance: number; scopeFit: number } =>
       finding.importance !== null && finding.scopeFit !== null,
   );
@@ -33,7 +39,7 @@ export function rollupScores(report: ReviewReport | null): ReviewScores | null {
 export function countSeverities(report: ReviewReport | null): SeverityCounts | null {
   if (report === null) return null;
   const counts: SeverityCounts = { critical: 0, important: 0, minor: 0 };
-  for (const finding of report.findings) counts[finding.severity] += 1;
+  for (const finding of introduced(report)) counts[finding.severity] += 1;
   return counts;
 }
 
@@ -48,7 +54,7 @@ export function parseSelection(raw: string | null): Record<string, boolean> {
 
 export function effectiveSelection(report: ReviewReport | null, overrides: Record<string, boolean>): Record<string, boolean> {
   if (report === null) return {};
-  return Object.fromEntries(report.findings.map((finding) => [finding.id, overrides[finding.id] ?? defaultSelected(finding)]));
+  return Object.fromEntries(report.findings.map((finding) => [finding.id, finding.preExisting ? false : (overrides[finding.id] ?? defaultSelected(finding))]));
 }
 
 export function parseFindingEdits(raw: string | null): Record<string, FindingEdit> {
@@ -77,10 +83,10 @@ export function applyFindingEdits(report: ReviewReport | null, edits: Record<str
   };
 }
 
-/** The findings the next apply round would get: selected, and not already fixed by an earlier one. */
+/** The findings the next apply round would get: the change's own, selected, and not already fixed by an earlier one. */
 export function pendingFindings(review: Review): Finding[] {
   const applied = new Set(review.appliedFindingIds);
-  return (review.report?.findings ?? []).filter((finding) => review.selection[finding.id] === true && !applied.has(finding.id));
+  return (review.report?.findings ?? []).filter((finding) => !finding.preExisting && review.selection[finding.id] === true && !applied.has(finding.id));
 }
 
 export function summarize(review: Review): ReviewSummary {
@@ -146,13 +152,18 @@ export function selectedFindingsBody(review: Review): { body: string; findingIds
   for (const { severity, findings } of bySeverity) {
     lines.push(headings[severity]);
     for (const finding of findings) {
-      const scores = finding.importance === null || finding.scopeFit === null ? "" : ` (importance ${finding.importance}, scope ${finding.scopeFit})`;
+      const scores = [
+        ...(finding.importance === null || finding.scopeFit === null ? [] : [`importance ${finding.importance}`, `scope ${finding.scopeFit}`]),
+        ...(finding.confidence === null ? [] : [`confidence ${finding.confidence}`]),
+      ];
       const where = finding.locations.map((location) => `\`${locationLabel(location)}\``).join(", ");
       const fix = finding.fix === null || finding.fix === "" ? "" : ` — ${finding.fix}`;
-      lines.push(`- **${finding.id}**${scores} ${where} — ${finding.title}. ${finding.description}${fix} (flagged by: ${finding.flaggedBy.join(", ")})`);
+      lines.push(
+        `- **${finding.id}**${scores.length === 0 ? "" : ` (${scores.join(", ")})`} ${where} — ${finding.title}. ${finding.description}${fix} (flagged by: ${finding.flaggedBy.join(", ")})`,
+      );
     }
     lines.push("");
   }
-  lines.push("```json review-findings", JSON.stringify({ ...report, findings: selected }, null, 2), "```");
+  lines.push("```json review-findings", JSON.stringify({ ...report, findings: selected, filtered: [] }, null, 2), "```");
   return { body: lines.join("\n"), findingIds: selected.map((finding) => finding.id) };
 }

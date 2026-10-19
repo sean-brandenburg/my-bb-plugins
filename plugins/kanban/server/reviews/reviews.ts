@@ -1,7 +1,8 @@
-import type { Ticket } from "../../shared/board";
-import type { FindingEdit, Review, ReviewSubject } from "../../shared/review";
+import { TICKET_TITLE_MAX_LENGTH, type Ticket } from "../../shared/board";
+import { locationLabel } from "../../shared/finding-location";
+import type { Finding, FindingEdit, Review, ReviewSubject } from "../../shared/review";
 import { REVIEWED_COMMIT_LINE, parseReviewReport } from "../agent-output";
-import type { BoardStore } from "../board";
+import { initialColumn, type BoardStore } from "../board";
 import type { CardThreads, ThreadEnvironment } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
 import type { KanbanContext } from "../context";
@@ -13,6 +14,8 @@ import { localSubject, prSubject, subjectLabel } from "./subject";
 import { errorMessage, parseStringArray, shortId, threadTitle } from "../util";
 
 const INTERIM_REVIEWS_REPAIRED_KEY = "interimReviewsRepaired";
+/** Carry-over chains are short; the cap only guards against a cycle in stored handles. */
+const MAX_CARRY_HOPS = 64;
 
 /** Code review threads for a card's PR or local commit, the findings they persist, and the apply rounds that fix them. */
 export function createReviews(
@@ -302,7 +305,57 @@ export function createReviews(
     return rowToReview(stmts.reviewById.get(reviewId)!);
   }
 
-  return { reviewUnavailableReason, startReview, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, completeApply, setApplied };
+  /** The handle of the finding this one was first reported as, following re-reviews' carry-overs back. */
+  function originalHandle(reviewId: string, finding: Finding): string {
+    let handle = `${reviewId}/${finding.id}`;
+    let carriedFrom = finding.carriedFrom;
+    for (let hops = 0; carriedFrom !== null && hops < MAX_CARRY_HOPS; hops += 1) {
+      handle = carriedFrom;
+      const [sourceId, sourceFindingId] = carriedFrom.split("/");
+      const source = sourceId === undefined ? undefined : stmts.reviewById.get(sourceId);
+      const earlier = source === undefined ? undefined : parseReviewReport(source.body)?.findings.find((entry) => entry.id === sourceFindingId);
+      carriedFrom = earlier?.carriedFrom ?? null;
+    }
+    return handle;
+  }
+
+  async function makeFindingCard(reviewId: string, findingId: string): Promise<{ ticket: Ticket; created: boolean }> {
+    const row = stmts.reviewById.get(reviewId);
+    if (row === undefined) throw new Error(`No review with id ${reviewId}`);
+    const review = rowToReview(row);
+    const finding = review.report?.findings.find((entry) => entry.id === findingId);
+    if (finding === undefined) throw new Error(`Review ${reviewId} has no finding ${findingId}`);
+    const source = getTicket(review.ticketId);
+    // Read before the check below, so nothing yields between finding no card and making one and two quick presses
+    // can't both make it.
+    const columnId = initialColumn(await board.getColumns(), null);
+    // The card names the finding it came from, which is how a second press (or the same finding carried into a
+    // re-review) finds it instead of making another.
+    const provenance = `(finding ${originalHandle(reviewId, finding)})`;
+    const existing = stmts.all.all().find((ticket) => ticket.description.includes(provenance));
+    if (existing !== undefined) return { ticket: getTicket(existing.id), created: false };
+    const description = [
+      finding.description,
+      finding.fix === null || finding.fix === "" ? null : `**Suggested fix:** ${finding.fix}`,
+      finding.locations.length === 0 ? null : ["**Where:**", ...finding.locations.map((location) => `- \`${locationLabel(location)}\``)].join("\n"),
+      finding.preExisting
+        ? `Already in the code before “${source.title}”; its code review found it ${provenance}.`
+        : `Found by the code review of “${source.title}” ${provenance}.`,
+    ].filter((part) => part !== null && part !== "");
+    const ticket = board.createTicket({
+      title: finding.title.slice(0, TICKET_TITLE_MAX_LENGTH),
+      description: description.join("\n\n"),
+      columnId,
+      kind: "adhoc",
+      threadId: null,
+      projectId: source.projectId,
+      pr: null,
+    });
+    publish();
+    return { ticket: getTicket(ticket.id), created: true };
+  }
+
+  return { reviewUnavailableReason, startReview, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, makeFindingCard, completeApply, setApplied };
 }
 
 export type Reviews = ReturnType<typeof createReviews>;

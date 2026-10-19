@@ -159,6 +159,12 @@ export interface Finding {
   scopeFit: number | null;
   /** `<reviewId>/<findingId>` of the earlier finding a re-review found still open. */
   carriedFrom?: string | null;
+  /** 0–100: how sure the review's verifier is that the problem is real; absent before verification. */
+  confidence?: number | null;
+  /** Already in the code before the change, so it is listed apart from the diff and never applied. */
+  preExisting?: boolean;
+  /** The verifier's reason for its confidence. */
+  verification?: string | null;
 }
 
 export interface FindingEdit {
@@ -172,8 +178,11 @@ export interface Review {
   status: "running" | "completed" | "failed";
   /** Commit the previous review ended at, when this was an incremental review. */
   sinceCommitSha: string | null;
-  /** `carriesForward`: a re-review whose findings include every earlier one still open, superseding older reviews. */
-  report: { findings: Finding[]; carriesForward?: boolean } | null;
+  /**
+   * `carriesForward`: a re-review whose findings include every earlier one still open, superseding older reviews.
+   * `filtered`: findings the verifier did not believe, kept for a look.
+   */
+  report: { findings: Finding[]; filtered?: Finding[]; carriesForward?: boolean } | null;
   /** Effective per-finding selection for the apply round. */
   selection: Record<string, boolean>;
   /** Only the findings the user explicitly toggled. */

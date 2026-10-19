@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Finding, Review, ReviewReport } from "../../shared/review";
+import { findingTallies, type Finding, type Review, type ReviewReport } from "../../shared/review";
 import { applyFindingEdits, earlierFindings, effectiveSelection, pendingFindings, selectedFindingsBody, standingReviews, summarize } from "./findings";
 
 function finding(id: string, severity: Finding["severity"], overrides: Partial<Finding> = {}): Finding {
@@ -15,12 +15,15 @@ function finding(id: string, severity: Finding["severity"], overrides: Partial<F
     importance: null,
     scopeFit: null,
     carriedFrom: null,
+    confidence: null,
+    preExisting: false,
+    verification: null,
     ...overrides,
   };
 }
 
 function report(findings: Finding[]): ReviewReport {
-  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings, carriesForward: false, resolved: [] };
+  return { version: 1, summary: "Adds caching.", commit: null, range: null, reviewers: [], skippedReviewers: [], skippedFiles: [], findings, filtered: [], carriesForward: false, resolved: [] };
 }
 
 function review(body: string | null, reviewReport: ReviewReport | null, selection: Record<string, boolean>, overrides: Partial<Review> = {}): Review {
@@ -58,6 +61,7 @@ describe("selectedFindingsBody", () => {
       finding("C1", "critical", {
         importance: 5,
         scopeFit: 4,
+        confidence: 100,
         fix: "Guard the null",
         locations: [
           { file: "b.ts", startLine: null, endLine: null },
@@ -72,10 +76,17 @@ describe("selectedFindingsBody", () => {
     expect(body).toContain("2 of 3 findings were selected on the Kanban board");
     expect(body).not.toContain("### Important");
     expect(body.indexOf("### Critical (Must Fix)")).toBeLessThan(body.indexOf("### Minor (Nice to Fix)"));
-    expect(body).toContain("- **C1** (importance 5, scope 4) `b.ts`, `c.ts:10-12`, `d.ts:7` — Title C1. Description C1 — Guard the null (flagged by: correctness)");
+    expect(body).toContain("- **C1** (importance 5, scope 4, confidence 100) `b.ts`, `c.ts:10-12`, `d.ts:7` — Title C1. Description C1 — Guard the null (flagged by: correctness)");
     expect(body).toContain("- **M1** `a.ts:3` — Title M1. Description M1 (flagged by: correctness)");
     const block = /```json review-findings\n([\s\S]*)\n```$/u.exec(body);
     expect((JSON.parse(block![1]!) as ReviewReport).findings.map((entry) => entry.id)).toEqual(["M1", "C1"]);
+  });
+
+  it("never hands the apply round a filtered finding", () => {
+    const { body } = selectedFindingsBody(review("raw", { ...report([finding("F1", "minor")]), filtered: [finding("X1", "critical", { confidence: 20 })] }, { F1: true }));
+    const block = /```json review-findings\n([\s\S]*)\n```$/u.exec(body);
+    expect((JSON.parse(block![1]!) as ReviewReport).filtered).toEqual([]);
+    expect(body).not.toContain("X1");
   });
 });
 
@@ -86,6 +97,36 @@ describe("applied findings", () => {
     expect(selectedFindingsBody(entry).findingIds).toEqual(["F2"]);
     expect(summarize(entry)).toMatchObject({ counts: { critical: 0, important: 1, minor: 0 }, appliedCount: 1, selectedCount: 1, scores: { maxImportance: 3 } });
     expect(summarize(entry)).not.toHaveProperty("appliedFindingIds");
+  });
+});
+
+describe("pre-existing findings", () => {
+  const withOld = report([finding("F1", "important", { importance: 3, scopeFit: 3 }), finding("F2", "critical", { importance: 5, scopeFit: 1, preExisting: true })]);
+
+  it("are left out of the selection, the counts and the scores, which say what the change itself has wrong", () => {
+    const entry = review(null, withOld, effectiveSelection(withOld, {}));
+    expect(entry.selection).toEqual({ F1: true, F2: false });
+    expect(summarize(entry)).toMatchObject({ counts: { critical: 0, important: 1, minor: 0 }, appliedCount: 0, selectedCount: 1, scores: { maxImportance: 3, scored: 1 } });
+  });
+
+  it("never reach an apply round, even when picked by hand", () => {
+    expect(effectiveSelection(withOld, { F2: true })).toEqual({ F1: true, F2: false });
+    const forced = review(null, withOld, { F1: false, F2: true });
+    expect(pendingFindings(forced)).toEqual([]);
+    expect(selectedFindingsBody(forced).findingIds).toEqual([]);
+    expect(summarize(forced).selectedCount).toBe(0);
+  });
+});
+
+describe("findingTallies", () => {
+  it("counts the change's own findings apart from pre-existing ones, agreeing with the summary's selected count", () => {
+    const reviewReport = report([finding("F1", "critical"), finding("F2", "minor"), finding("F3", "important"), finding("F4", "important", { preExisting: true })]);
+    const selection = { F1: true, F2: false, F3: true, F4: true };
+    const tallies = findingTallies(reviewReport, selection, ["F1"]);
+    expect(tallies.introduced.map((entry) => entry.id)).toEqual(["F1", "F2", "F3"]);
+    expect(tallies.preExisting.map((entry) => entry.id)).toEqual(["F4"]);
+    expect(tallies).toMatchObject({ open: 2, selected: 1, applied: 1 });
+    expect(summarize(review(null, reviewReport, selection, { appliedFindingIds: ["F1"] })).selectedCount).toBe(tallies.selected);
   });
 });
 
@@ -136,5 +177,7 @@ describe("earlierFindings", () => {
       { handle: "r2/F1", applyRound: null, title: "Title F1" },
     ]);
     expect(earlierFindings([unapplied])[0]).not.toHaveProperty("carriedFrom");
+    const verified = review(null, report([finding("F1", "minor", { confidence: 90, preExisting: true, verification: "Read it" })]), {}, { id: "r3" });
+    expect(earlierFindings([verified])[0]).toMatchObject({ handle: "r3/F1", confidence: 90, preExisting: true, verification: "Read it" });
   });
 });

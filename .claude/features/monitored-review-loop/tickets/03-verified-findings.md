@@ -4,12 +4,12 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The skill's report carries per-finding `confidence` and `preExisting`, plus a report-level filtered list. The markdown and JSON contract otherwise stays compatible.
-- [ ] The verify step's rubric is written into the skill. It states that confidence measures realness, not importance.
-- [ ] Report parsing accepts the new fields and still parses stored reviews without them.
-- [ ] The card panel and the changes view show filtered findings collapsed under "N filtered", which expands on demand.
-- [ ] Pre-existing findings are listed separately, never pre-selected, and make-a-card creates a backlog card carrying the finding's title, description and locations.
-- [ ] Running the skill on a known change produces a report that parses with the new fields.
-- [ ] Keyboard paths exist for expanding the filtered group and for make-a-card.
+- [x] The skill's report carries per-finding `confidence` and `preExisting`, plus a report-level filtered list. The markdown and JSON contract otherwise stays compatible.
+- [x] The verify step's rubric is written into the skill. It states that confidence measures realness, not importance.
+- [x] Report parsing accepts the new fields and still parses stored reviews without them.
+- [x] The card panel and the changes view show filtered findings collapsed under "N filtered", which expands on demand.
+- [x] Pre-existing findings are listed separately, never pre-selected, and make-a-card creates a backlog card carrying the finding's title, description and locations.
+- [x] Running the skill on a known change produces a report that parses with the new fields.
+- [x] Keyboard paths exist for expanding the filtered group and for make-a-card.
