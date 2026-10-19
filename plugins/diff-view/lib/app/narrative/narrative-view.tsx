@@ -459,7 +459,9 @@ function PageFooter({ chapters, address, onGo }: { chapters: NarrativeChapter[];
 /** Chapters and their steps beside the step, in wide views; the read ones are ticked. */
 function NarrativeOutline({ chapters, address, read, onGo }: { chapters: NarrativeChapter[]; address: StepAddress | null; read: ReadonlySet<string>; onGo: (address: StepAddress) => void }) {
   const currentRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => currentRef.current?.scrollIntoView({ block: "nearest" }), [address]);
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: "nearest" });
+  }, [address]);
   return (
     <nav aria-label="Narrative outline" className="hidden w-64 shrink-0 overflow-y-auto border-r border-border py-2 text-xs @3xl:block">
       {chapters.map((chapter, chapterIndex) => {
