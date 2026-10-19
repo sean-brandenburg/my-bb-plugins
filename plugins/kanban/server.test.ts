@@ -1612,6 +1612,32 @@ describe("local card review", () => {
     expect(spawned.map((args) => args.projectId)).toEqual(["proj_acme", "proj_acme"]);
   });
 
+  it("runs at Standard depth unless one is chosen, and shows the depth the report says it ran", async () => {
+    const card = await localCard();
+    const standard = (await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id })) as Ticket;
+    expect(String(spawned[1]!.prompt)).toContain("skill at depth `standard`");
+    expect(standard.latestReview?.depth).toBe("standard");
+    await completeReview("thr_2", reportBody(sha, {}, []));
+
+    const deep = (await current().harness.behavior.callRpc("ticket_review_pr", { id: card.id, mode: "full", depth: "deep" })) as Ticket;
+    expect(String(spawned[2]!.prompt)).toContain("skill at depth `deep`");
+    expect(deep.latestReview?.depth).toBe("deep");
+    const ran = await completeReview("thr_3", reportBody(sha, { version: 5, depth: "quick" }, []));
+    expect(ran.depth).toBe("quick");
+    expect((await board()).tickets[0]!.latestReview?.depth).toBe("quick");
+  });
+
+  it("takes the depth from `bb kanban review --depth`, and refuses one it doesn't know", async () => {
+    await localCard();
+    const refused = await current().harness.behavior.runCli(["review", "--depth", "thorough"], ctx("thr_1"));
+    expect(refused.exitCode).not.toBe(0);
+    expect(refused.stderr).toContain("quick, standard or deep");
+    const result = await current().harness.behavior.runCli(["review", "--depth", "quick"], ctx("thr_1"));
+    expect(result.exitCode).toBe(0);
+    expect(String(spawned[1]!.prompt)).toContain("skill at depth `quick`");
+    expect((await board()).tickets[0]!.latestReview?.depth).toBe("quick");
+  });
+
   const noThread = async () => {
     await load({ autoStartThreads: false });
     return (await current().harness.behavior.callRpc("ticket_create", { title: "No thread" })) as Ticket;

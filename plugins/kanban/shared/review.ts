@@ -41,6 +41,16 @@ export const NOT_COVERED_REPORT_VERSION = 3;
 export const TRIAGED_REPORT_VERSION = 4;
 
 /**
+ * Which finders a review runs: Quick has correctness, CLAUDE.md compliance, scope and style; Standard adds testing and
+ * git history; Deep adds security. Every depth verifies and triages its findings the same way.
+ */
+export const reviewDepthSchema = z.enum(["quick", "standard", "deep"]);
+export type ReviewDepth = z.infer<typeof reviewDepthSchema>;
+/** What a review runs at when nobody chose a depth. */
+export const DEFAULT_REVIEW_DEPTH: ReviewDepth = "standard";
+export const REVIEW_DEPTH_LABEL: Record<ReviewDepth, string> = { quick: "Quick", standard: "Standard", deep: "Deep" };
+
+/**
  * The review's call on a finding, by the criteria apply-review's triage shares: apply it in this change, defer it as
  * separate work (wrong scope), or drop it (churn far beyond the benefit, or against the project's conventions).
  */
@@ -102,6 +112,8 @@ export const reviewReportSchema = z.object({
   summary: z.string().default(""),
   commit: z.string().nullable().default(null),
   range: z.string().nullable().default(null),
+  /** Null in reports from before depths, which ran every finder. */
+  depth: reviewDepthSchema.nullable().catch(null).default(null),
   reviewers: z.array(z.string()).default([]),
   skippedReviewers: z.array(z.object({ name: z.string(), reason: z.string().default("") })).default([]),
   skippedFiles: z.array(z.string()).default([]),
@@ -149,6 +161,8 @@ export const reviewSchema = z.object({
   headRef: z.string().nullable(),
   /** Commit the previous review ended at, when this was an incremental review. */
   sinceCommitSha: z.string().nullable(),
+  /** The depth the review ran at, as its report says, else as it was asked to; null for reviews from before depths. */
+  depth: reviewDepthSchema.nullable(),
   body: z.string().nullable(),
   /** Parsed from the body's review-findings block; null for free-form reviews. */
   report: reviewReportSchema.nullable(),

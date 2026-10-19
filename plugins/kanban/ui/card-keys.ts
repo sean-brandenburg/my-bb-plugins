@@ -4,8 +4,9 @@ import { isTextEntry, overlayOver, scrollKeepingCursor, scrollParent, spatialSte
 import { CARD_KEYMAP } from "./board-nav";
 import { BLOCKED_BY, stepOpenMenu } from "./board-keys";
 
+// A button taken out of the tab order is one part of a single stop, such as a picker's unselected options.
 const STOPS =
-  'a[href], button:not(:disabled), input:not(:disabled):not([readonly]):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled):not([readonly]), [contenteditable="true"]';
+  'a[href], button:not(:disabled):not([tabindex="-1"]), input:not(:disabled):not([readonly]):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled):not([readonly]), [contenteditable="true"]';
 /** The text box the cursor rests on while focus stays on the card, so keys still move. */
 const PARKED = "data-kanban-cursor";
 /** Where the cursor starts when a card opens, if the card has it; otherwise the first stop. */

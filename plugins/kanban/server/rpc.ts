@@ -100,7 +100,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     ticket_start_thread: ({ id, projectId }) => threads.spawnThreadForTicket(id, projectId),
     ticket_set_monitored: ({ id, monitored }) => loop.setMonitored(id, monitored),
     project_set_check_command: ({ projectId, checkCommand }) => projectSettings.setProjectSettings(projectId, { checkCommand: checkCommand === "" ? null : checkCommand }),
-    ticket_review_pr: ({ id, projectId, mode }) => reviews.startReview(id, projectId, mode),
+    ticket_review_pr: ({ id, projectId, mode, depth }) => reviews.startReview(id, projectId, mode, depth),
     review_availability: async ({ ticketId }) => ({ reason: await reviews.reviewUnavailableReason(ticketId) }),
     review_list: ({ ticketId }) => reviews.listReviews(ticketId),
     review_apply: ({ ticketId, reviewId, push }) => reviews.spawnApplyForReview(ticketId, reviewId, push),

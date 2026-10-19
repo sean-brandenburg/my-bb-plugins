@@ -133,8 +133,8 @@ export function prepareStatements(db: KanbanDatabase) {
       `SELECT * FROM reviews WHERE apply_thread_id = ? ORDER BY created_at DESC LIMIT 1`,
     ),
     insertReview: db.prepare(
-      `INSERT INTO reviews (id, ticket_id, thread_id, subject_kind, status, since_commit_sha, created_at)
-       VALUES (@id, @ticket_id, @thread_id, @subject_kind, 'running', @since_commit_sha, @created_at)`,
+      `INSERT INTO reviews (id, ticket_id, thread_id, subject_kind, depth, status, since_commit_sha, created_at)
+       VALUES (@id, @ticket_id, @thread_id, @subject_kind, @depth, 'running', @since_commit_sha, @created_at)`,
     ),
     recordReviewCommit: db.prepare<[string, string | null, string | null, string]>(
       `UPDATE reviews SET commit_sha = ?, base_ref = COALESCE(?, base_ref), head_ref = COALESCE(?, head_ref) WHERE id = ?`,

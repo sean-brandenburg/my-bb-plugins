@@ -5,7 +5,7 @@ import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prComme
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
 import { projectSettingsSchema } from "./shared/loop";
-import { findingEditSchema, reviewSchema } from "./shared/review";
+import { DEFAULT_REVIEW_DEPTH, findingEditSchema, reviewDepthSchema, reviewSchema } from "./shared/review";
 import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
 
 export const rpcContract = defineRpcContract({
@@ -278,6 +278,7 @@ export const rpcContract = defineRpcContract({
         projectId: z.string().nullable().default(null),
         /** `incremental` reviews only commits since the last completed review; falls back to full. */
         mode: z.enum(["full", "incremental"]).default("incremental"),
+        depth: reviewDepthSchema.default(DEFAULT_REVIEW_DEPTH),
       })
       .strict(),
     output: ticketSchema,

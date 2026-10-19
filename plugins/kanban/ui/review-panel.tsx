@@ -6,7 +6,20 @@ import { toast } from "sonner";
 import { CHEVRON, OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
-import { CONFIDENCE_BAR, NOT_COVERED_REPORT_VERSION, TRIAGED_REPORT_VERSION, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
+import {
+  CONFIDENCE_BAR,
+  DEFAULT_REVIEW_DEPTH,
+  NOT_COVERED_REPORT_VERSION,
+  REVIEW_DEPTH_LABEL,
+  TRIAGED_REPORT_VERSION,
+  VERIFIED_REPORT_VERSION,
+  findingTallies,
+  reviewDepthSchema,
+  type Finding,
+  type FindingSeverity,
+  type Review,
+  type ReviewDepth,
+} from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -14,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { shortSha } from "./format";
 import { type Rpc, usePushPreference, useReviewUnavailableReason } from "./data";
-import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_ITEM_CLASS, menuVimKeys } from "./primitives";
+import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
@@ -417,12 +430,42 @@ function applyStatusLabel(apply: NonNullable<Review["apply"]>, local: boolean): 
   return apply.push ? `Pushed ${shortSha(apply.pushedCommit)}` : `Committed ${shortSha(apply.pushedCommit)}, not pushed`;
 }
 
+const DEPTH_OPTIONS = reviewDepthSchema.options.map((value) => ({ value, label: REVIEW_DEPTH_LABEL[value] }));
+const DEPTH_TITLE =
+  "Which finders the review runs. Quick: correctness, CLAUDE.md compliance, scope and style. Standard adds testing and git history. Deep adds security. Every depth verifies and triages its findings.";
+
+function DepthBadge({ depth }: { depth: ReviewDepth | null }) {
+  if (depth === null) return null;
+  return (
+    <Badge tone="outline" title={`Ran at ${REVIEW_DEPTH_LABEL[depth]} depth. ${DEPTH_TITLE}`}>
+      {REVIEW_DEPTH_LABEL[depth]}
+    </Badge>
+  );
+}
+
+/** Picks the next review's depth; from the keys, h/l choose and Enter starts the review. */
+function DepthPicker({ depth, onChange, onStart }: { depth: ReviewDepth; onChange: (depth: ReviewDepth) => void; onStart: () => void }) {
+  return (
+    <span title={`${DEPTH_TITLE} From the keys, h/l choose and Enter starts the review.`}>
+      <SegmentedTabs label="Review depth" value={depth} options={DEPTH_OPTIONS} onChange={onChange} onActivate={onStart} className="shrink-0" tabClassName="whitespace-nowrap px-2 py-0.5" />
+    </span>
+  );
+}
+
 function ReviewStatusChips({ review }: { review: Ticket["latestReview"] }) {
   if (review === null) return null;
-  if (review.status === "running") return <Badge tone="accent">Reviewing…</Badge>;
+  if (review.status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Badge tone="accent">Reviewing…</Badge>
+        <DepthBadge depth={review.depth} />
+      </span>
+    );
+  }
   if (review.status === "failed") return <Badge tone="danger">failed</Badge>;
   return (
     <span className="inline-flex items-center gap-1" title={`Reviewed at ${review.commitSha ?? "unknown"}${review.sinceCommitSha !== null ? ` (since ${review.sinceCommitSha})` : ""}`}>
+      <DepthBadge depth={review.depth} />
       <SeverityCountBadges counts={review.counts} appliedCount={review.appliedCount} />
     </span>
   );
@@ -487,11 +530,21 @@ export function ReviewPanel({
         return null;
       },
     );
+  const [depth, setDepth] = useState<ReviewDepth>(DEFAULT_REVIEW_DEPTH);
   const startReview = (mode: "full" | "incremental") =>
-    void run(() => rpc.call("ticket_review_pr", { id: ticket.id, projectId: null, mode }), "Review started");
+    void run(() => rpc.call("ticket_review_pr", { id: ticket.id, projectId: null, mode, depth }), `${REVIEW_DEPTH_LABEL[depth]} review started`);
   const localReason = useReviewUnavailableReason(ticket);
   const unavailable = canReview ? localReason : "Start the card's thread in a project first; reviews run there";
   const canStart = unavailable === null && !pending && review?.status !== "running";
+  const depthPicker = (
+    <DepthPicker
+      depth={depth}
+      onChange={setDepth}
+      onStart={() => {
+        if (canStart) startReview("full");
+      }}
+    />
+  );
   // The next review is of the card's kind, and only continues from a review of the same kind.
   const reviewsLocally = ticket.pr === null;
   const canIncremental = review?.status === "completed" && review.commitSha !== null && review.subjectKind === (reviewsLocally ? "local" : "pr");
@@ -517,6 +570,23 @@ export function ReviewPanel({
             </>
           ) : null}
           {unavailable !== null && review.status !== "running" ? <DropdownMenu.Label className="max-w-64 px-2 py-1 text-xs text-muted-foreground">{unavailable}</DropdownMenu.Label> : null}
+          <DropdownMenu.Label className="px-2 pt-1 text-xs text-muted-foreground" title={DEPTH_TITLE}>
+            Depth of the next review
+          </DropdownMenu.Label>
+          <DropdownMenu.RadioGroup value={depth} onValueChange={(value) => setDepth(reviewDepthSchema.parse(value))}>
+            {DEPTH_OPTIONS.map((option) => (
+              // Choosing a depth keeps the menu open, so the review items below take it.
+              <DropdownMenu.RadioItem key={option.value} value={option.value} className={MENU_ITEM_CLASS} onSelect={(event) => event.preventDefault()}>
+                <span className="inline-flex size-4 items-center justify-center">
+                  <DropdownMenu.ItemIndicator>
+                    <Icon name="Check" className="size-4" />
+                  </DropdownMenu.ItemIndicator>
+                </span>
+                {option.label}
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+          <DropdownMenu.Separator className="my-1 h-px bg-border" />
           {canIncremental ? (
             <DropdownMenu.Item className={MENU_ITEM_CLASS} disabled={!canStart} onSelect={() => startReview("incremental")}>
               <Icon name="kanban-search-check" className="size-4 text-muted-foreground" />
@@ -542,6 +612,7 @@ export function ReviewPanel({
               {reviewsLocally ? "Review the commits" : "Review this PR"}
             </Button>
           </span>
+          {depthPicker}
           {unavailableNote}
         </div>
       ) : review.status === "running" ? (
@@ -555,6 +626,7 @@ export function ReviewPanel({
             <Icon name="kanban-refresh" className="size-3.5" />
             Retry review
           </Button>
+          {depthPicker}
           <button type="button" onClick={() => onOpenThread(review.threadId)} className="text-xs text-muted-foreground hover:text-foreground">
             See why it failed
           </button>

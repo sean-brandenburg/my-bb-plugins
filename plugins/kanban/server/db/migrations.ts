@@ -223,5 +223,6 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     )`,
     `CREATE INDEX IF NOT EXISTS checks_runs_ticket ON checks_runs(ticket_id, created_at)`,
     `CREATE INDEX IF NOT EXISTS checks_runs_thread ON checks_runs(thread_id)`,
+    `ALTER TABLE reviews ADD COLUMN depth TEXT`,
   ]);
 }

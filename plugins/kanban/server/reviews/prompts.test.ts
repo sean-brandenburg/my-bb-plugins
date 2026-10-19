@@ -67,6 +67,7 @@ function review(overrides: Partial<Review> = {}): Review {
     baseRef: "main",
     headRef: null,
     sinceCommitSha: null,
+    depth: "standard",
     body: "## Review Findings\n- a.ts:1 fix me",
     report: null,
     selection: {},
@@ -98,7 +99,7 @@ describe("review subjects", () => {
 
 describe("review prompt", () => {
   it("checks a local commit out detached and reviews it against its merge base with the default branch, with nothing fetched", () => {
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent, "standard");
     expect(prompt).toContain(`1. \`git checkout --detach ${commit}\``);
     expect(prompt).toContain('2. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "main"` so');
     expect(prompt).not.toContain("--head");
@@ -107,7 +108,7 @@ describe("review prompt", () => {
   });
 
   it("numbers a local re-review's steps after its two setup steps", () => {
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "standard");
     expect(prompt).toContain(`3. Review the new commits. If \`git log ${since}..HEAD\` is empty nothing changed`);
     expect(prompt).toContain("4. Re-check the earlier findings at HEAD.");
     expect(prompt).toContain("When step 3 found nothing changed");
@@ -118,11 +119,11 @@ describe("review prompt", () => {
   });
 
   it("judges a re-review's new findings pre-existing against the whole change, and keeps carried findings' verification", () => {
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent);
-    expect(prompt).toContain(`invoke the \`code-review\` skill with the range \`${since}..HEAD\`, the pre-existing range \`main...HEAD\` and the card's intent below`);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "standard");
+    expect(prompt).toContain(`invoke the \`code-review\` skill at depth \`standard\` with the range \`${since}..HEAD\`, the pre-existing range \`main...HEAD\` and the card's intent below`);
     expect(prompt).toContain("A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class and triage");
     expect(prompt).toContain('`"filtered"` holds only the findings step 3 filtered out');
-    const pr = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()], noIntent);
+    const pr = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()], noIntent, "standard");
     expect(pr).toContain(`with the range \`${since}..HEAD\`, the pre-existing range \`origin/$BASE...HEAD\``);
   });
 
@@ -134,6 +135,7 @@ describe("review prompt", () => {
         summary: "",
         commit: null,
         range: null,
+        depth: null,
         reviewers: [],
         skippedReviewers: [],
         skippedFiles: [],
@@ -144,16 +146,16 @@ describe("review prompt", () => {
         resolved: [],
       },
     });
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), earlier, [earlier], noIntent);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), earlier, [earlier], noIntent, "standard");
     expect(prompt).toContain("addressed (the problem is gone at every instance)");
     expect(prompt).toContain("takes every instance still present at HEAD as its locations");
     expect(prompt).toContain('`"notCovered"` holds step 3\'s list plus each earlier entry below that still holds at HEAD');
     expect(prompt).toContain("### Not covered by the earlier reviews\n\n- UI only: the drag preview");
-    expect(reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent)).not.toContain("Not covered by the earlier reviews");
+    expect(reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "standard")).not.toContain("Not covered by the earlier reviews");
   });
 
   it("numbers a PR re-review's steps after its four setup steps", () => {
-    const prompt = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()], noIntent);
+    const prompt = reviewPrompt(prSubject(prTicket()), prTicket(), review(), [review()], noIntent, "standard");
     expect(prompt).toContain('4. `bb kanban review-record --commit "$(git rev-parse HEAD)" --base "$BASE" --head "$HEAD_REF"`');
     expect(prompt).toContain(`5. Review the new commits. If \`git log ${since}..HEAD\` is empty nothing changed`);
     expect(prompt).toContain("6. Re-check the earlier findings at HEAD.");
@@ -165,13 +167,26 @@ describe("review prompt", () => {
   });
 });
 
+describe("review depth", () => {
+  it("hands the skill the depth chosen for a full review of either subject", () => {
+    expect(reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent, "quick")).toContain("invoke the `code-review` skill at depth `quick` with the range `main...HEAD`");
+    expect(reviewPrompt(prSubject(prTicket()), prTicket(), null, [], noIntent, "deep")).toContain("invoke the `code-review` skill at depth `deep` with the range `origin/$BASE...HEAD`");
+  });
+
+  it("reviews a re-review's new commits at the depth chosen and records it in the merged report", () => {
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "deep");
+    expect(prompt).toContain(`invoke the \`code-review\` skill at depth \`deep\` with the range \`${since}..HEAD\``);
+    expect(prompt).toContain('`"depth"` is `deep`');
+  });
+});
+
 describe("card intent", () => {
   const described = { title: "Cache lookups", description: "Memoize `lookup` per request.\n\nNo eviction yet." };
 
   it("hands a full review of either subject the card's title, description and plan, and how to find its spec", () => {
     for (const prompt of [
-      reviewPrompt(localSubject(commit, "main"), ticket(described), null, [], { plan: "1. Add a per-request map.", branch: "bb/cache-lookups" }),
-      reviewPrompt(prSubject(prTicket()), { ...prTicket(), ...described }, null, [], { plan: "1. Add a per-request map.", branch: null }),
+      reviewPrompt(localSubject(commit, "main"), ticket(described), null, [], { plan: "1. Add a per-request map.", branch: "bb/cache-lookups" }, "standard"),
+      reviewPrompt(prSubject(prTicket()), { ...prTicket(), ...described }, null, [], { plan: "1. Add a per-request map.", branch: null }, "standard"),
     ]) {
       expect(prompt).toContain("and the card's intent below");
       expect(prompt).toContain("## Card intent");
@@ -183,19 +198,19 @@ describe("card intent", () => {
   });
 
   it("names the branch a spec directory would match: the card thread's, or the PR's head", () => {
-    expect(reviewPrompt(localSubject(commit, "main"), ticket(), null, [], { plan: null, branch: "bb/cache-lookups" })).toContain("matches the branch `bb/cache-lookups`");
-    expect(reviewPrompt(prSubject(prTicket()), prTicket(), null, [], noIntent)).toContain("matches the branch `$HEAD_REF`");
-    expect(reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent)).not.toContain("matches the branch");
+    expect(reviewPrompt(localSubject(commit, "main"), ticket(), null, [], { plan: null, branch: "bb/cache-lookups" }, "standard")).toContain("matches the branch `bb/cache-lookups`");
+    expect(reviewPrompt(prSubject(prTicket()), prTicket(), null, [], noIntent, "standard")).toContain("matches the branch `$HEAD_REF`");
+    expect(reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent, "standard")).not.toContain("matches the branch");
   });
 
   it("says so when the card has no description or approved plan", () => {
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), null, [], noIntent, "standard");
     expect(prompt).toContain("**Description:** none");
     expect(prompt).toContain("**Approved plan:** none");
   });
 
   it("has a re-review hold fix commits to the findings they answer, and keeps a carried finding's triage", () => {
-    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent);
+    const prompt = reviewPrompt(localSubject(commit, "main"), ticket(), review(), [review()], noIntent, "standard");
     expect(prompt).toContain("the card's intent below");
     expect(prompt).toContain("## Card intent");
     expect(prompt).toContain("each fix commit stays within the findings it answers");

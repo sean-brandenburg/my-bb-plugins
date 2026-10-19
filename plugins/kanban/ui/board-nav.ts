@@ -151,6 +151,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["Esc"], action: "Leave the text box (twice with vim-mode), then close the card" },
       { keys: ["t", "D"], action: "Open the card's thread / changes" },
       { keys: ["m"], action: "Turn the card's review loop on or off" },
+      { keys: ["h", "l", "Enter"], action: "On the review depth picker: choose Quick, Standard or Deep, then start the review" },
     ],
   },
   {

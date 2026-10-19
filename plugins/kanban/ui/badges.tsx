@@ -1,6 +1,7 @@
 import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
 import type { JiraIssue, PullRequest, Ticket } from "../shared/board";
 import { phaseChip } from "../shared/loop";
+import { REVIEW_DEPTH_LABEL } from "../shared/review";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { dueStatus } from "./format";
@@ -91,24 +92,25 @@ export function LoopChip({ ticket }: { ticket: Ticket }) {
 export function ReviewBadge({ ticket }: { ticket: Ticket }) {
   const review = ticket.latestReview;
   if (review === null) return null;
-  if (review.status === "running") return <Badge tone="accent">reviewing…</Badge>;
+  const depth = review.depth === null ? "" : `${REVIEW_DEPTH_LABEL[review.depth]} review. `;
+  if (review.status === "running") return <Badge tone="accent" title={depth === "" ? undefined : depth.trim()}>reviewing…</Badge>;
   if (review.status === "failed") return <Badge tone="danger">review failed</Badge>;
   const { apply, appliedCount } = review;
   if (apply !== null && apply.completedAt === null) return <Badge tone="accent">applying…</Badge>;
   const counts = review.counts;
   if (counts === null) {
     if (apply !== null) return <Badge tone="success" title={`Fixes ${apply.push ? "pushed" : "committed"} as ${apply.pushedCommit ?? "unknown"}`}>applied</Badge>;
-    return <Badge title={`Reviewed at commit ${review.commitSha ?? "unknown"}`}>reviewed</Badge>;
+    return <Badge title={`${depth}Reviewed at commit ${review.commitSha ?? "unknown"}`}>reviewed</Badge>;
   }
   const total = counts.critical + counts.important + counts.minor;
   if (total === 0) {
     if (appliedCount > 0) return <Badge tone="success" title={`All ${appliedCount} finding${appliedCount === 1 ? "" : "s"} applied`}>all applied</Badge>;
-    return <Badge tone="success">no findings</Badge>;
+    return <Badge tone="success" title={depth === "" ? undefined : depth.trim()}>no findings</Badge>;
   }
   return (
     <Badge
       tone={counts.critical > 0 ? "danger" : counts.important > 0 ? "warning" : "neutral"}
-      title={`Open: ${counts.critical} critical, ${counts.important} important, ${counts.minor} minor${appliedCount > 0 ? `; ${appliedCount} applied` : ""}`}
+      title={`${depth}Open: ${counts.critical} critical, ${counts.important} important, ${counts.minor} minor${appliedCount > 0 ? `; ${appliedCount} applied` : ""}`}
     >
       {total} finding{total === 1 ? "" : "s"}
       {appliedCount > 0 ? ` · ${appliedCount} applied` : ""}

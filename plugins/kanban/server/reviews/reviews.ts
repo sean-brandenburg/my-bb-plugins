@@ -1,6 +1,6 @@
 import { TICKET_TITLE_MAX_LENGTH, type Ticket } from "../../shared/board";
 import { locationLabel } from "../../shared/finding-location";
-import type { Finding, FindingEdit, Review, ReviewSubject } from "../../shared/review";
+import type { Finding, FindingEdit, Review, ReviewDepth, ReviewSubject } from "../../shared/review";
 import { REVIEWED_COMMIT_LINE, parseReviewReport } from "../agent-output";
 import { initialColumn, type BoardStore } from "../board";
 import type { CardThreads, ThreadEnvironment } from "../card-threads";
@@ -70,21 +70,22 @@ export function createReviews(
     return { plan: null, branch };
   }
 
-  /** Review a PR card's pull request, or another card's committed work, in a new hidden thread. */
-  async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental"): Promise<Ticket> {
+  /** Review a PR card's pull request, or another card's committed work, in a new hidden thread, running the depth's finders. */
+  async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental", depth: ReviewDepth): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, prSubject(ticket), cardIntent(null));
+    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, depth, prSubject(ticket), cardIntent(null));
     const { subject, projectId, branch } = await localReviewTarget(ticket);
     if (explicitProjectId !== null && explicitProjectId !== projectId) {
       throw new Error(`A local review runs in the project of the card's thread (${projectId}), so it can't run in ${explicitProjectId}`);
     }
-    return spawnReviewForTicket(ticket.id, projectId, mode, subject, cardIntent(branch));
+    return spawnReviewForTicket(ticket.id, projectId, mode, depth, subject, cardIntent(branch));
   }
 
   async function spawnReviewForTicket(
     ticketId: string,
     projectId: string,
     mode: "full" | "incremental",
+    depth: ReviewDepth,
     subject: ReviewSubject,
     intent: CardIntent,
   ): Promise<Ticket> {
@@ -96,7 +97,7 @@ export function createReviews(
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: await freshWorktree(projectId),
-      prompt: reviewPrompt(subject, ticket, previous, standing, intent),
+      prompt: reviewPrompt(subject, ticket, previous, standing, intent, depth),
       title: threadTitle(`${previous === null ? "Review" : "Re-review"} ${subjectLabel(subject)}: ${ticket.title}`),
       ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
       visibility: await codeReviewThreadVisibility(),
@@ -108,6 +109,7 @@ export function createReviews(
       ticket_id: ticket.id,
       thread_id: thread.id,
       subject_kind: subject.kind,
+      depth,
       since_commit_sha: previous?.commitSha ?? null,
       created_at: now,
     });

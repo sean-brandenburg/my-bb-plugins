@@ -10,10 +10,10 @@ The storage reviewer still runs only when storage files change. Verify and triag
 
 **Blocked by:** 04 — Bug classes, not-covered list, style at every depth.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The skill accepts a depth argument and spawns exactly that depth's finders. With no argument it runs Standard.
-- [ ] New git-history and CLAUDE.md-compliance finders exist, adapted from the official plugin.
-- [ ] The report records its depth, and the board shows it.
-- [ ] The Review button and `bb kanban review --depth` choose a depth. The default is Standard.
-- [ ] The depth picker has a keyboard path.
+- [x] The skill accepts a depth argument and spawns exactly that depth's finders. With no argument it runs Standard.
+- [x] New git-history and CLAUDE.md-compliance finders exist, adapted from the official plugin.
+- [x] The report records its depth, and the board shows it.
+- [x] The Review button and `bb kanban review --depth` choose a depth. The default is Standard.
+- [x] The depth picker has a keyboard path.

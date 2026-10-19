@@ -7,6 +7,7 @@ import { DiffRefreshButton } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
 import { BOARD_CHANGED } from "../shared/events";
+import { REVIEW_DEPTH_LABEL } from "../shared/review";
 import type { CodeReviewThread } from "../shared/tour";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -135,7 +136,7 @@ function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
   };
   if (review === null) {
     return (
-      <span title={unavailable ?? (ticket.pr !== null ? "Review the PR" : "Review the card thread's commits")}>
+      <span title={unavailable ?? `${ticket.pr !== null ? "Review the PR" : "Review the card thread's commits"} at Standard depth; the card panel's Code review picks another depth`}>
         <Button type="button" variant="secondary" className={COMPACT} disabled={starting || unavailable !== null} onClick={() => void startReview()}>
           <Icon name="kanban-search-check" className="size-3.5" />
           {starting ? "Starting…" : "Review"}
@@ -148,7 +149,7 @@ function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
   const apply = review.apply;
   return (
     <>
-      <span title={review.status === "running" ? "Open the running review thread" : "Open the review thread to read the findings or keep iterating"}>
+      <span title={`${review.depth === null ? "" : `${REVIEW_DEPTH_LABEL[review.depth]} review. `}${review.status === "running" ? "Open the running review thread" : "Open the review thread to read the findings or keep iterating"}`}>
         <Button type="button" variant="secondary" className={COMPACT} onClick={() => openThread(review.threadId)}>
           <Icon name="kanban-search-check" className={cn("size-3.5", review.status === "running" && "animate-pulse")} />
           {review.status === "running" ? "Reviewing…" : review.sinceCommitSha === null ? "Review" : "Re-review"}

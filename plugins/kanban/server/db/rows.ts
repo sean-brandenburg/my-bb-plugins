@@ -97,6 +97,7 @@ export interface ReviewRow {
   ticket_id: string;
   thread_id: string;
   subject_kind: Review["subjectKind"];
+  depth: Review["depth"];
   status: Review["status"];
   commit_sha: string | null;
   base_ref: string | null;
@@ -308,6 +309,7 @@ export function rowToReview(row: ReviewRow): Review {
     baseRef: row.base_ref,
     headRef: row.head_ref,
     sinceCommitSha: row.since_commit_sha,
+    depth: report?.depth ?? row.depth,
     body: row.body,
     report,
     selection: effectiveSelection(report, selectionOverrides),

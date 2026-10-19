@@ -3,6 +3,7 @@ import { z } from "zod";
 import { locationLabel } from "bb-diff-view/line-range";
 import { dueDateSchema, tagSchema, type Column, type Ticket } from "../shared/board";
 import { evidenceSchema, phaseChip, type Evidence } from "../shared/loop";
+import { DEFAULT_REVIEW_DEPTH, REVIEW_DEPTH_LABEL, reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
 import { rowToComment, rowToDiffComment, rowToReview } from "./db/rows";
@@ -68,6 +69,13 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
         hint: "Pass a date as YYYY-MM-DD, e.g. 2026-10-31.",
       });
     }
+    return parsed.data;
+  }
+
+  function parseDepth(raw: string | undefined): ReviewDepth {
+    if (raw === undefined) return DEFAULT_REVIEW_DEPTH;
+    const parsed = reviewDepthSchema.safeParse(raw.toLowerCase());
+    if (!parsed.success) throw new PluginCliError(`Unknown review depth "${raw}"; expected quick, standard or deep.`, { code: "invalid_depth" });
     return parsed.data;
   }
 
@@ -251,16 +259,18 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
             ...ticketOption,
             project: { type: "string", description: "Project id to run a PR review in; defaults to the card's project. A local review runs in its thread's project" },
             full: { type: "boolean", description: "Review the whole change even if an earlier review exists (default: the commits since the last review, re-checking its open findings)" },
+            depth: { type: "string", description: "Which finders run: quick (correctness, CLAUDE.md compliance, scope, style), standard (adds testing and git history; the default) or deep (adds security)" },
             json: { type: "boolean", description: "Emit JSON" },
           },
           async run({ options }, ctx) {
+            const depth = parseDepth(options.depth);
             const ticket = ticketForContext(options.ticket, ctx.threadId);
             const reason = await reviewUnavailableReason(ticket.id);
             if (reason !== null) throw new PluginCliError(`Ticket ${ticket.id} can't be reviewed: ${reason}.`, { code: "not_reviewable" });
-            const reviewed = await startReview(ticket.id, options.project ?? null, options.full ? "full" : "incremental");
+            const reviewed = await startReview(ticket.id, options.project ?? null, options.full ? "full" : "incremental", depth);
             return {
               exitCode: 0,
-              stdout: options.json ? JSON.stringify(reviewed) : `Review started in @thread:${reviewed.reviewThreadId}`,
+              stdout: options.json ? JSON.stringify(reviewed) : `${REVIEW_DEPTH_LABEL[depth]} review started in @thread:${reviewed.reviewThreadId}`,
             };
           },
         }),
