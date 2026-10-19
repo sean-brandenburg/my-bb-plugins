@@ -70,11 +70,15 @@ export function createReviews(
     return { plan: null, branch };
   }
 
-  /** Review a PR card's pull request, or another card's committed work, in a new hidden thread, running the depth's finders. */
-  async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental", depth: ReviewDepth): Promise<Ticket> {
+  /**
+   * Review a PR card's pull request, or another card's committed work, in a new hidden thread, running the depth's
+   * finders. `commit` pins a local review to that commit instead of the thread's HEAD; a PR review takes the PR's head.
+   */
+  async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental", depth: ReviewDepth, commit: string | null = null): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, depth, prSubject(ticket), cardIntent(null));
-    const { subject, projectId, branch } = await localReviewTarget(ticket);
+    const { subject: head, projectId, branch } = await localReviewTarget(ticket);
+    const subject = commit === null || head.kind !== "local" ? head : localSubject(commit, head.defaultBranch);
     if (explicitProjectId !== null && explicitProjectId !== projectId) {
       throw new Error(`A local review runs in the project of the card's thread (${projectId}), so it can't run in ${explicitProjectId}`);
     }

@@ -121,13 +121,20 @@ its PR is reviewed and its review findings and comments are handed to agents.
   checks the commit out detached in a fresh worktree of the project (for a PR
   card, fetched from the PR first) and re-runs the check command; it records
   the exit code and the output's tail with `bb kanban checks-record`. Passing
-  checks move the card to Needs you; failing ones go back to the card's thread
-  with the output and no review is run, and a second failure in a row stops
-  the loop at Needs you. A checks thread that ends without a result stops it as
+  checks start a Standard review of that commit; failing ones go back to the
+  card's thread with the output and no review is run, and a second failure in
+  a row stops the loop at Needs you. Every finding the review triaged apply,
+  whatever its severity, goes back to the card's thread in one fix prompt
+  (deferred, dropped and pre-existing ones never do); the fix commit is
+  checked and re-reviewed incrementally, and a clean review moves the card to
+  Needs you. After three fix rounds the loop stops: at Needs you with reason
+  "cap" while a critical or important finding is open, or as clean with the
+  open minors listed. A checks thread that ends without a result stops it as
   a loop error. The check command is set per project in the card panel's
   Checks field; a project without one lets the agent pick, and the board marks
   it as the agent's choice. Monitored cards carry a chip naming the loop's
-  phase (`building`, `checks`, `ready`, or `stuck · <reason>`). Turning
+  phase (`building`, `checks`, `review rN`, `fixing rN`, `ready`, or
+  `stuck · <reason>`) and a pip per fix round used. Turning
   monitoring off stops the loop after its current step: a running check
   finishes, and its result is kept but drives nothing.
 - **Review PR** button on every PR card: spawns a review thread in a fresh

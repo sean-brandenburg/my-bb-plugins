@@ -1,6 +1,6 @@
 import { GLYPH, Glyph, useNerdFont } from "bb-nerd-font";
 import type { JiraIssue, PullRequest, Ticket } from "../shared/board";
-import { phaseChip } from "../shared/loop";
+import { LOOP_ROUND_CAP, phaseChip } from "../shared/loop";
 import { REVIEW_DEPTH_LABEL } from "../shared/review";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -77,14 +77,22 @@ export function JiraBadges({ ticket }: { ticket: Ticket }) {
   );
 }
 
-/** Marks a monitored card with the review loop's phase, or why it needs you. */
+/** Marks a monitored card with the review loop's phase, or why it needs you, and a pip per fix round used of the cap. */
 export function LoopChip({ ticket }: { ticket: Ticket }) {
   const chip = ticket.loop === null ? null : phaseChip(ticket.loop);
   if (chip === null) return null;
+  const round = ticket.loop!.round;
   return (
-    <Badge tone={chip.tone} title={chip.title}>
+    <Badge tone={chip.tone} title={round === 0 ? chip.title : `${chip.title}. ${round} of ${LOOP_ROUND_CAP} fix rounds used`}>
       <Icon name="kanban-refresh" className="size-3" />
       {chip.label}
+      {round === 0 ? null : (
+        <span className="ml-0.5 inline-flex gap-0.5" aria-hidden>
+          {Array.from({ length: Math.max(LOOP_ROUND_CAP, round) }, (_, index) => (
+            <span key={index} className={`size-1.5 rounded-full ${index < round ? "bg-current" : "bg-current opacity-30"}`} />
+          ))}
+        </span>
+      )}
     </Badge>
   );
 }

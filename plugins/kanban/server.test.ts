@@ -1780,6 +1780,15 @@ describe("monitored review loop", () => {
   async function monitoredCard(checkCommand: string | null = "pnpm check"): Promise<Ticket> {
     await load({ autoStartThreads: false });
     current().harness.sdk.stub("threads.send", async () => ({ ok: true }));
+    current().harness.sdk.stub("environments.get", async ({ environmentId }: { environmentId: string }) => ({ id: environmentId, hostId: "host_1", mergeBaseBranch: "main", defaultBranch: "main" }));
+    current().harness.sdk.stub("environments.status", async () => ({
+      outcome: "available",
+      workspace: {
+        branch: { currentBranch: "feature", defaultBranch: "main" },
+        checkout: { kind: "branch", branchName: "feature", headSha: fixSha },
+        mergeBase: { aheadCount: 2, behindCount: 0, baseRef: null, commits: [], files: [], insertions: 0, deletions: 0, hasCommittedUnmergedChanges: true, lineStatsComplete: true, mergeBaseBranch: "main" },
+      },
+    }));
     const ticket = (await current().harness.behavior.callRpc("ticket_create", { title: "Cache lookups", projectId: "proj_acme", startThread: true })) as Ticket;
     if (checkCommand !== null) await current().harness.behavior.callRpc("project_set_check_command", { projectId: "proj_acme", checkCommand });
     return (await current().harness.behavior.callRpc("ticket_set_monitored", { id: ticket.id, monitored: true })) as Ticket;
@@ -1818,11 +1827,51 @@ describe("monitored review loop", () => {
     });
   });
 
-  it("moves passing checks to Needs you", async () => {
+  const reviewBody = (commit: string, findings: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}) =>
+    ["## Review Findings", `Reviewed commit: ${commit}`, "```json review-findings", JSON.stringify({ version: 5, summary: "x", commit, findings, ...extra }), "```"].join("\n");
+  async function completeReview(threadId: string, body: string, commit: string): Promise<void> {
+    await current().harness.behavior.runCli(["review-record", "--commit", commit, "--base", "main"], ctx(threadId));
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: threadId, projectId: "proj_acme" }), lastAssistantText: body });
+  }
+
+  it("reviews the commit that passed its checks, sends only the findings triaged apply to the card's thread, and re-reviews the fix", async () => {
     await monitoredCard();
     await ready();
     expect((await recordChecks("thr_2", 0, "all green")).exitCode).toBe(0);
-    expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "clean", checks: [{ commit: sha, exitCode: 0, passed: true }] } });
+    expect(spawned[2]).toMatchObject({ parentThreadId: "thr_1", pluginMetadata: { role: "review" } });
+    expect(String(spawned[2]!.prompt)).toContain(`git checkout --detach ${sha}`);
+    expect(String(spawned[2]!.prompt)).toContain("at depth `standard`");
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.any(String) }));
+    expect((await card()).columnId).toBe("checking");
+
+    await completeReview(
+      "thr_3",
+      reviewBody(sha, [
+        { id: "F1", severity: "minor", title: "Misleading name", locations: [{ file: "cache.ts", startLine: 3 }], confidence: 90, triage: { decision: "apply", reason: "" } },
+        { id: "F2", severity: "important", title: "No eviction", locations: [], confidence: 90, triage: { decision: "defer", reason: "separate work" } },
+        { id: "F3", severity: "critical", title: "Old race", locations: [], confidence: 90, preExisting: true },
+      ]),
+      sha,
+    );
+    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "in-progress", loop: { phase: "fixing", round: 1, rounds: [{ handed: ["F1"] }] } }));
+    const fix = sentTexts().at(-1)!;
+    expect(fix.threadId).toBe("thr_1");
+    expect(fix.text).toContain("Fix exactly these findings, and nothing beyond them");
+    expect(fix.text).toContain("Misleading name");
+    expect(fix.text).not.toContain("No eviction");
+    expect(fix.text).not.toContain("Old race");
+    expect(fix.text).toContain("bb kanban ready");
+
+    await ready(fixSha);
+    await recordChecks("thr_4", 0);
+    const rereview = String(spawned[4]!.prompt);
+    expect(rereview).toContain(`${sha}..HEAD`);
+    expect(rereview).toContain("an apply round committed a fix for it");
+    const fixedReviewId = (await card()).loop!.rounds[0]!.reviewId;
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.not.stringMatching(fixedReviewId) }));
+
+    await completeReview("thr_5", reviewBody(fixSha, [], { carriesForward: true, resolved: [] }), fixSha);
+    await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "needs-you", reason: "clean", round: 1 } }));
   });
 
   it("sends failing checks back to the card's thread with their output, and escalates a second failure in a row", async () => {
@@ -1929,7 +1978,7 @@ describe("monitored review loop", () => {
     await current().harness.behavior.callRpc("ticket_delete", { id: ticket.id });
     await current().harness.behavior.callRpc("ticket_restore", { id: ticket.id });
     await recordChecks("thr_2", 0);
-    expect((await card()).loop).toMatchObject({ phase: "needs-you", reason: "clean" });
+    expect((await card()).loop).toMatchObject({ phase: "reviewing" });
   });
 });
 

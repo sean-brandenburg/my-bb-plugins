@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_REVIEW_DEPTH, findingSeveritySchema, reviewDepthSchema } from "./review";
 
 /** Where a monitored card is in the review loop. */
 export const loopPhaseSchema = z.enum(["idle", "planning", "building", "checking", "classifying", "reviewing", "fixing", "paused", "needs-you", "accepted", "landed"]);
@@ -47,6 +48,17 @@ export type CheckCommand = z.infer<typeof checkCommandSchema>;
 export const checksOutcomeSchema = z.object({ commit: z.string(), exitCode: z.number().int(), passed: z.boolean() });
 export type ChecksOutcome = z.infer<typeof checksOutcomeSchema>;
 
+/** Automatic fix rounds before the loop stops for the user. */
+export const LOOP_ROUND_CAP = 3;
+
+/** A finding the loop handed to the card's thread, or left open when it stopped. */
+export const loopFindingSchema = z.object({ id: z.string(), severity: findingSeveritySchema, title: z.string() });
+export type LoopFinding = z.infer<typeof loopFindingSchema>;
+
+/** One automatic fix round: the review it answers and the findings it handed over. */
+export const loopRoundSchema = z.object({ reviewId: z.string(), handed: z.array(z.string()) });
+export type LoopRound = z.infer<typeof loopRoundSchema>;
+
 export const loopGatesSchema = z.object({
   /** Stop after the card's thread proposes a plan, until it's approved. */
   plan: z.boolean().default(false),
@@ -64,8 +76,15 @@ export const loopStateSchema = z.object({
   phase: loopPhaseSchema.default("idle"),
   /** Set while the phase is needs-you. */
   reason: needsYouReasonSchema.nullable().default(null),
-  /** Automatic review rounds started; the cap counts these. */
+  /** Automatic fix rounds started; the cap counts these. */
   round: z.number().int().default(0),
+  /** The depth the loop's reviews run at. */
+  depth: reviewDepthSchema.default(DEFAULT_REVIEW_DEPTH),
+  /** The review running, or the one the current fix round answers. */
+  reviewId: z.string().nullable().default(null),
+  rounds: z.array(loopRoundSchema).default([]),
+  /** The minor findings still open when the loop ended clean at the cap. */
+  openFindings: z.array(loopFindingSchema).default([]),
   /** Rounds the user started, which never count toward the cap. */
   humanRounds: z.number().int().default(0),
   /** The commit being checked or reviewed. */
@@ -97,8 +116,21 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
   switch (loop.phase) {
     case "checking":
       return { label: "checks", tone: "accent", title: `Re-running \`${loop.checkCommand?.command ?? "the checks"}\` at${commit}` };
+    case "reviewing": {
+      const recheck = loop.round >= LOOP_ROUND_CAP;
+      return {
+        label: `review r${recheck ? loop.round : loop.round + 1}`,
+        tone: "accent",
+        title: recheck ? `Re-reviewing the last round's fixes at${commit}` : `Reviewing${commit} at ${loop.depth} depth`,
+      };
+    }
+    case "fixing":
+      return { label: `fixing r${loop.round}`, tone: "accent", title: `The card's thread is fixing round ${loop.round}'s findings` };
     case "needs-you":
-      if (loop.reason === "clean" || loop.reason === null) return { label: "ready", tone: "success", title: `Checks passed at${commit}; needs you` };
+      if (loop.reason === "clean" || loop.reason === null) {
+        const minors = loop.openFindings.length === 0 ? "" : `; ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} left open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`;
+        return { label: "ready", tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you` };
+      }
       return { label: `stuck · ${NEEDS_YOU_REASON_LABEL[loop.reason]}`, tone: "danger", title: `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}` };
     case "paused":
       return { label: "stuck · question", tone: "warning", title: "The card's thread is waiting on you" };

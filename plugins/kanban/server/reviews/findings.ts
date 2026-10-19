@@ -138,28 +138,19 @@ export function earlierNotCovered(standing: Review[]): string[] {
   return [...new Set(standing.flatMap((review) => review.report?.notCovered ?? []))];
 }
 
-/** The review body trimmed to the selected findings, so the apply round never sees deselected ones. */
-export function selectedFindingsBody(review: Review): { body: string; findingIds: string[] | null } {
-  const { report } = review;
-  if (report === null) return { body: review.body ?? "(the review body is empty; open the review thread for details)", findingIds: null };
-  const selected = pendingFindings(review);
-  const bySeverity = (["critical", "important", "minor"] as const)
-    .map((severity) => ({ severity, findings: selected.filter((finding) => finding.severity === severity) }))
-    .filter((group) => group.findings.length > 0);
+/** Findings as markdown, grouped under a heading per severity, worst first. */
+export function findingLines(findings: Finding[]): string[] {
   const headings: Record<FindingSeverity, string> = {
     critical: "### Critical (Must Fix)",
     important: "### Important (Should Fix)",
     minor: "### Minor (Nice to Fix)",
   };
-  const lines: string[] = ["## Change Summary", report.summary, "", "## Selected findings", ""];
-  lines.push(
-    `${selected.length} of ${report.findings.length} findings were selected on the Kanban board; the rest were deliberately left out or fixed by an earlier apply round. Apply only these.`,
-    "A finding's locations are every instance of its bug class; fix them all.",
-    "",
-  );
-  for (const { severity, findings } of bySeverity) {
+  const lines: string[] = [];
+  for (const severity of ["critical", "important", "minor"] as const) {
+    const group = findings.filter((finding) => finding.severity === severity);
+    if (group.length === 0) continue;
     lines.push(headings[severity]);
-    for (const finding of findings) {
+    for (const finding of group) {
       const scores = [
         ...(finding.importance === null || finding.scopeFit === null ? [] : [`importance ${finding.importance}`, `scope ${finding.scopeFit}`]),
         ...(finding.confidence === null ? [] : [`confidence ${finding.confidence}`]),
@@ -173,6 +164,21 @@ export function selectedFindingsBody(review: Review): { body: string; findingIds
     }
     lines.push("");
   }
+  return lines;
+}
+
+/** The review body trimmed to the selected findings, so the apply round never sees deselected ones. */
+export function selectedFindingsBody(review: Review): { body: string; findingIds: string[] | null } {
+  const { report } = review;
+  if (report === null) return { body: review.body ?? "(the review body is empty; open the review thread for details)", findingIds: null };
+  const selected = pendingFindings(review);
+  const lines: string[] = ["## Change Summary", report.summary, "", "## Selected findings", ""];
+  lines.push(
+    `${selected.length} of ${report.findings.length} findings were selected on the Kanban board; the rest were deliberately left out or fixed by an earlier apply round. Apply only these.`,
+    "A finding's locations are every instance of its bug class; fix them all.",
+    "",
+    ...findingLines(selected),
+  );
   lines.push("```json review-findings", JSON.stringify({ ...report, findings: selected, filtered: [] }, null, 2), "```");
   return { body: lines.join("\n"), findingIds: selected.map((finding) => finding.id) };
 }

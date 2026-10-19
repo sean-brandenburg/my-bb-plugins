@@ -4,11 +4,12 @@ import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
 import type { KanbanContext } from "../context";
-import type { ChecksRunRow } from "../db/rows";
+import { rowToReview, type ChecksRunRow } from "../db/rows";
 import type { ProjectSettingsStore } from "../project-settings";
+import type { Reviews } from "../reviews/reviews";
 import { errorMessage, shortId, threadTitle } from "../util";
-import { cardPromptText, checksPrompt } from "./prompts";
-import { reduce, type LoopAction, type LoopEvent } from "./reducer";
+import { cardPromptText, checksPrompt, fixPromptText } from "./prompts";
+import { reduce, type CardPrompt, type LoopAction, type LoopEvent } from "./reducer";
 
 /** Thrown when a ready report can't name a check command; the CLI turns it into a hint. */
 export class NoCheckCommandError extends Error {}
@@ -19,7 +20,13 @@ export class NoCheckCommandError extends Error {}
  */
 export function createLoop(
   ctx: KanbanContext,
-  { board, threads, codeReviewThreads, projectSettings }: { board: BoardStore; threads: CardThreads; codeReviewThreads: CodeReviewThreads; projectSettings: ProjectSettingsStore },
+  {
+    board,
+    threads,
+    codeReviewThreads,
+    projectSettings,
+    reviews,
+  }: { board: BoardStore; threads: CardThreads; codeReviewThreads: CodeReviewThreads; projectSettings: ProjectSettingsStore; reviews: Reviews },
 ) {
   const { bb, stmts, publish } = ctx;
   const { getTicket } = board;
@@ -54,17 +61,53 @@ export function createLoop(
           await dispatch(ticketId, { type: "thread-failed", role: "checks", commit: action.commit });
         }
         return;
-      case "prompt-card": {
-        const ticket = getTicket(ticketId);
-        if (ticket.threadId === null) return;
-        const text = cardPromptText(action.prompt, ticket, projectSettings.projectSettings(ticket.projectId).checkCommand);
+      case "spawn-review": {
+        let reviewThreadId: string | null;
         try {
-          await bb.sdk.threads.send({ threadId: ticket.threadId, mode: "auto", input: [{ type: "text", text, mentions: [] }] });
+          reviewThreadId = (await reviews.startReview(ticketId, null, action.mode, action.depth, action.commit)).reviewThreadId;
         } catch (error) {
-          bb.log.warn(`could not prompt the thread of ticket ${ticketId}: ${errorMessage(error)}`);
+          bb.log.warn(`could not start a review for ticket ${ticketId}: ${errorMessage(error)}`);
+          await dispatch(ticketId, { type: "thread-failed", role: "review", reviewId: null });
+          return;
         }
+        const review = reviewThreadId === null ? undefined : stmts.reviewByThread.get(reviewThreadId);
+        if (review !== undefined) await dispatch(ticketId, { type: "review-started", reviewId: review.id });
         return;
       }
+      case "prompt-card":
+        await promptCard(ticketId, action.prompt);
+        return;
+      case "record-fix": {
+        const row = stmts.reviewById.get(action.reviewId);
+        if (row !== undefined) reviews.completeApply(row, action.commit, false, []);
+        return;
+      }
+    }
+  }
+
+  async function promptCard(ticketId: string, prompt: CardPrompt): Promise<void> {
+    const ticket = getTicket(ticketId);
+    if (ticket.threadId === null) return;
+    let text: string;
+    if (prompt.kind === "fix") {
+      const row = stmts.reviewById.get(prompt.reviewId);
+      if (row === undefined) return;
+      const review = rowToReview(row);
+      const findings = (review.report?.findings ?? []).filter((finding) => prompt.findingIds.includes(finding.id));
+      text = fixPromptText(ticket, prompt.round, review.commitSha, findings);
+    } else {
+      text = cardPromptText(prompt, ticket, projectSettings.projectSettings(ticket.projectId).checkCommand);
+    }
+    try {
+      await bb.sdk.threads.send({ threadId: ticket.threadId, mode: "auto", input: [{ type: "text", text, mentions: [] }] });
+    } catch (error) {
+      bb.log.warn(`could not prompt the thread of ticket ${ticketId}: ${errorMessage(error)}`);
+      return;
+    }
+    // The fix round is the review's apply round, so its re-review hands the fixed findings to the scope finder.
+    if (prompt.kind === "fix") {
+      stmts.startApply.run(ticket.threadId, Date.now(), JSON.stringify(prompt.findingIds), 0, prompt.reviewId);
+      publish();
     }
   }
 
@@ -131,7 +174,20 @@ export function createLoop(
     return true;
   }
 
-  return { setMonitored, reportReady, recordChecks, handleIdle };
+  /** A review thread finished; on a monitored card its findings drive the next step. */
+  async function reviewFinished(threadId: string): Promise<void> {
+    const row = stmts.reviewByThread.get(threadId);
+    if (row === undefined || row.status === "running") return;
+    const report = row.status === "completed" ? rowToReview(row).report : null;
+    if (report === null) {
+      await dispatch(row.ticket_id, { type: "thread-failed", role: "review", reviewId: row.id });
+      return;
+    }
+    const findings = report.findings.map(({ id, severity, title, preExisting, triage }) => ({ id, severity, title, preExisting, triage }));
+    await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings });
+  }
+
+  return { setMonitored, reportReady, recordChecks, handleIdle, reviewFinished };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

@@ -1,10 +1,14 @@
 // The monitored review loop as a pure function: no I/O, no clock. The loop service feeds it events from threads, the
 // CLI and the board, stores the state it returns, and carries out its actions.
 import { COLUMN } from "../../shared/columns";
-import type { CheckCommand, Evidence, LoopState, NeedsYouReason } from "../../shared/loop";
+import { LOOP_ROUND_CAP, type CheckCommand, type Evidence, type LoopFinding, type LoopState, type NeedsYouReason } from "../../shared/loop";
+import type { Finding, ReviewDepth } from "../../shared/review";
 
 /** Failing checks in a row that stop the loop rather than go back to the card's thread. */
 const CHECK_FAILURES_TO_ESCALATE = 2;
+
+/** What the loop reads of a review's finding to route it. */
+export type ReviewedFinding = LoopFinding & Pick<Finding, "preExisting"> & { triage: Pick<NonNullable<Finding["triage"]>, "decision"> | null };
 
 export type LoopEvent =
   | { type: "monitor"; hasThread: boolean }
@@ -12,14 +16,20 @@ export type LoopEvent =
   /** The card's thread committed its work and says it's verified. */
   | { type: "ready"; commit: string; evidence: Evidence; checkCommand: CheckCommand }
   | { type: "checks-result"; commit: string; exitCode: number; outputTail: string }
+  | { type: "review-started"; reviewId: string }
+  /** `findings` are the report's own, without the ones its verifier filtered out. */
+  | { type: "review-completed"; reviewId: string; findings: ReviewedFinding[] }
   /** A thread the loop started went idle without recording its result. */
-  | { type: "thread-failed"; role: "checks"; commit: string };
+  | { type: "thread-failed"; role: "checks"; commit: string }
+  /** `reviewId` is null for a review that couldn't be started. */
+  | { type: "thread-failed"; role: "review"; reviewId: string | null };
 
 /** What the card's thread is told; the service words it. */
 export type CardPrompt =
   /** The thread already exists, so its instructions only pick the contract up at its next session. */
   | { kind: "monitoring" }
-  | { kind: "checks-failed"; commit: string; command: string; exitCode: number; outputTail: string };
+  | { kind: "checks-failed"; commit: string; command: string; exitCode: number; outputTail: string }
+  | { kind: "fix"; round: number; reviewId: string; findingIds: string[] };
 
 export type LoopColumn = typeof COLUMN.inProgress | typeof COLUMN.checking | typeof COLUMN.review | typeof COLUMN.done;
 
@@ -28,7 +38,10 @@ export type LoopAction =
   | { type: "ensure-columns" }
   | { type: "move"; column: LoopColumn }
   | { type: "spawn-checks"; commit: string; checkCommand: CheckCommand }
-  | { type: "prompt-card"; prompt: CardPrompt };
+  | { type: "spawn-review"; commit: string; mode: "full" | "incremental"; depth: ReviewDepth }
+  | { type: "prompt-card"; prompt: CardPrompt }
+  /** The card's thread committed its answer to a fix round's findings. */
+  | { type: "record-fix"; reviewId: string; commit: string; findingIds: string[] };
 
 export interface LoopStep {
   state: LoopState;
@@ -41,10 +54,35 @@ function needsYou(state: LoopState, reason: NeedsYouReason): LoopStep {
   return { state: { ...state, phase: "needs-you", reason }, actions: [{ type: "move", column: COLUMN.review }] };
 }
 
+const running = (state: LoopState): boolean => state.phase === "checking" || state.phase === "reviewing";
+
 function failuresInARow(state: LoopState): number {
   let count = 0;
   for (let index = state.checks.length - 1; index >= 0 && !state.checks[index]!.passed; index -= 1) count += 1;
   return count;
+}
+
+/** Deferred, dropped and pre-existing findings never enter a round; only triage's apply does, whatever the severity. */
+function routed(findings: ReviewedFinding[]): ReviewedFinding[] {
+  return findings.filter((finding) => !finding.preExisting && finding.triage?.decision === "apply");
+}
+
+function reviewCompleted(state: LoopState, reviewId: string, findings: ReviewedFinding[]): LoopStep {
+  const open = routed(findings);
+  if (open.length === 0) return needsYou(state, "clean");
+  if (state.round >= LOOP_ROUND_CAP) {
+    if (open.some((finding) => finding.severity !== "minor")) return needsYou(state, "cap");
+    return needsYou({ ...state, openFindings: open.map(({ id, severity, title }) => ({ id, severity, title })) }, "clean");
+  }
+  const round = state.round + 1;
+  const findingIds = open.map((finding) => finding.id);
+  return {
+    state: { ...state, phase: "fixing", reason: null, round, reviewId, rounds: [...state.rounds, { reviewId, handed: findingIds }] },
+    actions: [
+      { type: "move", column: COLUMN.inProgress },
+      { type: "prompt-card", prompt: { kind: "fix", round, reviewId, findingIds } },
+    ],
+  };
 }
 
 export function reduce(state: LoopState, event: LoopEvent): LoopStep {
@@ -52,19 +90,24 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
     case "monitor":
       if (state.monitored) return stay(state);
       return {
-        // A check still running from before the card was unmonitored carries on.
-        state: { ...state, monitored: true, phase: state.phase === "checking" ? "checking" : "building", reason: null },
+        // A check or review still running from before the card was unmonitored carries on.
+        state: { ...state, monitored: true, phase: running(state) ? state.phase : "building", reason: null },
         actions: [{ type: "ensure-columns" }, ...(event.hasThread ? [{ type: "prompt-card" as const, prompt: { kind: "monitoring" as const } }] : [])],
       };
     case "unmonitor":
-      // The loop stops after the current step, so a running check keeps its phase until its result arrives.
-      return stay({ ...state, monitored: false, phase: state.phase === "checking" ? "checking" : "idle", reason: null });
+      // The loop stops after the current step, so a running check or review keeps its phase until its result arrives.
+      return stay({ ...state, monitored: false, phase: running(state) ? state.phase : "idle", reason: null });
     case "checks-result": {
       if (state.phase !== "checking" || state.commit !== event.commit) return stay(state);
       const passed = event.exitCode === 0;
       const recorded = { ...state, checks: [...state.checks, { commit: event.commit, exitCode: event.exitCode, passed }] };
       if (!state.monitored) return stay({ ...recorded, phase: "idle" });
-      if (passed) return needsYou(recorded, "clean");
+      if (passed) {
+        return {
+          state: { ...recorded, phase: "reviewing", reason: null, reviewId: null },
+          actions: [{ type: "spawn-review", commit: event.commit, mode: state.round === 0 ? "full" : "incremental", depth: state.depth }],
+        };
+      }
       if (failuresInARow(recorded) >= CHECK_FAILURES_TO_ESCALATE) return needsYou(recorded, "checks");
       return {
         state: { ...recorded, phase: "building", reason: null },
@@ -77,19 +120,31 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
         ],
       };
     }
-    case "ready":
+    case "ready": {
       if (!state.monitored) return stay(state);
       if (state.phase === "checking" && state.commit === event.commit) return stay(state);
+      const handed = state.phase === "fixing" && state.reviewId !== null ? state.rounds.find((round) => round.reviewId === state.reviewId) : undefined;
       return {
-        state: { ...state, phase: "checking", reason: null, commit: event.commit, evidence: event.evidence, checkCommand: event.checkCommand },
+        state: { ...state, phase: "checking", reason: null, commit: event.commit, evidence: event.evidence, checkCommand: event.checkCommand, openFindings: [] },
         actions: [
+          ...(handed === undefined ? [] : [{ type: "record-fix" as const, reviewId: handed.reviewId, commit: event.commit, findingIds: handed.handed }]),
           { type: "move", column: COLUMN.checking },
           { type: "spawn-checks", commit: event.commit, checkCommand: event.checkCommand },
         ],
       };
-    case "thread-failed":
-      if (state.phase !== "checking" || state.commit !== event.commit) return stay(state);
+    }
+    case "review-started":
+      if (state.phase !== "reviewing" || state.reviewId !== null) return stay(state);
+      return stay({ ...state, reviewId: event.reviewId });
+    case "review-completed":
+      if (state.phase !== "reviewing" || state.reviewId !== event.reviewId) return stay(state);
+      if (!state.monitored) return stay({ ...state, phase: "idle" });
+      return reviewCompleted(state, event.reviewId, event.findings);
+    case "thread-failed": {
+      const ours = event.role === "checks" ? state.phase === "checking" && state.commit === event.commit : state.phase === "reviewing" && state.reviewId === event.reviewId;
+      if (!ours) return stay(state);
       if (!state.monitored) return stay({ ...state, phase: "idle" });
       return needsYou(state, "loop-error");
+    }
   }
 }

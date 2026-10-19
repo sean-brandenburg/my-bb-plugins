@@ -417,11 +417,15 @@ function LoopStatus({ ticket }: { ticket: Ticket }) {
   const text =
     loop.phase === "checking"
       ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
-      : loop.phase === "needs-you" && loop.reason !== null && loop.reason !== "clean"
-        ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
-        : last !== undefined
-          ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
-          : "Waiting for the card's thread to report ready";
+      : loop.phase === "reviewing" || loop.phase === "fixing"
+        ? (chip?.title ?? "")
+        : loop.phase === "needs-you" && loop.reason !== null && loop.reason !== "clean"
+          ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
+          : loop.phase === "needs-you" && loop.openFindings.length > 0
+            ? `Clean at the round cap with ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`
+            : last !== undefined
+            ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
+            : "Waiting for the card's thread to report ready";
   return (
     <span className="text-xs text-muted-foreground" title={chip?.title}>
       {text}

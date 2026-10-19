@@ -29,7 +29,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     if (dumps.handleIdle(thread.id, lastAssistantText)) return;
     if (tour.handleIdle(thread.id, lastAssistantText)) return;
     if (loop.handleIdle(thread.id)) return;
-    reviews.handleIdle(thread.id, lastAssistantText);
+    if (reviews.handleIdle(thread.id, lastAssistantText)) void loop.reviewFinished(thread.id);
   });
 
   bb.events.on("thread.archived", async ({ thread }) => {

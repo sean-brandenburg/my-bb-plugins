@@ -1,4 +1,6 @@
 import type { Ticket } from "../../shared/board";
+import type { Finding } from "../../shared/review";
+import { findingLines } from "../reviews/findings";
 import { commitCheckout } from "../reviews/prompts";
 import type { CardPrompt } from "./reducer";
 
@@ -20,7 +22,7 @@ export function builderContract(isPr: boolean, checkCommand: string | null): str
     "The board monitors this card and runs its review loop, so never move the card yourself; the board moves it.",
     `When the work is done, ${commit}, ${checks} and fix what fails.`,
     `Then finish with \`bb kanban ready --commit "$(git rev-parse HEAD)"${agentChosen} --evidence-stdin\`, giving on stdin JSON evidence of how you verified the work: \`{"commands":[{"command":"…","exitCode":0,"outputTail":"its last lines"}],"screenshots":["/absolute/path.png"]}\` (screenshots for UI changes).`,
-    "Then stop: the board re-runs the checks in a fresh worktree and sends anything that fails back to this thread.",
+    "Then stop: the board re-runs the checks in a fresh worktree and reviews the commit, and sends failing checks or the findings to fix back to this thread.",
   ].join(" ");
 }
 
@@ -28,7 +30,7 @@ export function builderContract(isPr: boolean, checkCommand: string | null): str
 const OUTPUT_FENCE = "~~~~~";
 
 /** The words for each prompt the loop sends into the card's thread. */
-export function cardPromptText(prompt: CardPrompt, ticket: Ticket, checkCommand: string | null): string {
+export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" }>, ticket: Ticket, checkCommand: string | null): string {
   switch (prompt.kind) {
     case "monitoring":
       return [
@@ -51,6 +53,19 @@ export function cardPromptText(prompt: CardPrompt, ticket: Ticket, checkCommand:
         "Fix what makes it fail, commit, run the checks yourself, and report with `bb kanban ready` again. Never move the card.",
       ].join("\n");
   }
+}
+
+/** A fix round: the review's findings triaged apply, which the card's thread fixes in one commit before reporting ready. */
+export function fixPromptText(ticket: Ticket, round: number, reviewedCommit: string | null, findings: Finding[]): string {
+  const commit = ticket.pr === null ? "Commit the fixes on your branch (do not push)" : "Commit the fixes and push them to the PR branch (never force-push)";
+  return [
+    `The board's code review${reviewedCommit === null ? "" : ` of commit ${reviewedCommit}`} found ${findings.length === 1 ? "a finding" : `${findings.length} findings`} to fix in this change, "${ticket.title}". This is round ${round} of the review loop.`,
+    "",
+    "Fix exactly these findings, and nothing beyond them. A finding's locations are every instance of its bug class: fix the class in full, at every instance, but add no refactors, features or clean-ups the findings don't ask for. The next review checks that the fix commits stay within these findings.",
+    "",
+    ...findingLines(findings),
+    `${commit}, run the checks again, and report with \`bb kanban ready\` as before. Never move the card.`,
+  ].join("\n");
 }
 
 /** A short hidden thread that re-runs the check command at the reported commit, independently of the agent that wrote it. */
