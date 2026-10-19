@@ -98,6 +98,15 @@ export type Classification = z.infer<typeof classificationSchema>;
 export const attentionSchema = z.object({ level: attentionLevelSchema, reasons: z.array(z.string()) });
 export type Attention = z.infer<typeof attentionSchema>;
 
+/** A level the user set at Needs you, and why; `from` is the level the loop had computed, `commit` the head it holds for. */
+export const levelOverrideSchema = z.object({
+  level: attentionLevelSchema,
+  reason: z.string().trim().min(1).max(2000),
+  from: attentionLevelSchema.nullable(),
+  commit: z.string().nullable(),
+});
+export type LevelOverride = z.infer<typeof levelOverrideSchema>;
+
 /** Automatic fix rounds before the loop stops for the user. */
 export const LOOP_ROUND_CAP = 3;
 
@@ -176,6 +185,10 @@ export const loopStateSchema = z.object({
   classification: classificationSchema.nullable().default(null),
   /** Set when classifying ends, and recomputed when the loop stops at Needs you after a review. */
   attention: attentionSchema.nullable().default(null),
+  /** The user's level, which wins over `attention` until the head moves. */
+  levelOverride: levelOverrideSchema.nullable().default(null),
+  /** Every level the user set, kept after the override is undone as a signal for tuning the classifier. */
+  levelOverrides: z.array(levelOverrideSchema).default([]),
   /** The review running, or the one the current fix round answers. */
   reviewId: z.string().nullable().default(null),
   rounds: z.array(loopRoundSchema).default([]),
@@ -195,6 +208,11 @@ export const loopStateSchema = z.object({
   checks: z.array(checksOutcomeSchema).default([]),
 });
 export type LoopState = z.infer<typeof loopStateSchema>;
+
+/** The level the user set, else the one the loop computed. */
+export function effectiveLevel(state: LoopState): AttentionLevel | null {
+  return state.levelOverride?.level ?? state.attention?.level ?? null;
+}
 
 export const INITIAL_LOOP_STATE: LoopState = loopStateSchema.parse({});
 
@@ -232,8 +250,10 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
     case "needs-you":
       if (loop.reason === "clean" || loop.reason === null) {
         const minors = loop.openFindings.length === 0 ? "" : `; ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} left open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`;
-        const level = loop.attention === null ? "" : ` · ${ATTENTION_LEVEL_LABEL[loop.attention.level]}`;
-        const reasons = loop.attention === null || loop.attention.reasons.length === 0 ? "" : `. ${ATTENTION_LEVEL_LABEL[loop.attention.level]}: ${loop.attention.reasons.join("; ")}`;
+        const effective = effectiveLevel(loop);
+        const level = effective === null ? "" : ` · ${ATTENTION_LEVEL_LABEL[effective]}`;
+        const why = loop.levelOverride === null ? (loop.attention?.reasons ?? []) : [`you set it: ${loop.levelOverride.reason}`];
+        const reasons = effective === null || why.length === 0 ? "" : `. ${ATTENTION_LEVEL_LABEL[effective]}: ${why.join("; ")}`;
         return { label: `ready${level}`, tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you${reasons}` };
       }
       if (loop.reason === "loop-error") return { label: "stuck · loop error", tone: "danger", title: "Needs you: a checks or review thread failed twice; open it from the card" };

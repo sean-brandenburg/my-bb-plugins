@@ -4,7 +4,8 @@ import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sour
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
-import { pathRuleSchema, projectSettingsSchema } from "./shared/loop";
+import { attentionLevelSchema, levelOverrideSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
+import { readingPlanSchema } from "./shared/reading-plan";
 import { DEFAULT_REVIEW_DEPTH, findingEditSchema, reviewDepthSchema, reviewSchema } from "./shared/review";
 import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
 
@@ -139,6 +140,10 @@ export const rpcContract = defineRpcContract({
   loop_send_back: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
   /** At Needs you: the loop stops and the card's thread proposes a new approach. */
   loop_rethink: { input: z.object({ id: z.string() }).strict(), output: ticketSchema },
+  /** At Needs you: the user's attention level, with why, until the head moves. */
+  loop_set_level: { input: z.object({ id: z.string(), level: attentionLevelSchema, reason: levelOverrideSchema.shape.reason }).strict(), output: ticketSchema },
+  /** The files the handoff brief asks the user to read at the card's level; null when the brief isn't showing. */
+  loop_reading_plan: { input: z.object({ id: z.string() }).strict(), output: readingPlanSchema.nullable() },
   /** At Needs you: a deferred or dropped finding of the last review goes to fix as the user's round. */
   loop_pull_in: { input: z.object({ id: z.string(), findingId: z.string() }).strict(), output: ticketSchema },
   /** At Needs you: uphold a rejected dispute, which sends its finding to fix, or close it. */

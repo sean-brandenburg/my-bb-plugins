@@ -1,15 +1,19 @@
 import type { Ticket } from "../../shared/board";
-import { fixingRound, parseLoopState, unansweredFindings, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
+import { effectiveLevel, fixingRound, parseLoopState, unansweredFindings, type AttentionLevel, type CheckCommand, type Evidence, type FindingAnswer } from "../../shared/loop";
+import { readingPlan as buildReadingPlan, type ReadingPlan } from "../../shared/reading-plan";
 import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
 import { commentsBody, type PrComments } from "../comments/pr-comments";
 import type { DiffComments } from "../comments/diff-comments";
+import type { Changes } from "../diff/changes";
+import type { ViewedMarks } from "../diff/viewed";
 import type { KanbanContext } from "../context";
 import { parseClassification } from "../agent-output";
 import { rowToReview, type ChecksRunRow, type ClassifyRunRow } from "../db/rows";
 import type { ProjectSettingsStore } from "../project-settings";
 import type { Reviews } from "../reviews/reviews";
+import type { Tour } from "../tour";
 import { errorMessage, shortId, threadTitle } from "../util";
 import { cardPromptText, checksPrompt, classifyPrompt, commentsPromptText, fixPromptText } from "./prompts";
 import { reduce, type CardPrompt, type LoopAction, type LoopEvent } from "./reducer";
@@ -37,6 +41,9 @@ export function createLoop(
     reviews,
     diffComments,
     prComments,
+    changes,
+    viewed,
+    tour,
   }: {
     board: BoardStore;
     threads: CardThreads;
@@ -45,6 +52,9 @@ export function createLoop(
     reviews: Reviews;
     diffComments: DiffComments;
     prComments: PrComments;
+    changes: Changes;
+    viewed: ViewedMarks;
+    tour: Tour;
   },
 ) {
   const { bb, stmts, publish } = ctx;
@@ -115,6 +125,17 @@ export function createLoop(
         if (row !== undefined) reviews.completeApply(row, null, false, action.findingIds);
         return;
       }
+      case "spawn-narrative":
+        try {
+          const ticket = getTicket(ticketId);
+          const { narrative, stale } = await tour.latestNarrative(ticket);
+          if (narrative !== null && narrative.status !== "failed" && !stale) return;
+          await tour.spawnNarrative(ticket);
+        } catch (error) {
+          // The brief falls back to the reading order without it.
+          bb.log.warn(`could not start a narrative for ticket ${ticketId}: ${errorMessage(error)}`);
+        }
+        return;
     }
   }
 
@@ -265,11 +286,36 @@ export function createLoop(
     return getTicket(ticketId);
   }
 
-  /** A local card's thread lands the change; a PR card is left for the user to merge. */
-  async function accept(ticketId: string): Promise<Ticket> {
+  /** The brief's reading plan over the current diff, with the files the changes view has marked viewed. */
+  async function readingPlan(ticketId: string): Promise<ReadingPlan | null> {
+    const ticket = getTicket(ticketId);
+    const state = parseLoopState(stmts.byId.get(ticket.id)!.loop_state);
+    if (!state.monitored || (state.phase !== "needs-you" && state.phase !== "paused")) return null;
+    const [diff, { narrative }, marks] = await Promise.all([changes.ticketDiff(ticket, false), tour.latestNarrative(ticket), viewed.listViewed(ticket)]);
+    return buildReadingPlan({
+      level: effectiveLevel(state),
+      diffPaths: diff.files.map((file) => file.path),
+      narrative: narrative?.status === "completed" ? narrative.report : null,
+      classified: state.classification?.files ?? null,
+      viewed: new Set(marks.paths),
+    });
+  }
+
+  async function setLevel(ticketId: string, level: AttentionLevel, reason: string): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     waitingState(ticket);
+    return decide(ticket.id, { type: "set-level", level, reason });
+  }
+
+  /** A local card's thread lands the change; a PR card is left for the user to merge. At Scrutinize, only once every plan file is viewed. */
+  async function accept(ticketId: string): Promise<Ticket> {
+    const ticket = getTicket(ticketId);
+    const state = waitingState(ticket);
     if (ticket.pr === null && ticket.threadId === null) throw new LoopTurnError("The card has no thread to land the change");
+    const plan = effectiveLevel(state) === "scrutinize" ? await readingPlan(ticket.id) : null;
+    if (plan !== null && plan.gated && plan.unviewed.length > 0) {
+      throw new LoopTurnError(`At Scrutinize, mark every file of the reading plan viewed first; ${plan.unviewed.length} still ${plan.unviewed.length === 1 ? "isn't" : "aren't"}: ${plan.unviewed.join(", ")}`);
+    }
     return decide(ticket.id, { type: "accept", pr: ticket.pr !== null });
   }
 
@@ -388,7 +434,7 @@ export function createLoop(
     await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id) });
   }
 
-  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute };
+  return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute, setLevel, readingPlan };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

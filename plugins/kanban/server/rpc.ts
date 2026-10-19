@@ -103,6 +103,8 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     loop_send_back: ({ id }) => loop.sendBack(id),
     loop_rethink: ({ id }) => loop.rethink(id),
     loop_pull_in: ({ id, findingId }) => loop.pullIn(id, findingId),
+    loop_set_level: ({ id, level, reason }) => loop.setLevel(id, level, reason),
+    loop_reading_plan: ({ id }) => loop.readingPlan(id),
     loop_decide_dispute: ({ id, findingId, decision }) => loop.decideDispute(id, findingId, decision),
     project_set_check_command: ({ projectId, checkCommand }) => projectSettings.setProjectSettings(projectId, { checkCommand: checkCommand === "" ? null : checkCommand }),
     project_set_path_rules: ({ projectId, pathRules }) => projectSettings.setProjectSettings(projectId, { pathRules }),

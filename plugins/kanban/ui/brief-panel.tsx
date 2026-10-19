@@ -1,15 +1,20 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ATTENTION_LEVEL_LABEL, type AttentionLevel } from "../shared/loop";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel } from "../shared/loop";
+import type { PlanFile, ReadingPlan } from "../shared/reading-plan";
 import type { Ticket } from "../shared/board";
 import type { FindingSeverity, Review } from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Rpc } from "./data";
-import { Badge, COMPACT, Group } from "./primitives";
+import { Badge, COMPACT, Group, SegmentedTabs } from "./primitives";
 import { toastError, type RunAction } from "./actions";
 import type { BriefAction } from "./board-nav";
 import { BRIEF_SECTION_TITLE, briefShown, handoffBrief, type BriefFinding, type BriefSection } from "./handoff-brief";
+import { diffSubPath } from "./reading-plan";
+import { openInStepper, useReadingPlan } from "./use-reading-plan";
 
 const LEVEL_TONE: Record<AttentionLevel, "success" | "warning" | "danger"> = { glance: "success", read: "warning", scrutinize: "danger" };
 const SEVERITY_TONE: Record<FindingSeverity, "danger" | "warning" | "neutral"> = { critical: "danger", important: "warning", minor: "neutral" };
@@ -72,9 +77,18 @@ function Subhead({ children }: { children: ReactNode }) {
 }
 
 function LevelBody({ section, onOpenThread }: { section: Extract<BriefSection, { kind: "level" }>; onOpenThread: (threadId: string) => void }) {
-  const { escalation, reasons, failedThreadId } = section;
+  const { escalation, reasons, failedThreadId, override } = section;
   return (
     <>
+      {override !== null ? (
+        <p className="text-xs">
+          <span className="font-medium">You set {ATTENTION_LEVEL_LABEL[override.level]}</span>: {override.reason}
+          <span className="text-muted-foreground">
+            {" "}
+            · {override.from === null ? "the loop had no level" : `the loop said ${ATTENTION_LEVEL_LABEL[override.from]}`}, until the head moves
+          </span>
+        </p>
+      ) : null}
       {escalation !== null ? (
         <p className="text-xs font-medium text-destructive">
           {escalation}
@@ -316,7 +330,104 @@ const DECISION_DONE: Record<BriefAction, string> = {
   "pull-in": "Pulled the finding back in",
   uphold: "Upheld the finding",
   "close-dispute": "Closed the finding",
+  "open-plan": "",
+  "change-level": "Changed the attention level",
 };
+
+const ROLE_TONE: Record<PlanFile["role"], "danger" | "warning" | "outline"> = { key: "danger", supporting: "warning", mechanical: "outline" };
+
+function PlanFileItem({ file }: { file: PlanFile }) {
+  return (
+    <li className="flex items-baseline gap-1.5">
+      {file.viewed ? (
+        <Icon name="Check" aria-label="viewed" className="size-3 shrink-0 self-center text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <span aria-label="not viewed" className="size-3 shrink-0 self-center rounded-full border border-muted-foreground/60" />
+      )}
+      <Badge tone={ROLE_TONE[file.role]}>{file.role}</Badge>
+      <code className="min-w-0 truncate font-mono">{file.path}</code>
+      {file.risk === null ? null : <span className="shrink-0 text-muted-foreground">risk {file.risk}</span>}
+      {file.note ? <span className="min-w-0 truncate text-muted-foreground">· {file.note}</span> : null}
+    </li>
+  );
+}
+
+const PLAN_SOURCE: Record<NonNullable<ReadingPlan["source"]>, string> = {
+  narrative: "Roles from the narrative's reading order.",
+  classify: "No narrative yet: roles from the classify pass.",
+};
+
+function PlanBody({ plan }: { plan: ReadingPlan }) {
+  return (
+    <>
+      {plan.level === "glance" ? (
+        <p className="text-xs text-muted-foreground">At Glance the evidence and the not-covered list are the plan; no files to read.</p>
+      ) : plan.files.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No {plan.level === "read" ? "key" : "key or supporting"} files in the diff.</p>
+      ) : (
+        <Items>
+          {plan.files.map((file) => (
+            <PlanFileItem key={file.path} file={file} />
+          ))}
+        </Items>
+      )}
+      {plan.source === null ? null : <p className="text-[11px] text-muted-foreground">{PLAN_SOURCE[plan.source]}</p>}
+      {plan.skipped.length > 0 ? (
+        <Group title="Collapsed" summary={<span className="text-xs text-muted-foreground">{plan.skipped.length}</span>} defaultOpen={false}>
+          <Items>
+            {plan.skipped.map((file) => (
+              <PlanFileItem key={file.path} file={file} />
+            ))}
+          </Items>
+        </Group>
+      ) : null}
+    </>
+  );
+}
+
+const LEVEL_OPTIONS = attentionLevelSchema.options.map((value) => ({ value, label: ATTENTION_LEVEL_LABEL[value] }));
+
+/** Sets the level with a reason; the reason box takes focus, and the picker's h/l and Enter work from the keys. */
+function LevelForm({ current, onSave, onCancel }: { current: AttentionLevel | null; onSave: (level: AttentionLevel, reason: string) => void; onCancel: () => void }) {
+  const [level, setLevel] = useState<AttentionLevel>(current ?? "read");
+  const [reason, setReason] = useState("");
+  const reasonRef = useRef<HTMLInputElement>(null);
+  useEffect(() => reasonRef.current?.focus(), []);
+  const save = () => {
+    if (reason.trim() === "") {
+      reasonRef.current?.focus();
+      return;
+    }
+    onSave(level, reason.trim());
+  };
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border p-2">
+      <SegmentedTabs label="Attention level" value={level} options={LEVEL_OPTIONS} onChange={setLevel} onActivate={save} className="shrink-0" tabClassName="whitespace-nowrap px-2 py-0.5" />
+      <Input
+        ref={reasonRef}
+        aria-label="Why this level"
+        placeholder="Why this level (kept for tuning the classifier)"
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            save();
+          }
+        }}
+        className="h-7 text-xs"
+      />
+      <div className="flex gap-1.5">
+        <Button type="button" variant="secondary" className={COMPACT} disabled={reason.trim() === ""} onClick={save}>
+          Set {ATTENTION_LEVEL_LABEL[level]}
+        </Button>
+        <Button type="button" variant="ghost" className={COMPACT} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The handoff brief at the top of a monitored card waiting on you; each section's header is a stop for the card's keys.
@@ -324,11 +435,29 @@ const DECISION_DONE: Record<BriefAction, string> = {
  */
 export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { ticket: Ticket; rpc: Rpc; run: RunAction; pending: boolean; onOpenThread: (threadId: string) => void }) {
   const reviews = useBriefReviews(ticket, rpc);
+  const plan = useReadingPlan(ticket, rpc);
+  const navigate = useBbNavigate();
+  const [levelForm, setLevelForm] = useState(false);
   const sections = reviews === null ? null : handoffBrief(ticket.loop, reviews);
   if (sections === null) return null;
   const stopped = ticket.loop?.phase === "needs-you" && !pending;
   const id = ticket.id;
-  const decide: Decide = (action, findingId = "") =>
+  const level = sections.find((section) => section.kind === "level")!;
+  const openPlan = () => {
+    const stepper = plan !== null && plan.narrated && plan.level !== "glance";
+    if (stepper) openInStepper();
+    navigate.toPluginPanel("board", { subPath: diffSubPath(id, stepper) });
+  };
+  const unviewed = plan !== null && plan.gated ? plan.unviewed.length : 0;
+  const decide: Decide = (action, findingId = "") => {
+    if (action === "open-plan") {
+      openPlan();
+      return;
+    }
+    if (action === "change-level") {
+      setLevelForm(true);
+      return;
+    }
     void run(() => {
       switch (action) {
         case "accept":
@@ -345,16 +474,23 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
           return rpc.call("loop_decide_dispute", { id, findingId, decision: "close" });
       }
     }, DECISION_DONE[action]);
+  };
   const noThread = ticket.threadId === null;
   return (
     <div data-kanban-brief="" className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         <ActionButton
           action="accept"
-          label="Accept"
           keyHint="A"
-          title={ticket.pr === null ? "The card's thread lands the change with the project's finishing steps; the card moves to Done when it has" : "Mark it accepted; merging is yours on GitHub"}
-          disabled={!stopped || (ticket.pr === null && noThread)}
+          label={unviewed === 0 ? "Accept" : `Accept (${unviewed} unviewed)`}
+          title={
+            unviewed > 0
+              ? "At Scrutinize, mark every file of the reading plan viewed in the changes view first"
+              : ticket.pr === null
+                ? "The card's thread lands the change with the project's finishing steps; the card moves to Done when it has"
+                : "Mark it accepted; merging is yours on GitHub"
+          }
+          disabled={!stopped || (ticket.pr === null && noThread) || unviewed > 0}
           onDecide={decide}
         />
         <ActionButton
@@ -366,20 +502,48 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
           onDecide={decide}
         />
         <ActionButton action="rethink" label="Rethink" keyHint="R" title="Stop the loop and have the card's thread propose a new approach" disabled={!stopped || noThread} onDecide={decide} />
+        <ActionButton action="open-plan" label="Reading plan" keyHint="P" title="Open the changes at the level's reading plan, in the narrative stepper when there is one" disabled={false} onDecide={decide} />
+        <ActionButton action="change-level" label="Change level" keyHint="L" title="Set the attention level yourself, with a reason; it holds until the head moves" disabled={!stopped || levelForm} onDecide={decide} />
       </div>
+      {levelForm ? (
+        <LevelForm
+          current={level.level}
+          onCancel={() => setLevelForm(false)}
+          onSave={(next, reason) => {
+            setLevelForm(false);
+            void run(() => rpc.call("loop_set_level", { id, level: next, reason }), DECISION_DONE["change-level"]);
+          }}
+        />
+      ) : null}
       {sections.map((section) => (
         <Group key={section.kind} title={BRIEF_SECTION_TITLE[section.kind]} summary={sectionSummary(section)} defaultOpen>
           <SectionBody section={section} onOpenThread={onOpenThread} decide={stopped ? decide : null} />
         </Group>
       ))}
+      {plan === null ? null : (
+        <Group
+          title="Reading plan"
+          summary={
+            <span className="text-xs text-muted-foreground">
+              {plan.files.length} file{plan.files.length === 1 ? "" : "s"}
+              {plan.gated ? ` · ${plan.unviewed.length} unviewed` : ""}
+            </span>
+          }
+          defaultOpen
+        >
+          <PlanBody plan={plan} />
+        </Group>
+      )}
     </div>
   );
 }
 
-/** The level, its reasons and the not-covered list above the changes page's diff; collapses to one line. */
-export function HandoffStrip({ ticket, rpc, onOpenThread }: { ticket: Ticket; rpc: Rpc; onOpenThread: (threadId: string) => void }) {
+/** The level, its reasons, the not-covered list and the reading plan above the changes page's diff; collapses to one line. */
+export function HandoffStrip({ ticket, rpc, plan: planMode, onOpenThread }: { ticket: Ticket; rpc: Rpc; plan: boolean; onOpenThread: (threadId: string) => void }) {
   const [open, setOpen] = useState(true);
   const reviews = useBriefReviews(ticket, rpc);
+  const plan = useReadingPlan(ticket, rpc);
+  const navigate = useBbNavigate();
   const sections = reviews === null ? null : handoffBrief(ticket.loop, reviews);
   if (sections === null) return null;
   const level = sections.find((section) => section.kind === "level")!;
@@ -402,6 +566,30 @@ export function HandoffStrip({ ticket, rpc, onOpenThread }: { ticket: Ticket; rp
             <Subhead>{BRIEF_SECTION_TITLE["not-covered"]}</Subhead>
             <NotCoveredBody section={notCovered} />
           </div>
+          {plan === null ? null : (
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <div className="flex items-baseline gap-2">
+                <Subhead>Reading plan</Subhead>
+                <span className="text-xs text-muted-foreground">
+                  {planMode ? "the narrative shows only these files" : "every file is showing"}
+                  {plan.gated ? ` · ${plan.unviewed.length} still unviewed before Accept` : ""}
+                </span>
+                {plan.level !== "glance" && (planMode || plan.narrated) ? (
+                  <button
+                    type="button"
+                    className="text-xs underline-offset-2 hover:underline"
+                    onClick={() => {
+                      if (!planMode && plan.narrated) openInStepper();
+                      navigate.toPluginPanel("board", { subPath: diffSubPath(ticket.id, !planMode && plan.narrated) });
+                    }}
+                  >
+                    {planMode ? "show the whole narrative" : "step through the plan"}
+                  </button>
+                ) : null}
+              </div>
+              <PlanBody plan={plan} />
+            </div>
+          )}
         </div>
       ) : null}
     </div>

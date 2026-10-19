@@ -15,6 +15,8 @@ import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT, SegmentedTabs } from "./primitives";
 import { toastError } from "./actions";
 import { HandoffStrip } from "./brief-panel";
+import { planStory } from "./reading-plan";
+import { notifyViewedChanged } from "./use-reading-plan";
 
 /** Pairs a changes view with the title-bar controls that refresh it. */
 export function diffInstanceKey(subjectId: string): string {
@@ -31,7 +33,8 @@ const KANBAN_DIFF_LABELS: Partial<DiffViewLabels> = {
 };
 
 /** The board's data for one diff subject (a card id or `thread:<threadId>`), as the shared diff view reads it. */
-function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: () => void, onOpenTicket: (ticketId: string) => void): DiffSource {
+/** `plan` cuts the narrative down to the card's reading plan. */
+function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boolean, refetch: () => void, onOpenTicket: (ticketId: string) => void): DiffSource {
   const rpc = useRpc<typeof rpcContract>();
   // Read through a ref so a new callback each render doesn't rebuild the source, which would refetch the view.
   const openTicket = useRef(onOpenTicket);
@@ -41,6 +44,7 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: 
   const reviewSubjectId = ticket?.id ?? (subjectId.startsWith(THREAD_SUBJECT_PREFIX) ? null : subjectId);
   const canPostToGithub = ticket?.canPostToGithub ?? false;
   const defaultCommentTarget = ticket?.defaultCommentTarget ?? "local";
+  const planTicketId = plan ? (ticket?.id ?? null) : null;
   return useMemo<DiffSource>(
     () => ({
       getDiff: (refresh) => rpc.call("diff_get", { ticketId: subjectId, refresh }),
@@ -49,7 +53,11 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: 
       symbolUsages: (symbol) => rpc.call("symbol_usages", { ticketId: subjectId, symbol }),
       peekFile: (path, startLine, endLine) => rpc.call("symbol_peek_file", { ticketId: subjectId, path, startLine, endLine }),
       listViewed: async () => (await rpc.call("diff_viewed_list", { ticketId: subjectId })).paths,
-      setViewed: async (path, viewed) => (await rpc.call("diff_viewed_set", { ticketId: subjectId, path, viewed })).paths,
+      setViewed: async (path, viewed) => {
+        const { paths } = await rpc.call("diff_viewed_set", { ticketId: subjectId, path, viewed });
+        notifyViewedChanged();
+        return paths;
+      },
       listComments: async () => (await rpc.call("diff_comments_list", { ticketId: subjectId })).comments,
       // The board's pending-comment counts change with these, so the board refetches too.
       addComment: async (comment) => {
@@ -86,14 +94,19 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, refetch: 
       tour: {
         get: () => rpc.call("narrative_get", { ticketId: subjectId }),
         generate: () => rpc.call("narrative_generate", { ticketId: subjectId }),
-        story: () => rpc.call("narrative_story", { ticketId: subjectId }),
+        story: async () => {
+          const story = await rpc.call("narrative_story", { ticketId: subjectId });
+          if (planTicketId === null) return story;
+          const readingPlan = await rpc.call("loop_reading_plan", { id: planTicketId });
+          return readingPlan === null || readingPlan.level === "glance" ? story : planStory(story, readingPlan);
+        },
       },
       explanations: {
         list: async () => (await rpc.call("hunk_explanations_list", { ticketId: subjectId })).explanations,
         explain: (path, side, startLine, endLine) => rpc.call("hunk_explain", { ticketId: subjectId, path, side, startLine, endLine }),
       },
     }),
-    [rpc, subjectId, prTicketId, reviewSubjectId, canPostToGithub, defaultCommentTarget, refetch],
+    [rpc, subjectId, prTicketId, reviewSubjectId, canPostToGithub, defaultCommentTarget, planTicketId, refetch],
   );
 }
 
@@ -212,18 +225,21 @@ function RereviewDeltaButton({ ticket }: { ticket: Ticket }) {
 /** A card's (or a bare thread's) changes in the shared diff view, with the board's comment routing and reviews. */
 export function KanbanDiffView({
   subjectId,
+  plan = false,
   onBack,
   onOpenThread,
   onOpenTicket,
 }: {
   subjectId: string;
+  /** Opened from the handoff brief's reading plan: the narrative shows only the plan's files. */
+  plan?: boolean;
   onBack: () => void;
   onOpenThread: (threadId: string) => void;
   onOpenTicket: (ticketId: string) => void;
 }) {
   const { board, refetch } = useBoard();
   const ticket = findDiffSubjectTicket(board, subjectId);
-  const source = useKanbanDiffSource(subjectId, ticket, refetch, onOpenTicket);
+  const source = useKanbanDiffSource(subjectId, ticket, plan, refetch, onOpenTicket);
   const rpc = useRpc<typeof rpcContract>();
   const [boardChanges, setBoardChanges] = useState(0);
   useRealtime(BOARD_CHANGED, () => setBoardChanges((count) => count + 1));
@@ -244,7 +260,7 @@ export function KanbanDiffView({
       onOpenThread={onOpenThread}
       refreshSignal={boardChanges}
       labels={KANBAN_DIFF_LABELS}
-      toolbar={ticket === null ? undefined : <HandoffStrip ticket={ticket} rpc={rpc} onOpenThread={onOpenThread} />}
+      toolbar={ticket === null ? undefined : <HandoffStrip ticket={ticket} rpc={rpc} plan={plan} onOpenThread={onOpenThread} />}
       renderSubmitBar={(pending) => <KanbanSubmitBar subjectId={subjectId} pending={pending} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
       // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}
@@ -252,10 +268,18 @@ export function KanbanDiffView({
   );
 }
 
-/** `diff/<cardId>` → card id; `diff/thread/<threadId>` → `thread:<threadId>`. Decodes in case the host escaped the path. */
+const PLAN_SUFFIX = "/plan";
+
+/** `diff/<cardId>/plan` opens a card's changes at its reading plan. */
+export function diffPlanFromSubPath(subPath: string): boolean {
+  return subPath.startsWith("diff/") && !subPath.startsWith("diff/thread/") && subPath.endsWith(PLAN_SUFFIX);
+}
+
+/** `diff/<cardId>` (or `diff/<cardId>/plan`) → card id; `diff/thread/<threadId>` → `thread:<threadId>`. Decodes in case the host escaped the path. */
 export function diffSubjectFromSubPath(subPath: string): string | null {
   if (!subPath.startsWith("diff/")) return null;
-  const rest = decodeURIComponent(subPath.slice("diff/".length));
+  const path = diffPlanFromSubPath(subPath) ? subPath.slice(0, -PLAN_SUFFIX.length) : subPath;
+  const rest = decodeURIComponent(path.slice("diff/".length));
   if (rest.startsWith("thread/")) return `${THREAD_SUBJECT_PREFIX}${rest.slice("thread/".length)}`;
   return rest;
 }

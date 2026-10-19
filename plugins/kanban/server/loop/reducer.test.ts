@@ -98,10 +98,33 @@ describe("loop reducer", () => {
     expect(uncovered.state.attention).toEqual({ level: "read", reasons: ["risk 2: src/a.ts", "1 thing the checks don't cover"] });
   });
 
+  it("requests the reading plan's narrative at Needs you only at Read or Scrutinize", () => {
+    const glance = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    expect(glance.state.attention?.level).toBe("glance");
+    expect(glance.actions[5]).toEqual([{ type: "move", column: "review" }]);
+    const scrutinize = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(5), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    expect(scrutinize.actions[5]).toEqual([{ type: "move", column: "review" }, { type: "spawn-narrative" }]);
+  });
+
+  it("holds a level the user set, with the reason, until the head moves", () => {
+    const glance = [{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])] satisfies LoopEvent[];
+    const raised = run([...glance, { type: "set-level", level: "scrutinize", reason: "touches the token store" }]);
+    const override = { level: "scrutinize", reason: "touches the token store", from: "glance", commit: sha };
+    expect(raised.state).toMatchObject({ phase: "needs-you", levelOverride: override, levelOverrides: [override] });
+    expect(raised.actions.at(-1)).toEqual([{ type: "spawn-narrative" }]);
+    expect(run([...glance, { type: "set-level", level: "glance", reason: "docs only" }]).actions.at(-1)).toEqual([]);
+
+    // A send-back's next ready at a new commit undoes it; the reason stays for tuning.
+    const moved = run([{ type: "send-back", comments: 1 }, ready(fixSha)], raised.state);
+    expect(moved.state).toMatchObject({ levelOverride: null, levelOverrides: [override] });
+    // Outside Needs you there is no level to correct.
+    expect(run([{ type: "set-level", level: "read", reason: "x" }], moved.state).state.levelOverride).toBeNull();
+  });
+
   it("moves a clean first review to Needs you as clean", () => {
     const { state, actions } = run([...reviewing, reviewed("rev1", [])]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 0, rounds: [] });
-    expect(actions[5]).toEqual([{ type: "move", column: "review" }]);
+    expect(actions[5]).toEqual([{ type: "move", column: "review" }, { type: "spawn-narrative" }]);
   });
 
   it("hands only the findings triaged apply to the card's thread, whatever their severity", () => {
@@ -147,7 +170,7 @@ describe("loop reducer", () => {
     const { state, actions } = run(threeRounds([finding("F1", "important"), finding("F2", "minor")]));
     expect(state).toMatchObject({ phase: "needs-you", reason: "cap", round: 3, openFindings: [] });
     expect(state.rounds.map((round) => round.reviewId)).toEqual(["rev1", "rev2", "rev3"]);
-    expect(actions.at(-1)).toEqual([{ type: "move", column: "review" }]);
+    expect(actions.at(-1)).toEqual([{ type: "move", column: "review" }, { type: "spawn-narrative" }]);
   });
 
   it("ends clean at the cap when only minor findings are open, listing them", () => {
@@ -204,7 +227,7 @@ describe("loop reducer", () => {
     ]);
     expect(actions[5]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error", failedThreadId: "thr_r2" });
-    expect(actions[7]).toEqual([{ type: "move", column: "review" }]);
+    expect(actions[7]).toEqual([{ type: "move", column: "review" }, { type: "spawn-narrative" }]);
   });
 
   it("sends a single failure back to the card's thread with the output, spending no review", () => {

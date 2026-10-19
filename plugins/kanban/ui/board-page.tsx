@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { ticketHasDiff, useBoard, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { localDay } from "./format";
 import { pageUi, usePageUi, TICKET_TAB } from "./page-state";
-import { KanbanDiffView, diffSubjectFromSubPath } from "./diff-page";
+import { KanbanDiffView, diffPlanFromSubPath, diffSubjectFromSubPath } from "./diff-page";
 import { type DropTarget, ColumnView } from "./column";
 import { NewTicketDialog } from "./new-ticket-dialog";
 import { TicketDialog } from "./ticket-details";
@@ -276,7 +276,8 @@ export function BoardPage({ subPath }: { subPath: string }) {
   useBoardKeys(view === "todo" ? todoRef : boardRef, diffTicketId === null && !proposalsList && proposalId === null && board !== null, runCommand, () => view === "todo" && (todoKeys.current?.leaveInput() ?? false));
 
   if (diffTicketId !== null) {
-    return <KanbanDiffView key={diffTicketId} subjectId={diffTicketId} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} onOpenTicket={showTicket} />;
+    const plan = diffPlanFromSubPath(trimmed);
+    return <KanbanDiffView key={`${diffTicketId}:${plan}`} subjectId={diffTicketId} plan={plan} onBack={() => navigate.toPluginPanel("board", { subPath: "" })} onOpenThread={openThread} onOpenTicket={showTicket} />;
   }
   if (proposalsList) {
     return (

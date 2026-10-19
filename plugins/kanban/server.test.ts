@@ -9,6 +9,7 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
+import type { ReadingPlan } from "./shared/reading-plan";
 import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
 import { phaseChip } from "./shared/loop";
 
@@ -2066,6 +2067,33 @@ describe("monitored review loop", () => {
     expect(await card()).toMatchObject({ columnId: "review", loop: { phase: "accepted" } });
     expect((await current().harness.behavior.runCli(["landed"], ctx("thr_1"))).exitCode).toBe(0);
     expect(await card()).toMatchObject({ columnId: "done", loop: { phase: "landed" } });
+  });
+
+  it("requests the narrative at Scrutinize and holds Accept until the reading plan's files are viewed", async () => {
+    await monitoredCard();
+    const patch = "diff --git a/cache.ts b/cache.ts\n--- a/cache.ts\n+++ b/cache.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    current().harness.sdk.stub("environments.diff", async () => ({ outcome: "available", diff: { diff: patch, mergeBaseRef: null, truncated: false } }));
+    await ready();
+    await recordChecks("thr_2", 0);
+    await classify("thr_3", 5);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.any(String) }));
+    await completeReview("thr_4", reviewBody(sha, []), sha);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "needs-you", attention: { level: "scrutinize" } }));
+    await vi.waitFor(() => expect(spawned.some((args) => String(args.title).startsWith("Narrative"))).toBe(true));
+    const ticket = await card();
+
+    const plan = (await current().harness.behavior.callRpc("loop_reading_plan", { id: ticket.id })) as ReadingPlan;
+    expect(plan).toMatchObject({ level: "scrutinize", gated: true, unviewed: ["cache.ts"], source: "classify" });
+    await expect(current().harness.behavior.callRpc("loop_accept", { id: ticket.id })).rejects.toThrow(/1 still isn't: cache.ts/u);
+
+    // Lowered with a reason, the gate lifts; the reason is kept.
+    await current().harness.behavior.callRpc("loop_set_level", { id: ticket.id, level: "read", reason: "only a rename" });
+    expect((await card()).loop).toMatchObject({ levelOverride: { level: "read", from: "scrutinize", reason: "only a rename" } });
+    expect(((await current().harness.behavior.callRpc("loop_reading_plan", { id: ticket.id })) as ReadingPlan).gated).toBe(false);
+    await current().harness.behavior.callRpc("loop_set_level", { id: ticket.id, level: "scrutinize", reason: "on second look" });
+    await current().harness.behavior.callRpc("diff_viewed_set", { ticketId: ticket.id, path: "cache.ts", viewed: true });
+    await current().harness.behavior.callRpc("loop_accept", { id: ticket.id });
+    expect((await card()).loop).toMatchObject({ phase: "accepted" });
   });
 
   it("sends the unsent diff comments to the card's thread as the user's round, and marks them addressed at its next ready", async () => {

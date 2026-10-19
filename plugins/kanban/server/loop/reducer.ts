@@ -4,9 +4,11 @@ import { COLUMN } from "../../shared/columns";
 import {
   DEPTH_FOR_LEVEL,
   LOOP_ROUND_CAP,
+  effectiveLevel,
   fixingRound,
   unansweredFindings,
   workingPhase,
+  type AttentionLevel,
   type CheckCommand,
   type Classification,
   type Evidence,
@@ -57,7 +59,9 @@ export type LoopEvent =
   | { type: "rethink" }
   /** The user pulls a finding of the last review that triage deferred or dropped back in. */
   | { type: "pull-in"; findingId: string }
-  | { type: "decide-dispute"; findingId: string; decision: "uphold" | "close" };
+  | { type: "decide-dispute"; findingId: string; decision: "uphold" | "close" }
+  /** The user sets the attention level at Needs you, overriding the computed one until the head moves. */
+  | { type: "set-level"; level: AttentionLevel; reason: string };
 
 /** What the card's thread is told; the service words it. */
 export type CardPrompt =
@@ -85,7 +89,9 @@ export type LoopAction =
   /** The card's thread committed its answer to a fix round's findings; the disputed ones stay open. */
   | { type: "record-fix"; reviewId: string; commit: string; findingIds: string[]; disputed: string[] }
   /** The fix round ended unfixed, its findings left open. */
-  | { type: "end-fix"; reviewId: string; findingIds: string[] };
+  | { type: "end-fix"; reviewId: string; findingIds: string[] }
+  /** The narrative the reading plan steps through; the service skips it when one is current. */
+  | { type: "spawn-narrative" };
 
 export interface LoopStep {
   state: LoopState;
@@ -94,8 +100,17 @@ export interface LoopStep {
 
 const stay = (state: LoopState): LoopStep => ({ state, actions: [] });
 
+/** Levels the reading plan needs a narrative for; it costs too much to spawn for a Glance. */
+const narrated = (level: AttentionLevel | null): boolean => level === "read" || level === "scrutinize";
+
+/** Kept so a long-lived card's state stays small. */
+const LEVEL_OVERRIDES_KEPT = 20;
+
 function needsYou(state: LoopState, reason: NeedsYouReason): LoopStep {
-  return { state: { ...state, phase: "needs-you", reason }, actions: [{ type: "move", column: COLUMN.review }] };
+  return {
+    state: { ...state, phase: "needs-you", reason },
+    actions: [{ type: "move", column: COLUMN.review }, ...(narrated(effectiveLevel(state)) ? [{ type: "spawn-narrative" as const }] : [])],
+  };
 }
 
 /** Stopped for the user, who can accept, send back, rethink or settle findings. */
@@ -271,7 +286,19 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       if (unansweredFindings(state).length > 0) return stay(state);
       const handed = fixingRound(state);
       return {
-        state: { ...state, phase: "checking", reason: null, pausedPhase: null, retries: 0, failedThreadId: null, commit: event.commit, evidence: event.evidence, checkCommand: event.checkCommand, openFindings: [] },
+        state: {
+          ...state,
+          phase: "checking",
+          reason: null,
+          pausedPhase: null,
+          retries: 0,
+          failedThreadId: null,
+          commit: event.commit,
+          evidence: event.evidence,
+          checkCommand: event.checkCommand,
+          openFindings: [],
+          levelOverride: state.levelOverride?.commit === event.commit ? state.levelOverride : null,
+        },
         actions: [
           ...(handed === undefined
             ? []
@@ -347,7 +374,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
     case "rethink":
       if (!waiting(state)) return stay(state);
       return {
-        state: { ...state, phase: "building", reason: null, round: 0, rounds: [], reviewId: null, attention: null, classification: null, openFindings: [], disputes: [], heldFindings: [] },
+        state: { ...state, phase: "building", reason: null, round: 0, rounds: [], reviewId: null, attention: null, levelOverride: null, classification: null, openFindings: [], disputes: [], heldFindings: [] },
         actions: [
           { type: "move", column: COLUMN.inProgress },
           { type: "prompt-card", prompt: { kind: "rethink" } },
@@ -359,5 +386,13 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
     case "decide-dispute":
       if (!waiting(state)) return stay(state);
       return decideDispute(state, event.findingId, event.decision);
+    case "set-level": {
+      if (!waiting(state)) return stay(state);
+      const override = { level: event.level, reason: event.reason, from: state.attention?.level ?? null, commit: state.commit };
+      return {
+        state: { ...state, levelOverride: override, levelOverrides: [...state.levelOverrides, override].slice(-LEVEL_OVERRIDES_KEPT) },
+        actions: narrated(event.level) ? [{ type: "spawn-narrative" }] : [],
+      };
+    }
   }
 }

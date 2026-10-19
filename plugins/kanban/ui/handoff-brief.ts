@@ -1,4 +1,4 @@
-import { LOOP_ROUND_CAP, NEEDS_YOU_REASON_LABEL, type AttentionLevel, type CheckCommand, type ChecksOutcome, type Evidence, type LoopDispute, type LoopFinding, type LoopState } from "../shared/loop";
+import { LOOP_ROUND_CAP, NEEDS_YOU_REASON_LABEL, effectiveLevel, type AttentionLevel, type LevelOverride, type CheckCommand, type ChecksOutcome, type Evidence, type LoopDispute, type LoopFinding, type LoopState } from "../shared/loop";
 import { findingTallies, type Dispute, type Finding, type FindingSeverity, type Review, type ReviewReport } from "../shared/review";
 
 export type BriefReview = Pick<Review, "id" | "status" | "createdAt" | "report">;
@@ -24,7 +24,8 @@ export interface BriefRound {
 }
 
 export type BriefSection =
-  | { kind: "level"; level: AttentionLevel | null; reasons: string[]; escalation: string | null; failedThreadId: string | null }
+  /** `reasons` are the computed level's; `override` is the level the user set over it. */
+  | { kind: "level"; level: AttentionLevel | null; reasons: string[]; override: LevelOverride | null; escalation: string | null; failedThreadId: string | null }
   /** `known` is false when no review ran, so nobody listed the gaps. */
   | { kind: "not-covered"; items: string[]; known: boolean }
   | { kind: "evidence"; reran: Array<ChecksOutcome & { command: string | null }>; reranBy: CheckCommand["source"] | null; claimed: Evidence["commands"]; screenshots: string[] }
@@ -90,8 +91,9 @@ export function handoffBrief(loop: LoopState | null, reviews: readonly BriefRevi
   const reason = escalation(loop, report);
   sections.push({
     kind: "level",
-    level: loop.attention?.level ?? null,
+    level: effectiveLevel(loop),
     reasons: loop.attention?.reasons ?? [],
+    override: loop.levelOverride,
     escalation: reason,
     failedThreadId: loop.phase === "needs-you" && loop.reason === "loop-error" ? loop.failedThreadId : null,
   });

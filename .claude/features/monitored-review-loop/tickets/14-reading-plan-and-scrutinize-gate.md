@@ -11,10 +11,10 @@ At Scrutinize, Accept stays disabled until every file in the plan is marked View
 
 **Blocked by:** 12 — Handoff brief; the narrative code review's stepper (other thread) being on main.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The reading plan opens the stepper with the level's filter, using per-step file refs and the reading order's role and risk.
-- [ ] At Scrutinize, Accept shows how many plan files are still unviewed, and enables when none are.
-- [ ] Changing the level asks for a reason, recomputes the plan and the gate, and is undone when the head moves.
-- [ ] Without a narrative yet, the plan falls back to the tour's reading order list.
-- [ ] Keyboard paths exist for opening the plan and changing the level.
+- [x] The reading plan opens the stepper with the level's filter, using per-step file refs and the reading order's role and risk.
+- [x] At Scrutinize, Accept shows how many plan files are still unviewed, and enables when none are.
+- [x] Changing the level asks for a reason, recomputes the plan and the gate, and is undone when the head moves.
+- [x] Without a narrative yet, the plan falls back to the tour's reading order list.
+- [x] Keyboard paths exist for opening the plan and changing the level.

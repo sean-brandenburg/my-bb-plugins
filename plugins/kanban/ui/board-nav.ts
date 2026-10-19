@@ -70,7 +70,7 @@ export type CardCommand =
   | { kind: "close" }
   | { kind: "scroll"; direction: 1 | -1 };
 
-export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "uphold" | "close-dispute";
+export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "uphold" | "close-dispute" | "open-plan" | "change-level";
 
 /** The brief actions that act on the finding under the cursor rather than the whole card. */
 export const FINDING_ACTIONS: ReadonlySet<BriefAction> = new Set(["pull-in", "uphold", "close-dispute"]);
@@ -99,6 +99,8 @@ export const CARD_KEYMAP: Keymap<CardCommand> = {
   p: { kind: "brief", action: "pull-in" },
   u: { kind: "brief", action: "uphold" },
   c: { kind: "brief", action: "close-dispute" },
+  P: { kind: "brief", action: "open-plan" },
+  L: { kind: "brief", action: "change-level" },
   "?": { kind: "help" },
   "<Esc>": { kind: "close" },
   "<C-d>": { kind: "scroll", direction: 1 },
@@ -169,6 +171,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["R"], action: "Handoff brief: stop the loop and have the card's thread rethink the approach" },
       { keys: ["p"], action: "Handoff brief, on a deferred or dropped finding: pull it back in to fix" },
       { keys: ["u", "c"], action: "Handoff brief, on a dispute: uphold it, sending it to fix, or close it" },
+      { keys: ["P"], action: "Handoff brief: open the reading plan, in the narrative stepper when there is one" },
+      { keys: ["L"], action: "Handoff brief: change the attention level, with a reason; h/l choose it, Enter saves" },
       { keys: ["h", "l", "Enter"], action: "On the review depth picker: choose Quick, Standard or Deep, then start the review" },
     ],
   },

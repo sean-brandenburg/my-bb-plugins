@@ -172,6 +172,14 @@ its PR is reviewed and its review findings and comments are handed to agents.
   ready; Pull in (`p`) sends a deferred or dropped finding to fix; Uphold
   (`u`) or Close (`c`) settles a rejected dispute, and once no serious one is
   left the upheld ones go to fix. Rounds you start never count toward the cap.
+  The brief ends with a reading plan: none at Glance (the evidence and
+  not-covered list are the plan), key files at Read, key and supporting files
+  at Scrutinize, mechanical files collapsed. Reaching Needs you at Read or
+  Scrutinize requests a narrative; Reading plan (`P`) opens its stepper cut
+  down to the plan's files, or the changes view when there is none yet. At
+  Scrutinize Accept stays disabled, counting the plan files not yet marked
+  Viewed. Change level (`L`) sets the level with a reason; it holds until
+  the card's next ready at a new commit, and the reason is kept.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against

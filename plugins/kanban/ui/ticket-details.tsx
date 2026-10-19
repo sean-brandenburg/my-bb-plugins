@@ -433,6 +433,8 @@ function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (t
           ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
           : loop.phase === "needs-you" && loop.openFindings.length > 0
             ? `Clean at the round cap with ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`
+          : loop.phase === "needs-you" && loop.levelOverride !== null
+            ? `${ATTENTION_LEVEL_LABEL[loop.levelOverride.level]}: you set it, ${loop.levelOverride.reason}`
           : loop.phase === "needs-you" && loop.attention !== null
             ? `${ATTENTION_LEVEL_LABEL[loop.attention.level]}: ${loop.attention.reasons.join("; ")}`
             : last !== undefined
