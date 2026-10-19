@@ -50,7 +50,7 @@ export function withLoopColumns(columns: Column[]): Column[] {
 }
 
 /** Tables whose rows belong to one card through `ticket_id` and go with it when it's deleted. */
-const TICKET_TABLES = ["reviews", "pr_comments", "comment_applies", "diff_comments", "diff_viewed", "narratives", "hunk_explanations", "checks_runs"] as const;
+const TICKET_TABLES = ["reviews", "pr_comments", "comment_applies", "diff_comments", "diff_viewed", "narratives", "hunk_explanations", "checks_runs", "classify_runs"] as const;
 /** How long a deleted card can still be put back. */
 const DELETED_KEPT_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -280,6 +280,7 @@ export function createBoardStore(ctx: KanbanContext) {
       stmts.deleteNarrativesForTicket.run(id);
       stmts.deleteExplanationsForTicket.run(id);
       stmts.deleteChecksRunsForTicket.run(id);
+      stmts.deleteClassifyRunsForTicket.run(id);
       stmts.remove.run(id);
       return true;
     })();

@@ -28,7 +28,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     if (thread.activeBackgroundAgentCount > 0) return;
     if (dumps.handleIdle(thread.id, lastAssistantText)) return;
     if (tour.handleIdle(thread.id, lastAssistantText)) return;
-    if (loop.handleIdle(thread.id)) return;
+    if (loop.handleIdle(thread.id, lastAssistantText)) return;
     if (reviews.handleIdle(thread.id, lastAssistantText)) void loop.reviewFinished(thread.id);
   });
 

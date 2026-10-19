@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PullRequest } from "../../shared/board";
-import type { ChecksRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
+import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
 
 export type KanbanDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
@@ -96,6 +96,14 @@ export function prepareStatements(db: KanbanDatabase) {
     ),
     failChecksRun: db.prepare<[number, string]>(`UPDATE checks_runs SET status = 'failed', completed_at = ? WHERE id = ? AND status = 'running'`),
     deleteChecksRunsForTicket: db.prepare<[string]>(`DELETE FROM checks_runs WHERE ticket_id = ?`),
+    insertClassifyRun: db.prepare<[{ id: string; ticket_id: string; thread_id: string; commit_sha: string; created_at: number }]>(
+      `INSERT INTO classify_runs (id, ticket_id, thread_id, commit_sha, status, created_at) VALUES (@id, @ticket_id, @thread_id, @commit_sha, 'running', @created_at)`,
+    ),
+    classifyRunByThread: db.prepare<[string], ClassifyRunRow>(`SELECT * FROM classify_runs WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`),
+    finishClassifyRun: db.prepare<[ClassifyRunRow["status"], string | null, number, string]>(
+      `UPDATE classify_runs SET status = ?, body = ?, completed_at = ? WHERE id = ? AND status = 'running'`,
+    ),
+    deleteClassifyRunsForTicket: db.prepare<[string]>(`DELETE FROM classify_runs WHERE ticket_id = ?`),
     moveColumn: db.prepare<[string, number, number, string]>(
       `UPDATE tickets SET column_id = ?, column_entered_at = ?, updated_at = ? WHERE column_id = ?`,
     ),
@@ -124,7 +132,8 @@ export function prepareStatements(db: KanbanDatabase) {
        UNION SELECT thread_id FROM comment_applies
        UNION SELECT thread_id FROM narratives
        UNION SELECT thread_id FROM hunk_explanations
-       UNION SELECT thread_id FROM checks_runs`,
+       UNION SELECT thread_id FROM checks_runs
+       UNION SELECT thread_id FROM classify_runs`,
     ),
     reviewByThread: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1`,

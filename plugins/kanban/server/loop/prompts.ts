@@ -88,3 +88,34 @@ export function checksPrompt(ticket: Ticket, commit: string, command: string): s
     `This checks run belongs to kanban ticket ${ticket.id}.`,
   ].join("\n");
 }
+
+/**
+ * A short hidden thread that scores each changed file's risk, cheaply and before the first review, so the attention
+ * level can pick the review's depth. `defaultBranch` is a local card's base; a PR card's comes from GitHub.
+ */
+export function classifyPrompt(ticket: Ticket, commit: string, defaultBranch: string | null): string {
+  const { preamble, steps } = commitCheckout(ticket, commit);
+  const pr = ticket.pr;
+  const base =
+    pr === null
+      ? { steps: [], range: `${defaultBranch}...HEAD` }
+      : { steps: [`\`BASE=$(gh pr view ${pr.number} --repo ${pr.repo} --json baseRefName --jq .baseRefName)\` and \`git fetch origin "$BASE"\``], range: "origin/$BASE...HEAD" };
+  return [
+    `Score the risk of each file changed by "${ticket.title}" at commit ${commit}. The board uses the scores to decide how deep its code review goes; this is a quick triage, not a review, so don't look for bugs.`,
+    "",
+    preamble,
+    ...[
+      ...steps,
+      ...base.steps,
+      `\`git diff --numstat ${base.range}\` lists the changed files with the lines added and removed; skim \`git diff ${base.range}\` for what each change does.`,
+      "Give every changed file a risk from 1 to 5: 1 mechanical (renames, formatting, generated files, lockfiles), 2 low (docs, tests, simple glue), 3 ordinary logic, 4 logic that is easy to get subtly wrong (state, concurrency, persistence, public APIs), 5 security-, data- or money-sensitive (auth, tokens, permissions, migrations, billing, installers, CI workflows). Give it a role: key (what the change is about), supporting (follows from the key files) or mechanical.",
+    ].map((step, index) => `${index + 1}. ${step}`),
+    "",
+    "Rules: do not change, commit or push code, and do not post on GitHub. End your final message with this block, one entry per changed file, `lines` being added plus removed and `note` a few words on why it scored that risk:",
+    "",
+    "```json kanban-classify",
+    '{"files":[{"path":"src/auth/token.ts","risk":5,"role":"key","lines":42,"note":"token refresh"}]}',
+    "```",
+    `This classify run belongs to kanban ticket ${ticket.id}.`,
+  ].join("\n");
+}

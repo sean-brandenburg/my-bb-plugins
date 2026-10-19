@@ -52,6 +52,18 @@ export interface TicketRow {
   updated_at: number;
 }
 
+export interface ClassifyRunRow {
+  id: string;
+  ticket_id: string;
+  thread_id: string;
+  commit_sha: string;
+  status: "running" | "completed" | "failed";
+  /** The thread's final message, kept for a look at what it scored. */
+  body: string | null;
+  created_at: number;
+  completed_at: number | null;
+}
+
 export interface ChecksRunRow {
   id: string;
   ticket_id: string;

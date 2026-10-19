@@ -4,7 +4,7 @@ import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sour
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
-import { projectSettingsSchema } from "./shared/loop";
+import { pathRuleSchema, projectSettingsSchema } from "./shared/loop";
 import { DEFAULT_REVIEW_DEPTH, findingEditSchema, reviewDepthSchema, reviewSchema } from "./shared/review";
 import { codeReviewThreadSchema, hunkExplanationSchema, narrativeSchema, narrativeStorySchema } from "./shared/tour";
 
@@ -136,6 +136,11 @@ export const rpcContract = defineRpcContract({
   /** The project's check command, which monitored cards' checks re-run; null leaves the choice to each card's agent. */
   project_set_check_command: {
     input: z.object({ projectId: z.string(), checkCommand: z.string().trim().max(2000).nullable() }).strict(),
+    output: projectSettingsSchema,
+  },
+  /** Globs whose changed files get at least the given attention level, and so a review at least that deep. */
+  project_set_path_rules: {
+    input: z.object({ projectId: z.string(), pathRules: z.array(pathRuleSchema).max(50) }).strict(),
     output: projectSettingsSchema,
   },
   diff_get: {

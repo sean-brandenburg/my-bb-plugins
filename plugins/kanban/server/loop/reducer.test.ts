@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_LOOP_STATE, type FindingAnswer, type LoopState } from "../../shared/loop";
+import { INITIAL_LOOP_STATE, type FindingAnswer, type LoopState, type PathRule } from "../../shared/loop";
 import { reduce, type LoopAction, type LoopEvent, type ReviewedFinding } from "./reducer";
 
 const sha = "0123456789abcdef0123456789abcdef01234567";
@@ -19,6 +19,7 @@ const finding = (
   severity,
   title: `Finding ${id}`,
   preExisting,
+  category: null,
   triage: decision === null ? null : { decision },
   ...carried,
 });
@@ -28,9 +29,11 @@ const carried = (id: string, severity: ReviewedFinding["severity"], handle: stri
 const answer = (answers: Record<string, FindingAnswer>): LoopEvent => ({ type: "answer", answers });
 const fixed = { answer: "fixed" } as const;
 const disputed = { answer: "disputed", reason: "The cache is per-request" } as const;
-const reviewed = (reviewId: string, findings: ReviewedFinding[]): LoopEvent => ({ type: "review-completed", reviewId, findings });
-/** A monitored card whose first ready commit passed its checks and whose review `rev1` started. */
-const reviewing: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), { type: "review-started", reviewId: "rev1" }];
+const reviewed = (reviewId: string, findings: ReviewedFinding[], notCovered: string[] = []): LoopEvent => ({ type: "review-completed", reviewId, findings, notCovered, pathRules: [] });
+const file = (path: string, risk: number, lines = 10) => ({ path, risk, role: "key" as const, lines, note: "" });
+const classified = (risk = 2, pathRules: PathRule[] = []): LoopEvent => ({ type: "classified", commit: sha, classification: { files: [file("src/a.ts", risk)] }, pathRules });
+/** A monitored card whose first ready commit passed its checks, was classified, and whose review `rev1` started. */
+const reviewing: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), classified(3), { type: "review-started", reviewId: "rev1" }];
 /** One fix round on top of `events`: the card's thread reports the fix ready, it passes its checks, and review `reviewId` starts. */
 const fixedAndReviewing = (commit: string, reviewId: string): LoopEvent[] => [ready(commit), checks(0, commit), { type: "review-started", reviewId }];
 
@@ -65,27 +68,47 @@ describe("loop reducer", () => {
     ]);
   });
 
-  it("reviews a commit that passes its checks, in full and at the loop's depth", () => {
-    const { state, actions } = run([{ type: "monitor", hasThread: true }, ready(), checks(0)]);
-    expect(state).toMatchObject({ phase: "reviewing", round: 0, checks: [{ commit: sha, exitCode: 0, passed: true }] });
-    expect(actions[2]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
+  it("classifies a commit that passes its first checks, then reviews it in full at the depth its attention level picks", () => {
+    const start: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0)];
+    const checked = run(start);
+    expect(checked.state).toMatchObject({ phase: "classifying", round: 0, checks: [{ commit: sha, exitCode: 0, passed: true }] });
+    expect(checked.actions[2]).toEqual([{ type: "spawn-classify", commit: sha }]);
 
-    expect(run([{ type: "monitor", hasThread: true }, ready(), checks(0)], { ...INITIAL_LOOP_STATE, depth: "deep" }).actions[2]).toEqual([
-      { type: "spawn-review", commit: sha, mode: "full", depth: "deep", answers: {} },
-    ]);
+    const glance = run([...start, classified(2)]);
+    expect(glance.state).toMatchObject({ phase: "reviewing", depth: "quick", attention: { level: "glance" } });
+    expect(glance.actions[3]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "quick", answers: {} }]);
+    expect(run([...start, classified(3)]).actions[3]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
+    // A path rule raises a low-risk change to Scrutinize, which adds the security review.
+    expect(run([...start, classified(1, [{ glob: "src/**", level: "scrutinize" }])]).actions[3]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "deep", answers: {} }]);
+  });
+
+  it("retries a classify thread that failed once, then reviews without the scores at Standard", () => {
+    const failed = (threadId: string): LoopEvent => ({ type: "thread-failed", role: "classify", commit: sha, threadId });
+    const start: LoopEvent[] = [{ type: "monitor", hasThread: true }, ready(), checks(0), failed("thr_k1")];
+    const { state, actions } = run([...start, failed("thr_k2")]);
+    expect(actions[3]).toEqual([{ type: "spawn-classify", commit: sha }]);
+    expect(state).toMatchObject({ phase: "reviewing", classification: null, attention: { level: "read" }, depth: "standard", retries: 0 });
+    expect(actions[4]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
+  });
+
+  it("recomputes the level when the loop stops, with what the rounds and the last review showed", () => {
+    const quiet = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [])]);
+    expect(quiet.state).toMatchObject({ phase: "needs-you", reason: "clean", attention: { level: "glance" } });
+    const uncovered = run([{ type: "monitor", hasThread: true }, ready(), checks(0), classified(2), { type: "review-started", reviewId: "rev1" }, reviewed("rev1", [], ["the drag preview"])]);
+    expect(uncovered.state.attention).toEqual({ level: "read", reasons: ["risk 2: src/a.ts", "1 thing the checks don't cover"] });
   });
 
   it("moves a clean first review to Needs you as clean", () => {
     const { state, actions } = run([...reviewing, reviewed("rev1", [])]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 0, rounds: [] });
-    expect(actions[4]).toEqual([{ type: "move", column: "review" }]);
+    expect(actions[5]).toEqual([{ type: "move", column: "review" }]);
   });
 
   it("hands only the findings triaged apply to the card's thread, whatever their severity", () => {
     const findings = [finding("F1", "minor"), finding("F2", "critical", "defer"), finding("F3", "important", "drop"), finding("F4", "important", "apply", true), finding("F5", "minor", null)];
     const { state, actions } = run([...reviewing, reviewed("rev1", findings)]);
     expect(state).toMatchObject({ phase: "fixing", round: 1, reviewId: "rev1", rounds: [{ reviewId: "rev1", handed: ["F1"] }] });
-    expect(actions[4]).toEqual([
+    expect(actions[5]).toEqual([
       { type: "move", column: "in-progress" },
       { type: "prompt-card", prompt: { kind: "fix", round: 1, reviewId: "rev1", findingIds: ["F1"] } },
     ]);
@@ -96,12 +119,12 @@ describe("loop reducer", () => {
 
   it("checks and incrementally re-reviews the fix, then ends clean", () => {
     const { state, actions } = run([...reviewing, reviewed("rev1", [finding("F1", "important")]), answer({ F1: fixed }), ...fixedAndReviewing(fixSha, "rev2"), reviewed("rev2", [])]);
-    expect(actions[6]).toEqual([
+    expect(actions[7]).toEqual([
       { type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] },
       { type: "move", column: "checking" },
       { type: "spawn-checks", commit: fixSha, checkCommand: { command: "pnpm check", source: "project" } },
     ]);
-    expect(actions[7]).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard", answers: { "rev1/F1": fixed } }]);
+    expect(actions[8]).toEqual([{ type: "spawn-review", commit: fixSha, mode: "incremental", depth: "standard", answers: { "rev1/F1": fixed } }]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "clean", round: 1, commit: fixSha });
   });
 
@@ -179,9 +202,9 @@ describe("loop reducer", () => {
       { type: "review-started", reviewId: "rev2" },
       { type: "thread-failed", role: "review", reviewId: "rev2", threadId: "thr_r2" },
     ]);
-    expect(actions[4]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
+    expect(actions[5]).toEqual([{ type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} }]);
     expect(state).toMatchObject({ phase: "needs-you", reason: "loop-error", failedThreadId: "thr_r2" });
-    expect(actions[6]).toEqual([{ type: "move", column: "review" }]);
+    expect(actions[7]).toEqual([{ type: "move", column: "review" }]);
   });
 
   it("sends a single failure back to the card's thread with the output, spending no review", () => {
@@ -223,7 +246,7 @@ describe("loop reducer", () => {
     expect(actions[3]).toEqual([{ type: "move", column: "review" }]);
 
     // A retry that succeeds leaves the next step its own retry.
-    expect(run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), checks(0), { type: "thread-failed", role: "review", reviewId: null, threadId: null }]).actions[4]).toEqual([
+    expect(run([{ type: "monitor", hasThread: true }, ready(), failed("thr_c1"), checks(0), classified(3), { type: "thread-failed", role: "review", reviewId: null, threadId: null }]).actions[5]).toEqual([
       { type: "spawn-review", commit: sha, mode: "full", depth: "standard", answers: {} },
     ]);
     // The thread of a commit since superseded failing says nothing about the current one.
@@ -245,9 +268,9 @@ describe("loop reducer", () => {
 
     it("keeps a fix round paused by a question open for its answers, and records it at the next ready", () => {
       const { state, actions } = run([...reviewing, reviewed("rev1", [finding("F1", "important")]), { type: "question" }, answer({ F1: fixed }), ready(fixSha)]);
-      expect(actions[6]).toEqual([]);
+      expect(actions[7]).toEqual([]);
       expect(state).toMatchObject({ phase: "checking", rounds: [{ reviewId: "rev1", answers: { F1: fixed } }] });
-      expect(actions[7]).toContainEqual({ type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] });
+      expect(actions[8]).toContainEqual({ type: "record-fix", reviewId: "rev1", commit: fixSha, findingIds: ["F1"], disputed: [] });
     });
 
     it("ignores a question while the board's own threads run", () => {

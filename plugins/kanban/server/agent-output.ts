@@ -1,6 +1,7 @@
 // Agents hand structured results back as a fenced ```json <tag> block at the end of their final message.
 import type { z } from "zod";
 import { proposalSchema, type Proposal } from "../shared/dump";
+import { classificationSchema, type Classification } from "../shared/loop";
 import { reviewReportSchema, type ReviewReport } from "../shared/review";
 import { narrativeReportSchema, type NarrativeReport } from "../shared/tour";
 
@@ -14,6 +15,7 @@ function fencedBlock(tag: string): RegExp {
 const REPORT_BLOCK = fencedBlock("review-findings");
 const NARRATIVE_BLOCK = fencedBlock("kanban-narrative");
 const PROPOSAL_BLOCK = fencedBlock("kanban-proposal");
+const CLASSIFY_BLOCK = fencedBlock("kanban-classify");
 
 /** The first block matching `pattern`, validated by `schema`; null when absent, not JSON, or the wrong shape. */
 function parseFencedJson<T>(body: string | null, pattern: RegExp, schema: z.ZodType<T>): T | null {
@@ -39,4 +41,8 @@ export function parseReviewReport(body: string | null): ReviewReport | null {
 
 export function parseProposal(body: string | null): Proposal | null {
   return parseFencedJson(body, PROPOSAL_BLOCK, proposalSchema);
+}
+
+export function parseClassification(body: string | null): Classification | null {
+  return parseFencedJson(body, CLASSIFY_BLOCK, classificationSchema);
 }

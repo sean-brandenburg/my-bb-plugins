@@ -380,7 +380,7 @@ export function createReviews(
     return { ticket: getTicket(ticket.id), created: true };
   }
 
-  return { reviewUnavailableReason, startReview, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, makeFindingCard, completeApply, setApplied };
+  return { localReviewTarget, reviewUnavailableReason, startReview, spawnApplyForReview, repairInterimReviewsOnLoad, handleIdle, listReviews, setSelection, resetSelection, editFinding, makeFindingCard, completeApply, setApplied };
 }
 
 export type Reviews = ReturnType<typeof createReviews>;

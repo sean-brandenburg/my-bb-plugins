@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_REVIEW_DEPTH, findingSeveritySchema, reviewDepthSchema } from "./review";
+import { DEFAULT_REVIEW_DEPTH, findingSeveritySchema, reviewDepthSchema, type ReviewDepth } from "./review";
 
 /** Where a monitored card is in the review loop. */
 export const loopPhaseSchema = z.enum(["idle", "planning", "building", "checking", "classifying", "reviewing", "fixing", "paused", "needs-you", "accepted", "landed"]);
@@ -33,10 +33,40 @@ export const evidenceSchema = z.object({
 });
 export type Evidence = z.infer<typeof evidenceSchema>;
 
+/** How hard the user should look at a change; it picks the depth of the loop's reviews. */
+export const attentionLevelSchema = z.enum(["glance", "read", "scrutinize"]);
+export type AttentionLevel = z.infer<typeof attentionLevelSchema>;
+
+export const ATTENTION_LEVEL_LABEL: Record<AttentionLevel, string> = { glance: "Glance", read: "Read", scrutinize: "Scrutinize" };
+
+export const DEPTH_FOR_LEVEL: Record<AttentionLevel, ReviewDepth> = { glance: "quick", read: "standard", scrutinize: "deep" };
+
+/** Changed files matching `glob` are looked at with at least `level` attention. */
+export const pathRuleSchema = z.object({ glob: z.string().trim().min(1).max(500), level: attentionLevelSchema }).strict();
+export type PathRule = z.infer<typeof pathRuleSchema>;
+
+/** Path rules as the card panel writes them: `<glob> <level>`, comma-separated. */
+export function formatPathRules(rules: PathRule[]): string {
+  return rules.map((rule) => `${rule.glob} ${rule.level}`).join(", ");
+}
+
+/** The rules of `text`, or the entry that isn't one. */
+export function parsePathRules(text: string): { rules: PathRule[] } | { invalid: string } {
+  const rules: PathRule[] = [];
+  for (const entry of text.split(",").map((part) => part.trim()).filter((part) => part !== "")) {
+    const match = /^(\S+)\s+(\S+)$/u.exec(entry);
+    const level = attentionLevelSchema.safeParse(match?.[2]?.toLowerCase());
+    if (match === null || !level.success) return { invalid: entry };
+    rules.push({ glob: match[1]!, level: level.data });
+  }
+  return { rules };
+}
+
 /** What the board knows about one project, set from the card panel. */
 export const projectSettingsSchema = z.object({
   /** Re-run by the board at every ready commit; null leaves the choice to the card's agent. */
   checkCommand: z.string().trim().min(1).max(2000).nullable().default(null),
+  pathRules: z.array(pathRuleSchema).max(50).default([]),
 });
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
 
@@ -47,6 +77,26 @@ export type CheckCommand = z.infer<typeof checkCommandSchema>;
 /** One re-run of the checks, as the loop remembers it. */
 export const checksOutcomeSchema = z.object({ commit: z.string(), exitCode: z.number().int(), passed: z.boolean() });
 export type ChecksOutcome = z.infer<typeof checksOutcomeSchema>;
+
+/** The classify thread's score of one changed file. */
+export const classifiedFileSchema = z.object({
+  path: z.string().min(1).max(1000),
+  /** 1 (mechanical) to 5 (security-, data- or money-sensitive). */
+  risk: z.number().int().min(1).max(5),
+  role: z.enum(["key", "supporting", "mechanical"]),
+  /** Lines added and removed. */
+  lines: z.number().int().min(0).default(0),
+  /** Why it scored that risk, in a few words; the attention level's reasons quote it. */
+  note: z.string().max(300).default(""),
+});
+export type ClassifiedFile = z.infer<typeof classifiedFileSchema>;
+
+/** What the classify thread hands back as a ```json kanban-classify block. */
+export const classificationSchema = z.object({ files: z.array(classifiedFileSchema).max(2000) });
+export type Classification = z.infer<typeof classificationSchema>;
+
+export const attentionSchema = z.object({ level: attentionLevelSchema, reasons: z.array(z.string()) });
+export type Attention = z.infer<typeof attentionSchema>;
 
 /** Automatic fix rounds before the loop stops for the user. */
 export const LOOP_ROUND_CAP = 3;
@@ -107,8 +157,12 @@ export const loopStateSchema = z.object({
   failedThreadId: z.string().nullable().default(null),
   /** Automatic fix rounds started; the cap counts these. */
   round: z.number().int().default(0),
-  /** The depth the loop's reviews run at. */
+  /** The depth the loop's reviews run at, picked by the attention level the first round classifies. */
   depth: reviewDepthSchema.default(DEFAULT_REVIEW_DEPTH),
+  /** The first round's file scores; null before it, or when classifying failed. */
+  classification: classificationSchema.nullable().default(null),
+  /** Set when classifying ends, and recomputed when the loop stops at Needs you after a review. */
+  attention: attentionSchema.nullable().default(null),
   /** The review running, or the one the current fix round answers. */
   reviewId: z.string().nullable().default(null),
   rounds: z.array(loopRoundSchema).default([]),
@@ -153,12 +207,16 @@ export function phaseChip(loop: LoopState): { label: string; tone: "neutral" | "
         title: recheck ? `Re-reviewing the last round's fixes at${commit}` : `Reviewing${commit} at ${loop.depth} depth`,
       };
     }
+    case "classifying":
+      return { label: "classifying", tone: "accent", title: `Scoring the risk of each file changed at${commit}, which picks the review's depth` };
     case "fixing":
       return { label: `fixing r${loop.round}`, tone: "accent", title: `The card's thread is fixing round ${loop.round}'s findings` };
     case "needs-you":
       if (loop.reason === "clean" || loop.reason === null) {
         const minors = loop.openFindings.length === 0 ? "" : `; ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} left open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`;
-        return { label: "ready", tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you` };
+        const level = loop.attention === null ? "" : ` · ${ATTENTION_LEVEL_LABEL[loop.attention.level]}`;
+        const reasons = loop.attention === null || loop.attention.reasons.length === 0 ? "" : `. ${ATTENTION_LEVEL_LABEL[loop.attention.level]}: ${loop.attention.reasons.join("; ")}`;
+        return { label: `ready${level}`, tone: "success", title: `Checked and reviewed clean at${commit}${minors}; needs you${reasons}` };
       }
       if (loop.reason === "loop-error") return { label: "stuck · loop error", tone: "danger", title: "Needs you: a checks or review thread failed twice; open it from the card" };
       return { label: `stuck · ${NEEDS_YOU_REASON_LABEL[loop.reason]}`, tone: "danger", title: `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}` };

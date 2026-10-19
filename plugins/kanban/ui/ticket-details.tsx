@@ -4,7 +4,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import { useNerdFont } from "bb-nerd-font";
 import type { Board, Column, Ticket } from "../shared/board";
-import { NEEDS_YOU_REASON_LABEL, phaseChip } from "../shared/loop";
+import { ATTENTION_LEVEL_LABEL, NEEDS_YOU_REASON_LABEL, formatPathRules, parsePathRules, phaseChip, type PathRule } from "../shared/loop";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -309,6 +309,11 @@ function TicketDetails({
             <CheckCommandEditor projectId={ticket.projectId} command={projectSettings[ticket.projectId]?.checkCommand ?? null} rpc={rpc} run={run} onLeave={keys.leave} />
           </Property>
         ) : null}
+        {monitored && ticket.projectId !== null ? (
+          <Property label="Path rules">
+            <PathRulesEditor projectId={ticket.projectId} rules={projectSettings[ticket.projectId]?.pathRules ?? []} rpc={rpc} run={run} onLeave={keys.leave} />
+          </Property>
+        ) : null}
         {ticket.pr !== null ? (
           <Property label="Author">
             <span>{ticket.pr.author || "unknown"}</span>
@@ -417,7 +422,7 @@ function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (t
   const text =
     loop.phase === "checking"
       ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
-      : loop.phase === "reviewing" || loop.phase === "fixing"
+      : loop.phase === "classifying" || loop.phase === "reviewing" || loop.phase === "fixing"
         ? (chip?.title ?? "")
         : loop.phase === "paused"
           ? "Paused: the card's thread is waiting on you; the loop resumes when it reports ready"
@@ -425,6 +430,8 @@ function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (t
           ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
           : loop.phase === "needs-you" && loop.openFindings.length > 0
             ? `Clean at the round cap with ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`
+          : loop.phase === "needs-you" && loop.attention !== null
+            ? `${ATTENTION_LEVEL_LABEL[loop.attention.level]}: ${loop.attention.reasons.join("; ")}`
             : last !== undefined
             ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
             : "Waiting for the card's thread to report ready";
@@ -466,6 +473,40 @@ function CheckCommandEditor({ projectId, command, rpc, run, onLeave }: { project
       aria-label="The project's check command"
       placeholder="The agent picks one, e.g. pnpm typecheck && pnpm test"
       title="Re-run by the board at every ready commit of a monitored card in this project"
+      className="h-7 w-full rounded-md border border-input bg-transparent px-2 font-mono text-xs placeholder:font-sans placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    />
+  );
+}
+
+/** The project's path rules, written `<glob> <level>` and comma-separated. Saves on blur; an entry that isn't a rule keeps the old ones. */
+function PathRulesEditor({ projectId, rules, rpc, run, onLeave }: { projectId: string; rules: PathRule[]; rpc: Rpc; run: RunAction; onLeave: (field: HTMLElement) => void }) {
+  const saved = formatPathRules(rules);
+  const [value, setValue] = useState(saved);
+  useEffect(() => setValue(saved), [projectId, saved]);
+  const save = () => {
+    const parsed = parsePathRules(value);
+    if ("invalid" in parsed) {
+      void run(async () => {
+        throw new Error(`"${parsed.invalid}" isn't a path rule; write a glob and glance, read or scrutinize`);
+      });
+      return;
+    }
+    if (formatPathRules(parsed.rules) === saved) return;
+    void run(() => rpc.call("project_set_path_rules", { projectId, pathRules: parsed.rules }), parsed.rules.length === 0 ? "Path rules cleared" : "Path rules saved");
+  };
+  return (
+    <input
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={save}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        onLeave(event.currentTarget);
+      }}
+      aria-label="The project's path rules"
+      placeholder="e.g. src/auth/** scrutinize, .github/** read"
+      title="Changed files matching a glob get at least its attention level, and the review at least the matching depth"
       className="h-7 w-full rounded-md border border-input bg-transparent px-2 font-mono text-xs placeholder:font-sans placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     />
   );

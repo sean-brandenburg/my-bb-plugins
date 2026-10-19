@@ -4,11 +4,12 @@ import type { BoardStore } from "../board";
 import type { CardThreads } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
 import type { KanbanContext } from "../context";
-import { rowToReview, type ChecksRunRow } from "../db/rows";
+import { parseClassification } from "../agent-output";
+import { rowToReview, type ChecksRunRow, type ClassifyRunRow } from "../db/rows";
 import type { ProjectSettingsStore } from "../project-settings";
 import type { Reviews } from "../reviews/reviews";
 import { errorMessage, shortId, threadTitle } from "../util";
-import { cardPromptText, checksPrompt, fixPromptText } from "./prompts";
+import { cardPromptText, checksPrompt, classifyPrompt, fixPromptText } from "./prompts";
 import { reduce, type CardPrompt, type LoopAction, type LoopEvent } from "./reducer";
 
 /** Thrown when a ready report can't name a check command; the CLI turns it into a hint. */
@@ -33,6 +34,7 @@ export function createLoop(
 ) {
   const { bb, stmts, publish } = ctx;
   const { getTicket } = board;
+  const pathRules = (ticketId: string) => projectSettings.projectSettings(getTicket(ticketId).projectId).pathRules;
 
   /** Reads, reduces and stores in one synchronous step, so two events for a card can't interleave; actions run after. */
   async function dispatch(ticketId: string, event: LoopEvent): Promise<void> {
@@ -62,6 +64,14 @@ export function createLoop(
         } catch (error) {
           bb.log.warn(`could not start a checks thread for ticket ${ticketId}: ${errorMessage(error)}`);
           await dispatch(ticketId, { type: "thread-failed", role: "checks", commit: action.commit, threadId: null });
+        }
+        return;
+      case "spawn-classify":
+        try {
+          await spawnClassify(getTicket(ticketId), action.commit);
+        } catch (error) {
+          bb.log.warn(`could not start a classify thread for ticket ${ticketId}: ${errorMessage(error)}`);
+          await dispatch(ticketId, { type: "thread-failed", role: "classify", commit: action.commit, threadId: null });
         }
         return;
       case "spawn-review": {
@@ -143,6 +153,23 @@ export function createLoop(
     publish();
   }
 
+  async function spawnClassify(ticket: Ticket, commit: string): Promise<void> {
+    const target = ticket.pr === null ? await reviews.localReviewTarget(ticket) : null;
+    const projectId = target?.projectId ?? ticket.projectId;
+    if (projectId === null) throw new Error("The card has no project to classify its work in");
+    const thread = await bb.sdk.threads.spawn({
+      projectId,
+      environment: await threads.freshWorktree(projectId),
+      prompt: classifyPrompt(ticket, commit, target?.subject.kind === "local" ? target.subject.defaultBranch : null),
+      title: threadTitle(`Classify ${commit.slice(0, 7)}: ${ticket.title}`),
+      ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
+      visibility: await codeReviewThreads.codeReviewThreadVisibility(),
+      pluginMetadata: { ticketId: ticket.id, role: "classify" },
+    });
+    stmts.insertClassifyRun.run({ id: shortId(), ticket_id: ticket.id, thread_id: thread.id, commit_sha: commit, created_at: Date.now() });
+    publish();
+  }
+
   async function setMonitored(ticketId: string, monitored: boolean): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     await dispatch(ticket.id, monitored ? { type: "monitor", hasThread: ticket.threadId !== null } : { type: "unmonitor" });
@@ -186,12 +213,30 @@ export function createLoop(
     await dispatch(run.ticket_id, { type: "checks-result", commit: run.commit_sha, exitCode, outputTail });
   }
 
-  /** A checks thread that goes idle without recording a result never ran the checks. */
-  function handleIdle(threadId: string): boolean {
+  /** A checks thread that goes idle without recording a result never ran the checks; a classify thread hands its scores back in its final message. */
+  function handleIdle(threadId: string, lastAssistantText: string | null): boolean {
+    const classifyRun = stmts.classifyRunByThread.get(threadId);
+    if (classifyRun !== undefined) {
+      finishClassify(classifyRun, lastAssistantText);
+      return true;
+    }
     const run = stmts.checksRunByThread.get(threadId);
     if (run === undefined) return false;
     failChecks(run);
     return true;
+  }
+
+  function finishClassify(run: ClassifyRunRow, body: string | null): void {
+    if (run.status !== "running") return;
+    const classification = parseClassification(body);
+    stmts.finishClassifyRun.run(classification === null ? "failed" : "completed", body, Date.now(), run.id);
+    publish();
+    void dispatch(
+      run.ticket_id,
+      classification === null
+        ? { type: "thread-failed", role: "classify", commit: run.commit_sha, threadId: run.thread_id }
+        : { type: "classified", commit: run.commit_sha, classification, pathRules: pathRules(run.ticket_id) },
+    );
   }
 
   /** Only a run still running counts: a retried run's old thread failing late must not count as the retry failing. */
@@ -202,8 +247,13 @@ export function createLoop(
     void dispatch(run.ticket_id, { type: "thread-failed", role: "checks", commit: run.commit_sha, threadId: run.thread_id });
   }
 
-  /** A checks or review thread that errored or was deleted never records its result. */
+  /** A checks, classify or review thread that errored or was deleted never records its result. */
   function threadFailed(threadId: string, error: string | null): void {
+    const classifyRun = stmts.classifyRunByThread.get(threadId);
+    if (classifyRun !== undefined) {
+      finishClassify(classifyRun, null);
+      return;
+    }
     const run = stmts.checksRunByThread.get(threadId);
     if (run !== undefined) {
       failChecks(run);
@@ -231,8 +281,8 @@ export function createLoop(
       await dispatch(row.ticket_id, { type: "thread-failed", role: "review", reviewId: row.id, threadId });
       return;
     }
-    const findings = report.findings.map(({ id, severity, title, preExisting, triage, carriedFrom, dispute }) => ({ id, severity, title, preExisting, triage, carriedFrom, dispute }));
-    await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings });
+    const findings = report.findings.map(({ id, severity, title, preExisting, triage, carriedFrom, dispute, category }) => ({ id, severity, title, preExisting, triage, carriedFrom, dispute, category }));
+    await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id) });
   }
 
   return { setMonitored, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished };

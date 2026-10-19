@@ -3,7 +3,7 @@ import { projectSettingsSchema, type ProjectSettings } from "../shared/loop";
 import type { KanbanContext } from "./context";
 
 const PROJECT_SETTINGS_KEY = "projectSettings";
-const EMPTY: ProjectSettings = { checkCommand: null };
+const EMPTY: ProjectSettings = { checkCommand: null, pathRules: [] };
 
 /**
  * Settings the board keeps per project, which bb's plugin settings can't express. They're held in memory as well,

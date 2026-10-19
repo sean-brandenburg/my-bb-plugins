@@ -120,8 +120,12 @@ its PR is reviewed and its review findings and comments are handed to agents.
   the card itself. The card then moves to Checking while a hidden thread
   checks the commit out detached in a fresh worktree of the project (for a PR
   card, fetched from the PR first) and re-runs the check command; it records
-  the exit code and the output's tail with `bb kanban checks-record`. Passing
-  checks start a Standard review of that commit; failing ones go back to the
+  the exit code and the output's tail with `bb kanban checks-record`. The
+  first passing checks start a short hidden classify thread that scores each
+  changed file's risk (1–5) and role; with the project's path rules, it sets
+  the attention level (Glance, Read or Scrutinize, with its reasons), which
+  picks the review's depth: Quick, Standard or Deep. A classify thread that
+  fails twice leaves the review at Standard. Failing checks go back to the
   card's thread with the output and no review is run, and a second failure in
   a row stops the loop at Needs you. Every finding the review triaged apply,
   whatever its severity, goes back to the card's thread in one fix prompt
@@ -140,10 +144,13 @@ its PR is reviewed and its review findings and comments are handed to agents.
   loop as a loop error, with a link to the thread in the card panel. While
   the card's thread waits on you (a question or an approval) the loop pauses
   as `stuck · question` without moving the card, and resumes at its next
-  ready. The check command is set per project in the card panel's
-  Checks field; a project without one lets the agent pick, and the board marks
+  ready. The level is recomputed when the loop stops, from the file scores,
+  the rounds, disputes and check failures, and the last review's not-covered
+  list, open scope findings and deferred critical findings. The check command
+  and the path rules (`src/auth/** scrutinize, .github/** read`) are set per
+  project in the card panel's Checks and Path rules fields; a project without one lets the agent pick, and the board marks
   it as the agent's choice. Monitored cards carry a chip naming the loop's
-  phase (`building`, `checks`, `review rN`, `fixing rN`, `ready`, or
+  phase (`building`, `checks`, `classifying`, `review rN`, `fixing rN`, `ready · <level>`, or
   `stuck · <reason>`) and a pip per fix round used. Turning
   monitoring off stops the loop after its current step: a running check or
   review finishes, and its result is kept but drives nothing; a fix round in

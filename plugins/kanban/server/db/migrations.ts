@@ -224,5 +224,16 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `CREATE INDEX IF NOT EXISTS checks_runs_ticket ON checks_runs(ticket_id, created_at)`,
     `CREATE INDEX IF NOT EXISTS checks_runs_thread ON checks_runs(thread_id)`,
     `ALTER TABLE reviews ADD COLUMN depth TEXT`,
+    `CREATE TABLE IF NOT EXISTS classify_runs (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      commit_sha TEXT NOT NULL,
+      status TEXT NOT NULL,
+      body TEXT,
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    )`,
+    `CREATE INDEX IF NOT EXISTS classify_runs_thread ON classify_runs(thread_id)`,
   ]);
 }

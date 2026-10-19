@@ -19,7 +19,7 @@ A card can be flagged **monitored**. On a monitored card the board runs the loop
 
 1. **Build.** The card's thread implements the change, commits it, and reports ready with evidence of how it verified the work.
 2. **Checks.** A fresh thread re-runs the project's check command at that commit. If it fails, the output goes back to the card's thread and no review tokens are spent.
-3. **Classify.** A tour of the change scores each file's risk. That sets an attention level, which picks the review depth.
+3. **Classify.** A short, cheap pass over the change scores each file's risk. That sets an attention level, which picks the review depth.
 4. **Review and verify.** The code-review skill reviews the change at that depth in a fresh context, and verifies every finding. Findings that don't hold up are filtered out. Findings in code the change didn't touch are tagged pre-existing. Code smells and nits are reported along with bugs. A scope check flags parts of the change that go beyond what the card asked for.
 5. **Triage.** Each verified finding gets the same judgment apply-review uses today, made in the review step rather than by the author:
    - **apply:** it belongs in this change;
@@ -94,7 +94,7 @@ flowchart LR
 
 ### Classify, review and verify
 
-21. As a developer, I want a tour generated at the start of the first round, giving per-file risk and reading order, so that the attention level and review depth come from the change itself.
+21. As a developer, I want a cheap classify pass at the start of the first round, giving each changed file a risk and a role, so that the attention level and review depth come from the change itself without paying for a full narrative.
 22. As a developer, I want the review depth taken from the attention level, so that tokens are spent where the risk is. Glance gets Quick, Read gets Standard, and Scrutinize gets Deep, which adds a security review.
 23. As a developer, I want path rules per project that raise the attention level, so that areas I know are risky always get a deeper look. Examples are auth, billing, CI workflows and installers.
 24. As a developer, I want every finding verified by a separate agent and scored 0–100 for whether it's real, with findings below 80 filtered out, so that false positives don't reach the loop or me while real nits still do.
@@ -212,10 +212,10 @@ flowchart LR
   The plan gate adds "propose a plan and wait." These go through the existing per-role instruction map, and prompts reach the existing card thread through the existing card-thread prompting.
 - **Checks thread.** A short hidden thread checks out the reported commit detached in a fresh worktree of the card's project and runs the check command. It reports the exit code and output tail through a new record command. The commit is visible there because worktrees of one project share the repository. For PR cards it uses today's fetch steps.
 - **Reviews for every card with a branch.** Review and apply no longer require a PR. For a local card, the review diffs the reported commit against its merge base with the project's default branch, in a fresh worktree checked out at that commit. PR cards keep today's PR fetch. The PR-only guards in review spawning and the review and apply prompts become per-kind branches.
-- **Classify reuses the tour.** The tour's per-file risk (1–5) and roles (key, supporting, mechanical) feed the attention level. It's generated once at the start of round 1, and regenerated at handoff only if the head moved and the level is Read or Scrutinize.
+- **Classify is its own cheap pass.** The narrative review that replaced the tour is too slow and costly to run before every first review. Instead a short hidden thread scores each changed file's risk (1–5) and role (key, supporting, mechanical) and its lines changed, and hands them back as a small `kanban-classify` JSON block the board parses, separate from the tour's schema. It runs once at the start of round 1, and goes through the same retry-once path as the checks and review threads; a second failure reviews at Standard rather than stopping the loop. The narrative is requested only at handoff, when the card reaches Needs you at Read or Scrutinize, and the brief works without it.
 - **Reading plan is the narrative stepper.** The narrative code review, built in a separate thread, extends the tour with exhaustive steps whose file refs carry path, side and line range. The brief opens that stepper filtered by level instead of drawing a plan of its own. Per-file role and risk stay on the tour's reading order. The Scrutinize gate reads the changes view's per-file Viewed marks, which the stepper offers to set once every step touching a file has been visited. The loop never changes the tour's prompt or schema.
 - **Attention level** is computed by a pure function from:
-  - the highest per-file tour risk;
+  - the highest per-file risk from the classify pass;
   - per-project path rules;
   - loop signals: rounds used, accepted or open disputes, check failures, and whether "not covered" is non-empty;
   - scope signals: open scope findings, and deferred critical findings;

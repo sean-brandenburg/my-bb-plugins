@@ -32,6 +32,11 @@ const ROLE_INSTRUCTIONS = new Map<string, (row: TicketRow) => string>([
       `This thread re-runs the checks of ${ticketLabel(row)} at the commit its agent reported ready. Change, commit and push nothing, do not move the card, never post to GitHub, and record the result with \`bb kanban checks-record --exit-code <code> --output-stdin\`.`,
   ],
   [
+    "classify",
+    (row) =>
+      `This thread scores the risk of each file changed by ${ticketLabel(row)}, which picks how deep the board's review goes. Change, commit and push nothing, do not move the card, never post to GitHub, and end with the \`\`\`json kanban-classify block.`,
+  ],
+  [
     "subtasks",
     (row) =>
       `This thread works through the subtasks of ${ticketLabel(row)}: list them with \`bb kanban subtasks --ticket ${row.id}\`, move each with \`bb kanban move <column> --ticket <subtask-id>\` as you go, and never move or finish a subtask you did not actually complete.`,
