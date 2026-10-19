@@ -19,6 +19,7 @@ import { ExternalLink, ThreadStatusDot, Select, HEADER_ICON_BUTTON, COMPACT, Gro
 import { ProjectSelect } from "./project-select";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
+import { HandoffBrief } from "./brief-panel";
 import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
@@ -229,6 +230,8 @@ function TicketDetails({
           </span>
         </div>
       </header>
+
+      <HandoffBrief ticket={ticket} rpc={rpc} onOpenThread={onOpenThread} />
 
       <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
         <Property label="Column">

@@ -14,10 +14,12 @@ This ticket is read-only. The actions come in 13.
 
 **Blocked by:** 09 — Disputes and non-convergence; 11 — Attention level drives depth.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The brief renders for every Needs you reason (clean, cap, not converging, checks, dispute, question, loop error), and leads with the reason when it isn't clean.
-- [ ] The sections appear in the order above. Empty sections are omitted, except not-covered, which says when it's empty.
-- [ ] Re-run evidence is labeled separately from agent-claimed evidence.
-- [ ] The changes page strip shows the level, reasons and not-covered list, and collapses.
-- [ ] Every section is reachable with the card panel's vim keys.
+- [x] The brief renders for every Needs you reason (clean, cap, not converging, checks, dispute, question, loop error), and leads with the reason when it isn't clean.
+- [x] The sections appear in the order above. Empty sections are omitted, except not-covered, which says when it's empty.
+- [x] Re-run evidence is labeled separately from agent-claimed evidence.
+- [x] The changes page strip shows the level, reasons and not-covered list, and collapses.
+- [x] Every section is reachable with the card panel's vim keys.
+
+Tokens (section 7) are left out: no token totals exist yet; ticket 16 adds them to the brief.

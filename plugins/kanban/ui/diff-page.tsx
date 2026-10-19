@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT, SegmentedTabs } from "./primitives";
 import { toastError } from "./actions";
+import { HandoffStrip } from "./brief-panel";
 
 /** Pairs a changes view with the title-bar controls that refresh it. */
 export function diffInstanceKey(subjectId: string): string {
@@ -223,6 +224,7 @@ export function KanbanDiffView({
   const { board, refetch } = useBoard();
   const ticket = findDiffSubjectTicket(board, subjectId);
   const source = useKanbanDiffSource(subjectId, ticket, refetch, onOpenTicket);
+  const rpc = useRpc<typeof rpcContract>();
   const [boardChanges, setBoardChanges] = useState(0);
   useRealtime(BOARD_CHANGED, () => setBoardChanges((count) => count + 1));
   if (ticket === null && (board === null || !subjectId.startsWith(THREAD_SUBJECT_PREFIX))) {
@@ -242,6 +244,7 @@ export function KanbanDiffView({
       onOpenThread={onOpenThread}
       refreshSignal={boardChanges}
       labels={KANBAN_DIFF_LABELS}
+      toolbar={ticket === null ? undefined : <HandoffStrip ticket={ticket} rpc={rpc} onOpenThread={onOpenThread} />}
       renderSubmitBar={(pending) => <KanbanSubmitBar subjectId={subjectId} pending={pending} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
       // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}

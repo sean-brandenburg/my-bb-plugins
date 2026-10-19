@@ -155,6 +155,15 @@ its PR is reviewed and its review findings and comments are handed to agents.
   monitoring off stops the loop after its current step: a running check or
   review finishes, and its result is kept but drives nothing; a fix round in
   progress ends with its findings left open, so the review's Apply is back.
+  A card stopped at Needs you (or paused by a question) opens with a handoff
+  brief at the top of its panel, one collapsible group per section the card's
+  `j`/`k` reach: the level and its reasons, led by why the loop stopped when
+  it isn't clean; what the checks don't cover; evidence, the board's re-runs
+  apart from what the agent claims; each round's history with accepted
+  disputes and the nits and smells fixed; deferred, dropped, pre-existing and
+  left-open findings; and rejected disputes with both sides' reasoning. The
+  changes page shows the level, reasons and not-covered list as a strip
+  above the diff, which collapses.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against
