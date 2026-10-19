@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bb": ">=0.45",
+    "bb": ">=0.46",
     "bbPluginSdk": ">=0.6.15"
   },
   "bb": {
     "name": "Settings search",
-    "description": "Search and vim keys for settings: a search bar in the settings sidebar finds any setting on any page, plugin pages included, and j/k walk the open page's settings.",
+    "description": "Vim keys for settings: j/k walk the sidebar's pages and the open page's settings, and bb's settings search gets Ctrl-n/p and puts the cursor on the setting it opens.",
     "branding": {
       "icon": "Search"
     },
