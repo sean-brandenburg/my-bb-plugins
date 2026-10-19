@@ -169,9 +169,24 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Each finding carries two 1–5 scores from the skill: **importance** (how much
   it matters before merge) and **scope** (how well the fix stays inside the
   PR; 1 means a separate piece of work). Findings have a checkbox deciding
-  whether they go to the apply round; the suggested selection is every
-  critical finding plus anything with importance ≥ 3 and scope ≥ 3. Your
-  changes persist per review, and "Reset to suggested" restores the heuristic.
+  whether they go to the apply round; the suggested selection is the findings
+  the review's triage applies (below), and for reviews from before triage,
+  every critical finding plus anything with importance ≥ 3 and scope ≥ 3. Your
+  changes persist per review, and "Reset to suggested" restores the suggestion.
+- **Scope and triage**: the review prompt carries the card's intent (title,
+  description, approved plan once the loop's plan gate keeps one, and the
+  spec under `.claude/features/` when there is one), and the skill's scope
+  finder reports parts of the change beyond it under a `scope` category, with
+  the fix to remove or split them out; on a re-review it also checks each fix
+  commit stays within the findings it answers. After verifying, the skill
+  triages every verified finding of the change's own: **apply**, **defer**
+  (real, but the proper fix is separate work, even for a critical finding) or
+  **drop** (churn far beyond the benefit, or against the project's
+  conventions; never just for being minor), each with a reason. The criteria
+  live in `~/.claude/skills/triage-criteria.md`, which `apply-review`'s own
+  triage reads too. The card lists deferred findings apart, with "Make a
+  card" (the card says why it was deferred), and folds dropped ones under "N
+  dropped" with their reasons; tick either to pull it into the apply round.
 - **Verified findings**: the skill has a verifier check every finding and
   score it 0–100 for being real (never for how much it matters, so a real
   nit scores like a real bug). Findings under 80 fold into "N filtered"

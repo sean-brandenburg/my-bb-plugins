@@ -56,12 +56,46 @@ function reviewSetup(subject: ReviewSubject, ticket: Ticket): ReviewSetup {
   };
 }
 
+/** What the card asked for beyond its title and description; the review's scope finder holds the change to all of it. */
+export interface CardIntent {
+  /** The plan approved at the loop's plan gate; null while the card has none. */
+  plan: string | null;
+  /** The card thread's branch, which names the change's spec directory; a PR review matches the PR's head branch instead. */
+  branch: string | null;
+}
+
+/**
+ * The card's intent, for the scope finder and triage. The review checks its commit out detached, so the skill can't
+ * find the spec from the checked-out branch; the prompt names the branch to match and the fallbacks.
+ */
+function intentSection(subject: ReviewSubject, ticket: Ticket, intent: CardIntent): string[] {
+  const block = (label: string, text: string | null) =>
+    text === null || text.trim() === "" ? [`**${label}:** none`, ""] : [`**${label}:**`, "", text.trim(), ""];
+  const branch = subject.kind === "pr" ? "$HEAD_REF" : intent.branch;
+  const candidates = [
+    ...(branch === null ? [] : [`the one whose name matches the branch \`${branch}\` (ignoring prefixes such as \`bb/\`, \`feature/\` or \`fix/\`)`]),
+    "one the title or description names",
+    "the one whose files the change edits",
+  ];
+  return [
+    "## Card intent",
+    "",
+    "What the card asked for. The `code-review` skill's scope finder flags any part of the change beyond it, and its triage defers findings whose proper fix falls outside it.",
+    "",
+    `**Title:** ${ticket.title}`,
+    "",
+    ...block("Description", ticket.description),
+    ...block("Approved plan", intent.plan),
+    `**Spec:** look under \`.claude/features/\` at HEAD for this work's feature directory: ${candidates.join(", else ")}. If one fits, pass its path to the skill as the spec; its \`spec.md\` and \`tickets/\` are part of the intent. If none fits, there is no spec.`,
+  ];
+}
+
 /**
  * The code-review skill diffs `<default-branch>...HEAD` and its reviewers read whole files, so the subject's head has
  * to be checked out locally. The review runs in its own worktree and checks the head out detached, so it never
  * touches the branch checked out in the main project directory or the card's own environment.
  */
-export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Review | null, standing: Review[]): string {
+export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Review | null, standing: Review[], intent: CardIntent): string {
   const setup = reviewSetup(subject, ticket);
   const sinceSha = since?.commitSha ?? null;
   const range = sinceSha === null ? setup.fullRange : `${sinceSha}..HEAD`;
@@ -75,13 +109,15 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
     "",
     ...(sinceSha === null
       ? [
-          `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) so it reviews exactly ${setup.changesPhrase}. Let it spawn every applicable reviewer in parallel and compile the findings in its standard format.`,
+          `Then invoke the \`code-review\` skill with the range \`${range}\` (three-dot) and the card's intent below, so it reviews exactly ${setup.changesPhrase} and holds them to what the card asked for. Let it spawn every applicable reviewer in parallel, verify and triage their findings, and compile them in its standard format.`,
           "",
           "Your final message must be the code-review skill's compiled report verbatim, including its `Reviewed commit:` line and the trailing ```json review-findings block; it is persisted on the card and rendered from that JSON.",
         ]
       : incrementalSteps(range, setup.fullRange, setup.steps.length + 1)),
     "Rules: do not change code, and do not post comments or reviews on GitHub; the compiled findings in this thread are the deliverable.",
     `This review belongs to kanban ticket ${ticket.id}.`,
+    "",
+    ...intentSection(subject, ticket, intent),
     ...(sinceSha === null ? [] : ["", ...earlierFindingsSection(standing)]),
   ].join("\n");
 }
@@ -93,11 +129,11 @@ export function reviewPrompt(subject: ReviewSubject, ticket: Ticket, since: Revi
  */
 function incrementalSteps(range: string, fullRange: string, reviewStep: number): string[] {
   return [
-    `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\` and the pre-existing range \`${fullRange}\`, so a finding in lines this change touched in an earlier commit is not tagged pre-existing. Let it spawn its reviewers, verify their findings and compile them; that report is an intermediate result, not your final message.`,
+    `${reviewStep}. Review the new commits. If \`git log ${range}\` is empty nothing changed, so skip this step. Otherwise invoke the \`code-review\` skill with the range \`${range}\`, the pre-existing range \`${fullRange}\` and the card's intent below, so a finding in lines this change touched in an earlier commit is not tagged pre-existing. Also give it the fix findings: the earlier findings below whose \`applyRound\` says an apply round committed a fix, which the new commits answer, so its scope finder checks each fix commit stays within the findings it answers. Let it spawn its reviewers, verify and triage their findings and compile them; that report is an intermediate result, not your final message.`,
     `${reviewStep + 1}. Re-check the earlier findings at HEAD. Spawn one general-purpose subagent with them and have it read the code at HEAD and classify each as addressed (the problem is gone at every instance) or open (some instance is still present; give the current locations of every one left, since lines may have moved). It also checks each earlier not-covered entry, if any, and says which a check at HEAD now covers. Changed lines or an apply round that targeted a finding do not make it addressed; only the code at HEAD does. When step ${reviewStep} found nothing changed, every earlier finding is open as listed and needs no check.`,
     `${reviewStep + 2}. Compile one merged report in the code-review skill's exact format (the markdown sections, the \`Reviewed commit:\` and \`Range:\` lines, and the trailing \`\`\`json review-findings block), with these additions:`,
     `   - \`findings\` holds the new findings from step ${reviewStep} plus every open earlier finding, merged into one where a new finding is the same problem as an earlier one, ordered by severity and renumbered \`F1\`, \`F2\`, ….`,
-    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category and class unless the new commits made them inaccurate, takes every instance still present at HEAD as its locations, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
+    '   - A carried finding keeps its earlier title, description, fix, severity, scores, confidence, verification, preExisting, flaggedBy, category, class and triage unless the new commits made them inaccurate, takes every instance still present at HEAD as its locations, and sets `"carriedFrom"` to its earlier handle; its markdown line ends with `(carried from <handle>)`. New findings set `"carriedFrom": null`. Points still open from an earlier free-form review become findings with `"carriedFrom"` set to that review\'s id, `"confidence": null` and `"preExisting": false`.',
     `   - \`"filtered"\` holds only the findings step ${reviewStep} filtered out; earlier reviews' filtered findings are neither re-checked nor carried.`,
     `   - \`"notCovered"\` holds step ${reviewStep}'s list plus each earlier entry below that still holds at HEAD, once each.`,
     '   - Set `"carriesForward": true` and list each addressed earlier finding in `"resolved"` as `{ "id": "<handle>", "title": "<earlier title>", "note": "<how it was addressed>" }`; in the markdown, list them under a `### Resolved since the last review` heading inside `## Review Findings`.',

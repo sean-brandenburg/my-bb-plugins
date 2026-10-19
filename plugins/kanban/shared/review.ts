@@ -37,6 +37,14 @@ export const CONFIDENCE_BAR = 80;
 export const VERIFIED_REPORT_VERSION = 2;
 /** The first report version that says what the checks don't cover, so an empty list there means nothing, not unknown. */
 export const NOT_COVERED_REPORT_VERSION = 3;
+/** The first report version whose verified, introduced findings were triaged; older ones keep the score heuristic. */
+export const TRIAGED_REPORT_VERSION = 4;
+
+/**
+ * The review's call on a finding, by the criteria apply-review's triage shares: apply it in this change, defer it as
+ * separate work (wrong scope), or drop it (churn far beyond the benefit, or against the project's conventions).
+ */
+const triageSchema = z.object({ decision: z.enum(["apply", "defer", "drop"]), reason: z.string().default("") });
 
 export const findingSchema = z.object({
   id: z.string(),
@@ -73,6 +81,8 @@ export const findingSchema = z.object({
   verification: z.string().nullable().default(null),
   /** The kind of mistake, named so one fix covers it everywhere: `locations` lists every instance of it. */
   class: z.string().nullable().default(null),
+  /** Null for findings triage doesn't judge: pre-existing, filtered and unverified ones, and every one in older reports. */
+  triage: triageSchema.nullable().default(null),
 });
 export type Finding = z.infer<typeof findingSchema>;
 
@@ -169,20 +179,22 @@ export const reviewSummarySchema = reviewSchema
 export type ReviewSummary = z.infer<typeof reviewSummarySchema>;
 
 /**
- * How a review's findings stand, as the card panel lists them: the change's own (`introduced`) apart from the
- * pre-existing ones, and how many of its own are open, selected for the next apply round, and applied. Pre-existing
- * findings never count as selected, whatever the selection says.
+ * How a review's findings stand, as the card panel lists them: the change's own (`introduced`, which includes the ones
+ * triage deferred or dropped) apart from the pre-existing ones, and how many of its own are open, selected for the next
+ * apply round, and applied. Pre-existing findings never count as selected, whatever the selection says.
  */
 export function findingTallies(
   report: Pick<ReviewReport, "findings">,
   selection: Record<string, boolean>,
   appliedFindingIds: readonly string[],
-): { introduced: Finding[]; preExisting: Finding[]; open: number; selected: number; applied: number } {
+): { introduced: Finding[]; deferred: Finding[]; dropped: Finding[]; preExisting: Finding[]; open: number; selected: number; applied: number } {
   const applied = new Set(appliedFindingIds);
   const introduced = report.findings.filter((finding) => !finding.preExisting);
   const open = introduced.filter((finding) => !applied.has(finding.id));
   return {
     introduced,
+    deferred: introduced.filter((finding) => finding.triage?.decision === "defer"),
+    dropped: introduced.filter((finding) => finding.triage?.decision === "drop"),
     preExisting: report.findings.filter((finding) => finding.preExisting),
     open: open.length,
     selected: open.filter((finding) => selection[finding.id] === true).length,

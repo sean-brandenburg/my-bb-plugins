@@ -989,6 +989,8 @@ describe("defaultSelected", () => {
     confidence: null,
     preExisting: false,
     verification: null,
+    class: null,
+    triage: null,
     ...overrides,
   });
   it("pre-selects critical findings and well-scored ones, and falls back to severity when unscored", () => {
@@ -1433,6 +1435,39 @@ describe("persisted reviews", () => {
     await expect(current().harness.behavior.callRpc("review_make_card", { reviewId, findingId: "X1" })).rejects.toThrow(/no finding X1/u);
   });
 
+  it("pre-selects the findings triage applies, lets the user pull in a deferred or dropped one, and makes a card from a deferred one", async () => {
+    const card = await reviewedCard();
+    const triaged = {
+      version: 4,
+      commit: sha,
+      findings: [
+        { id: "F1", severity: "critical", title: "Retries lose writes", description: "No idempotency key.", locations: [{ file: "a.go", startLine: 4 }], confidence: 95, importance: 5, scopeFit: 2, triage: { decision: "defer", reason: "Needs an idempotency layer; separate work" } },
+        { id: "F2", severity: "minor", title: "Magic number", locations: [{ file: "b.go", startLine: 9 }], confidence: 90, importance: 1, scopeFit: 5, triage: { decision: "apply", reason: "One-line constant in touched code" } },
+        { id: "F3", severity: "important", title: "Rewrite the parser", locations: [{ file: "c.go" }], confidence: 85, importance: 3, scopeFit: 4, triage: { decision: "drop", reason: "Rewrites 600 lines to save one branch" } },
+        { id: "F4", severity: "important", title: "Unverified race", locations: [{ file: "d.go", startLine: 1 }], confidence: null },
+      ],
+    };
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }),
+      lastAssistantText: `\`\`\`json review-findings\n${JSON.stringify(triaged)}\n\`\`\``,
+    });
+    const reviewId = (await board()).tickets[0]!.latestReview!.id;
+    let [stored] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(stored!.report!.findings[0]!.triage).toEqual({ decision: "defer", reason: "Needs an idempotency layer; separate work" });
+    expect(stored!.report!.findings[3]!.triage).toBeNull();
+    expect(stored!.selection).toEqual({ F1: false, F2: true, F3: false, F4: true });
+
+    await current().harness.behavior.callRpc("review_set_selection", { reviewId, findingId: "F3", selected: true });
+    [stored] = ((await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] }).reviews;
+    expect(stored!.selection).toEqual({ F1: false, F2: true, F3: true, F4: true });
+    const reset = (await current().harness.behavior.callRpc("review_reset_selection", { reviewId })) as Review;
+    expect(reset.selection).toEqual({ F1: false, F2: true, F3: false, F4: true });
+
+    const made = (await current().harness.behavior.callRpc("review_make_card", { reviewId, findingId: "F1" })) as { ticket: Ticket; created: boolean };
+    expect(made.created).toBe(true);
+    expect(made.ticket.description).toContain(`Deferred by the code review of “Refactor” as separate work: Needs an idempotency layer; separate work (finding ${reviewId}/F1).`);
+  });
+
   it("makes a card from a finding of the change itself too, saying so, with the title cut to a card title's length", async () => {
     const card = await reviewedCard();
     const long = "x".repeat(250);
@@ -1545,6 +1580,9 @@ describe("local card review", () => {
     const prompt = String(spawned[1]!.prompt);
     expect(prompt).toContain(`git checkout --detach ${sha}`);
     expect(prompt).toContain("`main...HEAD`");
+    expect(prompt).toContain("## Card intent");
+    expect(prompt).toContain("**Title:** Local work");
+    expect(prompt).toContain("matches the branch `feature`");
     expect(reviewed.latestReview).toMatchObject({ subjectKind: "local", status: "running", commitSha: null });
 
     const review = await completeReview("thr_2", reportBody(sha, {}, [{ id: "F1", severity: "important", title: "Leaky handle", locations: [{ file: "a.go", startLine: 3 }] }]));

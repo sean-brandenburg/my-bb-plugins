@@ -9,13 +9,13 @@ Importance and scope fit stay as triage inputs. The criteria live in one shared 
 
 **Blocked by:** 03 — Verified findings.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Review prompts for PR and local cards include the card's intent.
-- [ ] Scope findings appear under a `scope` category, name the hunks beyond the intent, and recommend removing or splitting them.
-- [ ] Every verified, introduced finding carries a triage decision and reason in the report.
-- [ ] A critical finding whose proper fix is separate work can be deferred, and its triage says so.
-- [ ] apply-review's Step 2 reads the same criteria reference, and its behavior with a user is otherwise unchanged.
-- [ ] The default selection is the findings triaged apply. Reviews without triage fall back to today's heuristic.
-- [ ] The board shows deferred findings with make-a-card and dropped findings collapsed with their reasons. Either can be selected for an apply round by hand.
-- [ ] Tests cover default selection with triage, without triage, and with user overrides.
+- [x] Review prompts for PR and local cards include the card's intent.
+- [x] Scope findings appear under a `scope` category, name the hunks beyond the intent, and recommend removing or splitting them.
+- [x] Every verified, introduced finding carries a triage decision and reason in the report.
+- [x] A critical finding whose proper fix is separate work can be deferred, and its triage says so.
+- [x] apply-review's Step 2 reads the same criteria reference, and its behavior with a user is otherwise unchanged.
+- [x] The default selection is the findings triaged apply. Reviews without triage fall back to today's heuristic.
+- [x] The board shows deferred findings with make-a-card and dropped findings collapsed with their reasons. Either can be selected for an apply round by hand.
+- [x] Tests cover default selection with triage, without triage, and with user overrides.

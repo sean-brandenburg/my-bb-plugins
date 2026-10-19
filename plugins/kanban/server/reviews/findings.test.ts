@@ -19,6 +19,7 @@ function finding(id: string, severity: Finding["severity"], overrides: Partial<F
     preExisting: false,
     verification: null,
     class: null,
+    triage: null,
     ...overrides,
   };
 }
@@ -138,6 +139,42 @@ describe("effectiveSelection", () => {
     const reviewReport = report([finding("C1", "critical"), finding("M1", "minor"), finding("I1", "important")]);
     expect(effectiveSelection(reviewReport, { C1: false, M1: true })).toEqual({ C1: false, M1: true, I1: true });
     expect(effectiveSelection(null, { C1: true })).toEqual({});
+  });
+});
+
+describe("triaged selection", () => {
+  const apply = { decision: "apply" as const, reason: "In scope" };
+  const defer = { decision: "defer" as const, reason: "Needs a new retry abstraction; separate work" };
+  const drop = { decision: "drop" as const, reason: "Rewrites the module for a rename" };
+  const triaged = report([
+    finding("F1", "critical", { importance: 5, scopeFit: 1, triage: defer }),
+    finding("F2", "minor", { importance: 1, scopeFit: 5, triage: apply }),
+    finding("F3", "important", { importance: 4, scopeFit: 4, triage: drop }),
+    finding("F4", "important", { importance: 4, scopeFit: 4 }),
+    finding("F5", "critical", { preExisting: true, triage: apply }),
+  ]);
+
+  it("pre-selects exactly the findings triaged apply, a deferred critical one and an applied nit included", () => {
+    expect(effectiveSelection(triaged, {})).toEqual({ F1: false, F2: true, F3: false, F4: true, F5: false });
+  });
+
+  it("falls back to the score heuristic for a finding without triage", () => {
+    const untriaged = report([finding("F1", "critical", { importance: 1, scopeFit: 1 }), finding("F2", "minor", { importance: 1, scopeFit: 5 }), finding("F3", "important", { importance: 4, scopeFit: 2 }), finding("F4", "important")]);
+    expect(effectiveSelection(untriaged, {})).toEqual({ F1: true, F2: false, F3: false, F4: true });
+  });
+
+  it("lets the user pull a deferred or dropped finding into the apply round, and leave an applied one out", () => {
+    const selection = effectiveSelection(triaged, { F1: true, F3: true, F2: false });
+    expect(selection).toEqual({ F1: true, F2: false, F3: true, F4: true, F5: false });
+    expect(pendingFindings(review(null, triaged, selection)).map((entry) => entry.id)).toEqual(["F1", "F3", "F4"]);
+  });
+
+  it("tallies deferred and dropped findings among the change's own", () => {
+    const tallies = findingTallies(triaged, effectiveSelection(triaged, {}), []);
+    expect(tallies.introduced.map((entry) => entry.id)).toEqual(["F1", "F2", "F3", "F4"]);
+    expect(tallies.deferred.map((entry) => entry.id)).toEqual(["F1"]);
+    expect(tallies.dropped.map((entry) => entry.id)).toEqual(["F3"]);
+    expect(tallies).toMatchObject({ open: 4, selected: 2 });
   });
 });
 

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { CHEVRON, OPACITY_TRANSITION, PRESS, STAGGER, enter, speed, stagger, usePopOnChange, POPOVER_MOTION } from "bb-motion";
 import type { Ticket } from "../shared/board";
 import { locationLabel } from "../shared/finding-location";
-import { CONFIDENCE_BAR, NOT_COVERED_REPORT_VERSION, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
+import { CONFIDENCE_BAR, NOT_COVERED_REPORT_VERSION, TRIAGED_REPORT_VERSION, VERIFIED_REPORT_VERSION, findingTallies, type Finding, type FindingSeverity, type Review } from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -68,8 +68,8 @@ function FindingCard({
   onApplied?: ((applied: boolean) => void) | null;
   /** A button at the end of the header line. */
   action?: ReactNode;
-  /** Pre-existing ones are drawn dashed; filtered ones dimmed, with the verifier's reason. */
-  kind?: "introduced" | "pre-existing" | "filtered";
+  /** Pre-existing and deferred ones are drawn dashed; filtered ones dimmed, with the verifier's reason. */
+  kind?: "introduced" | "deferred" | "pre-existing" | "filtered";
 }) {
   const appliedPop = usePopOnChange(applied);
   return (
@@ -81,7 +81,7 @@ function FindingCard({
         speed.fast,
         STAGGER,
         OPACITY_TRANSITION,
-        kind === "pre-existing" && "border-dashed",
+        (kind === "pre-existing" || kind === "deferred") && "border-dashed",
         (selected === false || applied || kind === "filtered") && "opacity-60",
       )}
     >
@@ -138,6 +138,11 @@ function FindingCard({
         {action}
       </div>
       {kind === "filtered" && finding.verification !== null && finding.verification !== "" ? <p className="mt-1 text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
+      {finding.triage !== null && finding.triage.decision !== "apply" && finding.triage.reason !== "" ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Triage: {finding.triage.decision === "defer" ? "deferred" : "dropped"} — {finding.triage.reason}
+        </p>
+      ) : null}
       {applied ? null : <FindingDetails finding={finding} />}
     </li>
   );
@@ -214,29 +219,23 @@ function CardAction({ card, onMakeCard, onOpenCard }: { card: string | null; onM
   );
 }
 
-/** Findings the verifier did not believe, folded under their count until asked for. */
-function FilteredFindings({ findings, verified }: { findings: Finding[]; verified: boolean }) {
+/** Findings kept for a look, folded under their count until asked for. */
+function FoldedFindings({ label, count, title, children }: { label: string; count: number; title: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <section aria-label="Filtered findings">
+    <section aria-label={`${label[0]!.toUpperCase()}${label.slice(1)} findings`}>
       <button
         type="button"
         aria-expanded={open}
         data-bbm-open={open}
         className="flex items-center gap-1 rounded text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
-        title={`Findings the verifier scored below ${CONFIDENCE_BAR} for being real; never selected or applied`}
+        title={title}
         onClick={() => setOpen(!open)}
       >
         <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
-        <span className="tabular-nums">{findings.length}</span> filtered
+        <span className="tabular-nums">{count}</span> {label}
       </button>
-      {open ? (
-        <ul className="mt-1.5 flex flex-col gap-2">
-          {findings.map((finding, index) => (
-            <FindingCard key={finding.id} finding={finding} index={index} verified={verified} kind="filtered" />
-          ))}
-        </ul>
-      ) : null}
+      {open ? <ul className="mt-1.5 flex flex-col gap-2">{children}</ul> : null}
     </section>
   );
 }
@@ -261,19 +260,51 @@ function StructuredReview({
   const report = review.report!;
   const verified = report.version >= VERIFIED_REPORT_VERSION;
   const tallies = findingTallies(report, review.selection, review.appliedFindingIds);
-  const { introduced, preExisting } = tallies;
+  const { introduced, deferred, dropped, preExisting } = tallies;
   const [cards, setCards] = useState<Record<string, string>>({});
+  const triagedOut = new Set([...deferred, ...dropped]);
   const grouped = (["critical", "important", "minor"] as const)
-    .map((severity) => ({ severity, findings: introduced.filter((finding) => finding.severity === severity) }))
+    .map((severity) => ({ severity, findings: introduced.filter((finding) => finding.severity === severity && !triagedOut.has(finding)) }))
     .filter((group) => group.findings.length > 0);
+  const listed = grouped.reduce((sum, group) => sum + group.findings.length, 0);
   const applied = new Set(review.appliedFindingIds);
   const overriddenCount = Object.keys(review.selectionOverrides).length;
+  const suggested = report.version >= TRIAGED_REPORT_VERSION ? "Suggested: the findings the review's triage applies" : "Suggested: critical, or importance ≥ 3 and scope ≥ 3";
+  const ownCard = (finding: Finding, index: number, kind: "introduced" | "deferred" = "introduced", action: ReactNode = null) => (
+    <FindingCard
+      key={finding.id}
+      finding={finding}
+      index={index}
+      verified={verified}
+      kind={kind}
+      selected={review.selection[finding.id] ?? null}
+      overridden={finding.id in review.selectionOverrides}
+      applied={applied.has(finding.id)}
+      onToggle={onToggle === null ? null : (selected) => onToggle(finding.id, selected)}
+      onApplied={onApplied === null ? null : (isApplied) => onApplied(finding.id, isApplied)}
+      action={action}
+    />
+  );
+  const cardAction = (finding: Finding) => (
+    <CardAction
+      card={cards[finding.id] ?? null}
+      onMakeCard={
+        onMakeCard === null
+          ? null
+          : () =>
+              onMakeCard(finding.id).then((ticketId) => {
+                if (ticketId !== null) setCards((current) => ({ ...current, [finding.id]: ticketId }));
+              })
+      }
+      onOpenCard={onOpenCard}
+    />
+  );
   return (
     <div className="flex flex-col gap-3">
       {report.summary !== "" ? <Markdown content={report.summary} className="text-sm" /> : null}
       {introduced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : "Suggested: critical, or importance ≥ 3 and scope ≥ 3"}>
+          <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : suggested}>
             <span className="font-medium text-foreground tabular-nums">{tallies.selected}</span> of {tallies.open} open selected
             {tallies.applied > 0 ? <> · <span className="tabular-nums">{tallies.applied}</span> applied</> : null}
           </span>
@@ -284,29 +315,35 @@ function StructuredReview({
           ) : null}
         </div>
       ) : null}
-      {grouped.length === 0 ? <p className={cn("text-sm text-muted-foreground", enter.fade)}>{preExisting.length > 0 ? "No findings in this change." : "No findings."}</p> : null}
+      {grouped.length === 0 ? (
+        <p className={cn("text-sm text-muted-foreground", enter.fade)}>
+          {introduced.length > 0 ? "Triage applies none of this change's findings." : preExisting.length > 0 ? "No findings in this change." : "No findings."}
+        </p>
+      ) : null}
       {grouped.map(({ severity, findings }, groupIndex) => (
         <section key={severity} aria-label={SEVERITY_LABEL[severity]}>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {SEVERITY_LABEL[severity]} <span className="font-normal tabular-nums">{findings.length}</span>
           </h3>
           <ul className="flex flex-col gap-2">
-            {findings.map((finding, index) => (
-              <FindingCard
-                key={finding.id}
-                finding={finding}
-                index={grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index}
-                verified={verified}
-                selected={review.selection[finding.id] ?? null}
-                overridden={finding.id in review.selectionOverrides}
-                applied={applied.has(finding.id)}
-                onToggle={onToggle === null ? null : (selected) => onToggle(finding.id, selected)}
-                onApplied={onApplied === null ? null : (isApplied) => onApplied(finding.id, isApplied)}
-              />
-            ))}
+            {findings.map((finding, index) => ownCard(finding, grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index))}
           </ul>
         </section>
       ))}
+      {deferred.length > 0 ? (
+        <section aria-label="Deferred">
+          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Deferred <span className="font-normal tabular-nums">{deferred.length}</span>
+          </h3>
+          <p className="mb-1.5 text-xs text-muted-foreground">Real, but triage judged the fix separate work: make it a card, or tick it to fix it in this change.</p>
+          <ul className="flex flex-col gap-2">{deferred.map((finding, index) => ownCard(finding, listed + index, "deferred", cardAction(finding)))}</ul>
+        </section>
+      ) : null}
+      {dropped.length > 0 ? (
+        <FoldedFindings label="dropped" count={dropped.length} title="Findings triage judged not worth their churn, or against the project's conventions; tick one to fix it anyway">
+          {dropped.map((finding, index) => ownCard(finding, index))}
+        </FoldedFindings>
+      ) : null}
       {preExisting.length > 0 ? (
         <section aria-label="Pre-existing">
           <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -315,32 +352,18 @@ function StructuredReview({
           <p className="mb-1.5 text-xs text-muted-foreground">Already in the code before this change, so never part of an apply round.</p>
           <ul className="flex flex-col gap-2">
             {preExisting.map((finding, index) => (
-              <FindingCard
-                key={finding.id}
-                finding={finding}
-                index={introduced.length + index}
-                verified={verified}
-                kind="pre-existing"
-                action={
-                  <CardAction
-                    card={cards[finding.id] ?? null}
-                    onMakeCard={
-                      onMakeCard === null
-                        ? null
-                        : () =>
-                            onMakeCard(finding.id).then((ticketId) => {
-                              if (ticketId !== null) setCards((current) => ({ ...current, [finding.id]: ticketId }));
-                            })
-                    }
-                    onOpenCard={onOpenCard}
-                  />
-                }
-              />
+              <FindingCard key={finding.id} finding={finding} index={introduced.length + index} verified={verified} kind="pre-existing" action={cardAction(finding)} />
             ))}
           </ul>
         </section>
       ) : null}
-      {report.filtered.length > 0 ? <FilteredFindings findings={report.filtered} verified={verified} /> : null}
+      {report.filtered.length > 0 ? (
+        <FoldedFindings label="filtered" count={report.filtered.length} title={`Findings the verifier scored below ${CONFIDENCE_BAR} for being real; never selected or applied`}>
+          {report.filtered.map((finding, index) => (
+            <FindingCard key={finding.id} finding={finding} index={index} verified={verified} kind="filtered" />
+          ))}
+        </FoldedFindings>
+      ) : null}
       {report.resolved.length > 0 ? (
         <section aria-label="Resolved since the last review">
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

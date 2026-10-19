@@ -2,12 +2,14 @@ import { locationLabel } from "../../shared/finding-location";
 import { findingEditsSchema, selectionSchema, type Finding, type FindingEdit, type FindingSeverity, type Review, type ReviewReport, type ReviewScores, type ReviewSummary, type SeverityCounts } from "../../shared/review";
 
 /**
- * Pre-selection for the apply round. Never a pre-existing finding, which is not this change's to fix; critical always;
- * otherwise both scores must clear 3 so low-value or scope-expanding fixes stay unticked. Unscored reports fall back
- * to severity.
+ * Pre-selection for the apply round. Never a pre-existing finding, which is not this change's to fix. A triaged finding
+ * is selected when triage says apply, whatever its severity. Without triage (older reports, unverified findings):
+ * critical always; otherwise both scores must clear 3 so low-value or scope-expanding fixes stay unticked, and unscored
+ * reports fall back to severity.
  */
 export function defaultSelected(finding: Finding): boolean {
   if (finding.preExisting) return false;
+  if (finding.triage !== null) return finding.triage.decision === "apply";
   if (finding.severity === "critical") return true;
   if (finding.importance !== null && finding.scopeFit !== null) {
     return finding.importance >= 3 && finding.scopeFit >= 3;

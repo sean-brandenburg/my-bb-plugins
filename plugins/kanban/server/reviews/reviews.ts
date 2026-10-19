@@ -9,7 +9,7 @@ import type { KanbanContext } from "../context";
 import { rowToReview, type ReviewRow } from "../db/rows";
 import type { Projects } from "../projects";
 import { parseFindingEdits, parseSelection, selectedFindingsBody, standingReviews } from "./findings";
-import { localApplyPrompt, prApplyPrompt, reviewPrompt } from "./prompts";
+import { localApplyPrompt, prApplyPrompt, reviewPrompt, type CardIntent } from "./prompts";
 import { localSubject, prSubject, subjectLabel } from "./subject";
 import { errorMessage, parseStringArray, shortId, threadTitle } from "../util";
 
@@ -32,7 +32,7 @@ export function createReviews(
    * A local review covers the commits the card's thread made beyond the branch the changes view diffs against, and
    * runs in that thread's project. The error says why the card can't be reviewed yet, in words the board shows.
    */
-  async function localReviewTarget(ticket: Ticket): Promise<{ subject: ReviewSubject; projectId: string }> {
+  async function localReviewTarget(ticket: Ticket): Promise<{ subject: ReviewSubject; projectId: string; branch: string | null }> {
     if (ticket.threadId === null) throw new Error("Start the card's thread first; a review covers the commits it makes");
     const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
     if (thread.environmentId === null) throw new Error("The card's thread has no environment yet");
@@ -50,7 +50,7 @@ export function createReviews(
     const head = checkout.kind === "branch" || checkout.kind === "detached" ? checkout.headSha : null;
     if (head === null) throw new Error("The card's thread has no commits yet");
     if (mergeBase === null || mergeBase.aheadCount === 0) throw new Error(`No commits beyond \`${branch}\` to review; commit the card's work first`);
-    return { subject: localSubject(head, branch), projectId: thread.projectId };
+    return { subject: localSubject(head, branch), projectId: thread.projectId, branch: checkout.kind === "branch" ? checkout.branchName : null };
   }
 
   /** Why the card can't be reviewed yet, or null when it can; a PR card always can once it has a project. */
@@ -65,15 +65,20 @@ export function createReviews(
     }
   }
 
+  /** The plan gate doesn't keep the plan it approved yet; when it does, the review's scope finder takes it from here. */
+  function cardIntent(branch: string | null): CardIntent {
+    return { plan: null, branch };
+  }
+
   /** Review a PR card's pull request, or another card's committed work, in a new hidden thread. */
   async function startReview(ticketId: string, explicitProjectId: string | null, mode: "full" | "incremental"): Promise<Ticket> {
     const ticket = getTicket(ticketId);
-    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, prSubject(ticket));
-    const { subject, projectId } = await localReviewTarget(ticket);
+    if (ticket.pr !== null) return spawnReviewForTicket(ticket.id, await projectForTicket(ticket, explicitProjectId), mode, prSubject(ticket), cardIntent(null));
+    const { subject, projectId, branch } = await localReviewTarget(ticket);
     if (explicitProjectId !== null && explicitProjectId !== projectId) {
       throw new Error(`A local review runs in the project of the card's thread (${projectId}), so it can't run in ${explicitProjectId}`);
     }
-    return spawnReviewForTicket(ticket.id, projectId, mode, subject);
+    return spawnReviewForTicket(ticket.id, projectId, mode, subject, cardIntent(branch));
   }
 
   async function spawnReviewForTicket(
@@ -81,6 +86,7 @@ export function createReviews(
     projectId: string,
     mode: "full" | "incremental",
     subject: ReviewSubject,
+    intent: CardIntent,
   ): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     // A card reviewed both as a PR and locally keeps two chains; a re-review only continues the one of its own kind.
@@ -90,7 +96,7 @@ export function createReviews(
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: await freshWorktree(projectId),
-      prompt: reviewPrompt(subject, ticket, previous, standing),
+      prompt: reviewPrompt(subject, ticket, previous, standing, intent),
       title: threadTitle(`${previous === null ? "Review" : "Re-review"} ${subjectLabel(subject)}: ${ticket.title}`),
       ...(ticket.threadId === null ? {} : { parentThreadId: ticket.threadId }),
       visibility: await codeReviewThreadVisibility(),
@@ -341,7 +347,9 @@ export function createReviews(
       finding.locations.length === 0 ? null : ["**Where:**", ...finding.locations.map((location) => `- \`${locationLabel(location)}\``)].join("\n"),
       finding.preExisting
         ? `Already in the code before “${source.title}”; its code review found it ${provenance}.`
-        : `Found by the code review of “${source.title}” ${provenance}.`,
+        : finding.triage?.decision === "defer"
+          ? `Deferred by the code review of “${source.title}” as separate work${finding.triage.reason === "" ? "" : `: ${finding.triage.reason}`} ${provenance}.`
+          : `Found by the code review of “${source.title}” ${provenance}.`,
     ].filter((part) => part !== null && part !== "");
     const ticket = board.createTicket({
       title: finding.title.slice(0, TICKET_TITLE_MAX_LENGTH),
