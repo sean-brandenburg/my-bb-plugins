@@ -13,8 +13,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `diff-view` | A thread's changes in its side panel (structural or text diff, viewed marks, symbol peeks, comments sent to the thread), plus the `bb-diff-view` library kanban embeds |
 | `composer-status-bar` | Tighter composer footer with model, effort, context-token, and usage-limit segments |
 | `thread-header-project` | The thread's project name in front of its title in the thread header |
-| `slim-sidebar` | bb's sidebar narrowed to its icon rail under a full-width top bar, with no thread list or macOS title bar row, and Cmd+1–9 for the rail's items |
-| `history-keys` | Ctrl+O / Ctrl+I go back and forward |
+| `history-keys` | Ctrl+O / Ctrl+I go back and forward, Cmd+1–9 open the sidebar rail's items, Cmd+0 returns to the last thread |
 | `minimal-top-bar` | Hides top-bar buttons that have keyboard equivalents and the Commit button; centers the thread title, which opens the thread menu on click |
 | `double-shift-palette` | Double Shift opens the Project switcher (or bb's command palette) |
 | `settings-search` | Vim keys for settings: j/k walk the sidebar's pages and the open page's settings, and bb's own settings search gets Ctrl-n/p and hands the cursor to the setting it opens |

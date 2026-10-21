@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bb": ">=0.45",
-    "bbPluginSdk": ">=0.6.15"
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
   },
   "bb": {
     "name": "History keys",
-    "description": "Ctrl+O and Ctrl+I go back and forward through bb's pages, as in vim.",
+    "description": "Ctrl+O and Ctrl+I go back and forward through bb's pages, as in vim; Cmd+1 through Cmd+9 open the sidebar rail's items and Cmd+0 returns to the last thread.",
     "branding": {
       "icon": "History"
     },
@@ -17,10 +17,13 @@
     "app": "./app.tsx"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.6.15",
+    "@get-bb/plugin-sdk": "0.6.49",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1"
   },

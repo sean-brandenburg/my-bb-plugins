@@ -51,7 +51,8 @@ const PINNED_START: PickerStart = { entry: "pinned", inThreads: true };
 
 // bb's rail markup has no plugin contract; if a bb update renames it, the
 // indicators fall back to the thread-list slot.
-const RAIL_ITEMS = '[data-testid="app-nav-rail"] nav > div';
+const RAIL = '[data-testid="app-nav-rail"]';
+const RAIL_ITEMS = `${RAIL} nav > div`;
 
 /**
  * bb scopes a plugin's styles to its root, so a host outside the slot wears
@@ -83,8 +84,8 @@ function usePluginPortalHost(active: boolean): HTMLElement | null {
 
 /**
  * Since bb 0.46 the thread-list slot sits in a column beside bb's icon rail,
- * which Slim sidebar hides, so the indicators join the rail itself, right
- * under its items. bb can mount the rail after this slot, or remount it.
+ * which collapsing the sidebar hides, so the indicators join the rail itself,
+ * right under its items. bb can mount the rail after this slot, or remount it.
  */
 function useRailHost(): HTMLElement | null {
   const pluginId = experimental_usePluginId();
@@ -160,12 +161,11 @@ function IndicatorButton({
     const button = ref.current;
     if (!hover.open || button === null) return;
     const rect = button.getBoundingClientRect();
-    // Past the sidebar's edge rather than the button's, which sits inset in the rail.
-    const sidebarRight =
-      button.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect()
-        .right ?? rect.right;
+    // Past the rail's edge rather than the button's, which sits inset in it.
+    const railRight =
+      button.closest(RAIL)?.getBoundingClientRect().right ?? rect.right;
     setAnchor({
-      left: Math.max(rect.right, sidebarRight) + FLYOUT_GAP_PX,
+      left: Math.max(rect.right, railRight) + FLYOUT_GAP_PX,
       top: rect.top,
     });
   }, [hover.open]);

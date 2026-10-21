@@ -32,7 +32,7 @@ vault editor), and ordinary text fields and textareas.
   (vim's smartcase), uses JavaScript regex syntax plus `\<` and `\>`, and
   searches only visible text. It scrolls through the whole conversation,
   including parts bb has not rendered yet, and wraps at the top or bottom.
-- Ctrl+O and Ctrl+I go to bb (back and forward, from the slim-sidebar
+- Ctrl+O and Ctrl+I go to bb (back and forward, from the history-keys
   plugin) instead of vim's jump list, in normal or insert mode, unless a vim
   command is half typed.
 - Cmd shortcuts always reach bb.

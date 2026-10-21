@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useBbContext, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { loadRecentThreads, recordThreadVisit, returnTarget, type RecentThreads } from "./recent-thread.js";
 
-const STORAGE_KEY = "slim-sidebar:recent-threads";
+const STORAGE_KEY = "history-keys:recent-threads";
 
 function storage(): Storage | null {
   try {

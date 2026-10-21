@@ -9,8 +9,7 @@ const HISTORY_BUTTON = {
 export type HistoryDirection = keyof typeof HISTORY_BUTTON;
 
 // Clicking bb's own back/forward buttons keeps bb's history rules (and does
-// nothing when they are disabled). They stay mounted even when Slim sidebar
-// hides them.
+// nothing when they are disabled).
 export function stepHistory(
   doc: Document,
   win: Window,

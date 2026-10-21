@@ -8,7 +8,6 @@ Clears out bb's top bar: a centered thread title that opens the thread menu, and
   - Open in editor or terminal: Cmd+O.
   - Close pane: Cmd+W.
 - bb's Commit button is hidden too.
-- Pairs with Slim sidebar, which runs the top bar the full width of the window over its icon rail.
 
 ## How it works
 

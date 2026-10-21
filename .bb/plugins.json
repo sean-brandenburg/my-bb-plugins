@@ -10,7 +10,6 @@
     { "name": "browser-automation-pinned", "source": "./plugins/browser-automation-pinned" },
     { "name": "grpc-client", "source": "./plugins/grpc-client" },
     { "name": "double-shift-palette", "source": "./plugins/double-shift-palette" },
-    { "name": "slim-sidebar", "source": "./plugins/slim-sidebar" },
     { "name": "diff-view", "source": "./plugins/diff-view" },
     { "name": "composer-status-bar", "source": "./plugins/composer-status-bar" },
     { "name": "thread-header-project", "source": "./plugins/thread-header-project" },
