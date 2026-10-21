@@ -66,6 +66,33 @@ describe("mountMinimalTopBar", () => {
     cleanup();
   });
 
+  it("shows a collapsed sidebar's page list on Settings, Plugins, and Skills but not elsewhere", () => {
+    const sidebar = (page: string) => `
+      <div id="${page}" data-side="left" data-collapsible="rail">
+        <div data-testid="nav-rail-sidebar-body" style="visibility: hidden">
+          <div data-testid="${page}-sidebar-body"></div>
+        </div>
+        <div data-testid="sidebar-footer-row">
+          <div style="visibility: hidden"></div>
+          <div style="visibility: hidden"></div>
+        </div>
+      </div>`;
+    document.body.innerHTML = ["settings", "plugins", "skills", "app"].map(sidebar).join("");
+    const cleanup = mountMinimalTopBar(document, window);
+    const visibility = (page: string) => {
+      const root = document.getElementById(page)!;
+      const footer = root.querySelectorAll('[data-testid="sidebar-footer-row"] > div');
+      return [root.querySelector('[data-testid="nav-rail-sidebar-body"]')!, ...footer].map(
+        (element) => getComputedStyle(element).visibility,
+      );
+    };
+    for (const page of ["settings", "plugins", "skills"]) {
+      expect(visibility(page)).toEqual(["visible", "hidden", "visible"]);
+    }
+    expect(visibility("app")).toEqual(["hidden", "hidden", "hidden"]);
+    cleanup();
+  });
+
   it("applies at every window width", () => {
     // bb's compact layout brings back the ⋯ and close buttons, so the restyle can't be limited to wide windows.
     expect(MINIMAL_TOP_BAR_CSS).not.toContain("@media");

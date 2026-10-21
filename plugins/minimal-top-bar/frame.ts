@@ -46,6 +46,12 @@ export const TOP_BAR_FRAME_CSS = `
     --bb-window-title-bar-height: 0px !important;
     --bb-window-frame-lip: 0px !important;
   }
+  /* The rail is as wide as the top bar is tall, so they meet in a square
+     corner. bb sizes the rail, and everything lined up with it, from its
+     padding around one control. */
+  ${FRAMED} {
+    --bb-sidebar-rail-padding: max(0px, calc((${unzoomed(TOP_BAR_HEIGHT_PX)} - var(--bb-sidebar-control-size)) / 2)) !important;
+  }
   ${FRAMED} > main[data-sidebar="inset"] {
     border: 0 !important;
     border-radius: 0 !important;

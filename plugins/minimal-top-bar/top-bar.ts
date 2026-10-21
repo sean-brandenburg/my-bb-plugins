@@ -13,6 +13,10 @@ const TITLE_GROUP = `${TITLE_ROW} div:has(> div > p > ${THREAD_TITLE})`;
 const MENU_TRIGGER = 'button[aria-label="Thread actions"]';
 const WORKFLOW_ACTION =
   "[data-thread-header-workflow-actions] [data-thread-header-responsive-action]";
+// The Settings, Plugins, and Skills pages mount their page list in the
+// sidebar, even while it is collapsed to the rail.
+const LIST_PAGE_SIDEBAR =
+  '[data-side="left"][data-collapsible="rail"]:has([data-testid="settings-sidebar-body"], [data-testid="plugins-sidebar-body"], [data-testid="skills-sidebar-body"])';
 
 export const MINIMAL_TOP_BAR_CSS = `
 /* Top-bar clutter with keyboard equivalents: open in editor/terminal is
@@ -26,6 +30,16 @@ button[aria-label="Close pane"] {
    should open or close the sidebar. */
 [data-sidebar="trigger"] {
   display: none !important;
+}
+/* Without the toggle a sidebar collapsed to the rail can't reopen, so the
+   pages whose list is their navigation show it beside the rail anyway. */
+${LIST_PAGE_SIDEBAR} > [data-sidebar="gap"],
+${LIST_PAGE_SIDEBAR} > [data-sidebar="panel"] {
+  width: var(--sidebar-width) !important;
+}
+${LIST_PAGE_SIDEBAR} [data-testid="nav-rail-sidebar-body"],
+${LIST_PAGE_SIDEBAR} [data-testid="sidebar-footer-row"] > :not(:first-child) {
+  visibility: visible !important;
 }
 [${HIDDEN_ATTRIBUTE}] {
   display: none !important;
