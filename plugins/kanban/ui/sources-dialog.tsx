@@ -20,7 +20,7 @@ function newSource(kind: SourceKind, id: string): Source {
   const base = { id, name: kind === "jira-jql" ? "Jira issues" : "GitHub search", tags: [], doneWhenGone: false, enabled: true, projectId: null, monitorNewCards: false };
   return kind === "jira-jql"
     ? { ...base, kind, jql: "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC" }
-    : { ...base, kind, query: "", reviewNewPrs: null };
+    : { ...base, kind, query: "", reviewNewPrs: null, narrateNewPrs: false };
 }
 
 function sourceQuery(source: Source): string {
@@ -219,6 +219,17 @@ export function SourcesDialog({
                           </option>
                         ))}
                       </Select>
+                    </dd>
+                    <dt className="pt-1.5 text-xs text-muted-foreground">Narrate new PRs</dt>
+                    <dd>
+                      <label className="flex min-h-8 items-center gap-1.5 text-sm">
+                        <Checkbox
+                          checked={source.narrateNewPrs}
+                          onCheckedChange={(checked) => update(source.id, (entry) => (entry.kind === "github-search" ? { ...entry, narrateNewPrs: checked === true } : entry))}
+                          aria-label={`Narrative review of new PRs from ${source.name}`}
+                        />
+                        Write a narrative review when a PR arrives or comes back to this search
+                      </label>
                     </dd>
                   </>
                 ) : null}

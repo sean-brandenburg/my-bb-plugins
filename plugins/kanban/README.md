@@ -43,6 +43,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   A review waits while the PR is a draft, while its project is still being
   cloned, or while another review of it runs; a monitored card's loop runs its
   own reviews instead. Several sources on one PR take the deepest depth.
+  "Narrate new PRs" does the same for the narrative review: every PR card the
+  source creates gets a narrative, as if Write narrative had been pressed, and
+  a PR that comes back to the search gets an update chapter if its code has
+  moved since. It waits on drafts, clones and a running narrative the same
+  way, and leaves monitored cards to the loop, which writes its own.
 - The page's controls live in bb's title bar next to the Kanban name: the
   Board/Todo toggle, the **Settings** cog (Columns, Sources, Keyboard shortcuts, "Sync sources
   now" with the last-sync status) and New card; on a card's changes page the

@@ -2456,6 +2456,95 @@ describe("source code reviews", () => {
   });
 });
 
+describe("source narratives", () => {
+  const narrateSource = (narrateNewPrs: boolean, extra: Record<string, unknown> = {}) => ({
+    id: "pr-reviews",
+    name: "Review requests",
+    kind: "github-search",
+    query: "is:pr is:open user-review-requested:@me",
+    tags: ["pr-reviews"],
+    doneWhenGone: true,
+    enabled: true,
+    narrateNewPrs,
+    ...extra,
+  });
+  const narrativeThreads = () => spawned.filter((args) => (args.pluginMetadata as { role?: string } | undefined)?.role === "narrative");
+  const finishNarrative = async (threadId: string) =>
+    current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: threadId, projectId: "proj_acme" }),
+      lastAssistantText: [
+        "```json kanban-narrative",
+        JSON.stringify({ version: 1, summary: "Adds `add`.", readingOrder: [{ path: "a.go", role: "key", note: "The new function.", lines: [2] }], watchOut: [] }),
+        "```",
+      ].join("\n"),
+    });
+
+  it("narrates each new PR from the source under the card's thread, once, leaving earlier cards alone", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1, { user: { login: "alice" } })] }));
+    await load();
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(false)] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads()).toHaveLength(0);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [1, 2].map((number) => searchItem("acme-co/widgets", number, { title: "Please review", user: { login: "alice" } })) }));
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true)] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    await current().harness.behavior.callRpc("sync_now", null);
+    const card = (await board()).tickets.find((ticket) => ticket.pr?.number === 2)!;
+    expect(narrativeThreads()).toEqual([
+      expect.objectContaining({ title: "Narrative widgets#2: Please review", parentThreadId: card.threadId, pluginMetadata: { ticketId: card.id, role: "narrative" } }),
+    ]);
+    expect((await board()).sync.lastError).toBeNull();
+
+    const cli = await current().harness.behavior.runCli(["sources"]);
+    expect(cli.stdout).toContain("(narrative of new PRs)");
+  });
+
+  it("waits for a draft PR to open before narrating it", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1, { draft: true })] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true)] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads()).toHaveLength(0);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads().map((args) => args.title)).toEqual(["Narrative widgets#1: PR 1"]);
+  });
+
+  it("leaves a card the review loop monitors to the loop", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true, { monitorNewCards: true })] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect((await board()).tickets[0]!.loop).toMatchObject({ monitored: true });
+    expect(narrativeThreads()).toHaveLength(0);
+  });
+
+  it("waits out a running narrative when a PR comes back, then leaves a current one alone", async () => {
+    const open = { state: "open" as const, merged: false };
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 4)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true)] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads()).toHaveLength(1);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [], pulls: { "acme-co/widgets#4": open } }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 4)], pulls: { "acme-co/widgets#4": open } }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads()).toHaveLength(1);
+
+    const card = (await board()).tickets[0]!;
+    const { narrative } = (await current().harness.behavior.callRpc("narrative_get", { ticketId: card.id })) as { narrative: Narrative };
+    await finishNarrative(narrative.threadId);
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(narrativeThreads()).toHaveLength(1);
+    expect((await board()).sync.lastError).toBeNull();
+  });
+});
+
 describe("Jira sources", () => {
   const jiraSettings = { jiraSiteUrl: "https://acme.atlassian.net/", jiraEmail: "dev@acme.example", jiraApiToken: "jt" };
   const jiraSource = {

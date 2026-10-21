@@ -14,7 +14,7 @@ A kanban board where every card is a BB thread.
   when the PR merges or closes, the Jira issue is done, or (if the source says
   so) the item leaves its search. A GitHub source can code review each new
   PR it brings in at a depth you pick, and re-review it when your review is
-  requested again.
+  requested again; it can likewise write a narrative review of each one.
 - Ad hoc cards from the page or from `bb kanban add`, with an optional thread
   started in the project you pick, or in a new one made from a folder you
   choose.

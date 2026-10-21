@@ -168,6 +168,13 @@ export function createTour(
     return rowToNarrative(stmts.latestNarrative.get(subject.id)!);
   }
 
+  /** Writes a narrative unless the latest one is still current or still being written. */
+  async function ensureNarrative(subject: Ticket): Promise<void> {
+    const { narrative, stale } = await latestNarrative(subject);
+    if (narrative !== null && narrative.status !== "failed" && !stale) return;
+    await spawnNarrative(subject);
+  }
+
   /** The narrative a CLI call means: the one named, else the one the calling thread is writing. */
   function narrativeFor(narrativeId: string | undefined, threadId: string | undefined): Narrative {
     const row = narrativeId !== undefined ? snapshots.narrativeRow(narrativeId) : threadId === undefined ? undefined : stmts.narrativeByThread.get(threadId);
@@ -336,7 +343,7 @@ export function createTour(
     return false;
   }
 
-  return { latestNarrative, narrativeStory, spawnNarrative, narrativeContext, checkNarrative, explainHunk, listExplanations, handleIdle };
+  return { latestNarrative, narrativeStory, spawnNarrative, ensureNarrative, narrativeContext, checkNarrative, explainHunk, listExplanations, handleIdle };
 }
 
 export type Tour = ReturnType<typeof createTour>;

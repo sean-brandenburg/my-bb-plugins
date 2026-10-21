@@ -50,6 +50,8 @@ export interface TicketRow {
   loop_state: string | null;
   /** A source asked for a review of this PR card that has not started yet. */
   auto_review_depth: ReviewDepth | null;
+  /** 1 when a source asked for a narrative of this PR card that has not started yet. */
+  auto_narrative: number;
   created_at: number;
   updated_at: number;
 }

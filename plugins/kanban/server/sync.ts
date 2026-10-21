@@ -10,6 +10,7 @@ import { fetchPrHeads, github, prStateOf, repoFromRepositoryUrl, resolveToken, s
 import { JIRA_FIELDS, adfToText, jira, jiraConfig, searchJira, toJiraIssue, type JiraConfig, type JiraSearchIssue } from "./jira";
 import type { Projects } from "./projects";
 import type { Reviews } from "./reviews/reviews";
+import type { Tour } from "./tour";
 import type { KanbanSettingsValues } from "./settings";
 import { errorMessage, normalizeTags, parseStringArray } from "./util";
 
@@ -63,7 +64,14 @@ export async function loadSyncStatus(bb: BbPluginApi): Promise<SyncStatus> {
 /** Pulls every enabled source into the board: new cards, state refreshes, and cards that left their source. */
 export function createSourceSync(
   ctx: KanbanContext,
-  { board, threads, projects, prComments, reviews }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments; reviews: Reviews },
+  {
+    board,
+    threads,
+    projects,
+    prComments,
+    reviews,
+    tour,
+  }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments; reviews: Reviews; tour: Tour },
 ) {
   const { bb, settings, stmts, sync, publish } = ctx;
   const { getTicket, getColumns, getSources, createTicket, moveTicket } = board;
@@ -144,8 +152,9 @@ export function createSourceSync(
       }
     }
 
-    // After the card threads start, so each review thread is a child of its card's thread.
+    // After the card threads start, so each review and narrative thread is a child of its card's thread.
     await startAutoReviews(pass);
+    await startAutoNarratives(pass);
 
     if (pass.problems.length > 0) throw new Error(pass.problems.join(" · "));
   }
@@ -167,6 +176,27 @@ export function createSourceSync(
         await reviews.startReview(row.id, null, "incremental", row.auto_review_depth!);
       } catch (error) {
         pass.problems.push(`Could not start the review of ${row.pr_repo}#${row.pr_number}: ${errorMessage(error)}`);
+      }
+    }
+  }
+
+  /**
+   * Narratives a source asked for, with the same waits as reviews. One still current is left alone; one the code has
+   * moved past gets an update chapter.
+   */
+  async function startAutoNarratives(pass: SyncPass): Promise<void> {
+    for (const row of stmts.pendingAutoNarratives.all()) {
+      const ticket = getTicket(row.id);
+      if (ticket.loop?.monitored === true) {
+        stmts.setAutoNarrative.run(0, row.id);
+        continue;
+      }
+      if (stmts.latestNarrative.get(row.id)?.status === "running") continue;
+      stmts.setAutoNarrative.run(0, row.id);
+      try {
+        await tour.ensureNarrative(ticket);
+      } catch (error) {
+        pass.problems.push(`Could not start the narrative of ${row.pr_repo}#${row.pr_number}: ${errorMessage(error)}`);
       }
     }
   }
@@ -254,6 +284,7 @@ export function createSourceSync(
         });
         const depth = autoReviewDepth(itemSources);
         if (depth !== null) stmts.setAutoReview.run(depth, ticket.id);
+        if (itemSources.some((source) => source.narrateNewPrs)) stmts.setAutoNarrative.run(1, ticket.id);
         if (pass.autoStartThreads && projectId !== null) pass.toSpawn.push(ticket.id);
         continue;
       }
@@ -267,6 +298,7 @@ export function createSourceSync(
         }
         const depth = autoReviewDepth(itemSources);
         if (depth !== null && (pr.state === "open" || pr.state === "draft")) stmts.setAutoReview.run(depth, existing.id);
+        if (itemSources.some((source) => source.narrateNewPrs) && (pr.state === "open" || pr.state === "draft")) stmts.setAutoNarrative.run(1, existing.id);
       }
     }
     // Cards still without a project (created before auto-creation, or whose clone failed): try again each sync.

@@ -59,6 +59,8 @@ export const githubSourceSchema = sourceBaseSchema.extend({
   query: z.string().trim().min(1).max(500),
   /** Depth of the code review started on every PR card this source creates or brings back; null starts none. */
   reviewNewPrs: reviewDepthSchema.nullable().default(null),
+  /** Writes a narrative review of every PR card this source creates or brings back. */
+  narrateNewPrs: z.boolean().default(false),
 });
 
 export const jiraSourceSchema = sourceBaseSchema.extend({
@@ -87,6 +89,7 @@ export const DEFAULT_SOURCES: Source[] = [
     projectId: null,
     monitorNewCards: false,
     reviewNewPrs: null,
+    narrateNewPrs: false,
   },
   {
     id: "pr-reviews",
@@ -99,6 +102,7 @@ export const DEFAULT_SOURCES: Source[] = [
     projectId: null,
     monitorNewCards: false,
     reviewNewPrs: null,
+    narrateNewPrs: false,
   },
 ];
 

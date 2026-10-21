@@ -236,5 +236,6 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     )`,
     `CREATE INDEX IF NOT EXISTS classify_runs_thread ON classify_runs(thread_id)`,
     `ALTER TABLE tickets ADD COLUMN auto_review_depth TEXT`,
+    `ALTER TABLE tickets ADD COLUMN auto_narrative INTEGER NOT NULL DEFAULT 0`,
   ]);
 }

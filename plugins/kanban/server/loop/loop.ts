@@ -127,10 +127,7 @@ export function createLoop(
       }
       case "spawn-narrative":
         try {
-          const ticket = getTicket(ticketId);
-          const { narrative, stale } = await tour.latestNarrative(ticket);
-          if (narrative !== null && narrative.status !== "failed" && !stale) return;
-          await tour.spawnNarrative(ticket);
+          await tour.ensureNarrative(getTicket(ticketId));
         } catch (error) {
           // The brief falls back to the reading order without it.
           bb.log.warn(`could not start a narrative for ticket ${ticketId}: ${errorMessage(error)}`);

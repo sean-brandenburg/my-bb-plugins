@@ -73,6 +73,10 @@ export function prepareStatements(db: KanbanDatabase) {
     ),
     setLeftSource: db.prepare<[number, string]>(`UPDATE tickets SET left_source = ? WHERE id = ?`),
     setAutoReview: db.prepare<[ReviewDepth | null, string]>(`UPDATE tickets SET auto_review_depth = ? WHERE id = ?`),
+    setAutoNarrative: db.prepare<[number, string]>(`UPDATE tickets SET auto_narrative = ? WHERE id = ?`),
+    pendingAutoNarratives: db.prepare<[], TicketRow>(
+      `SELECT * FROM tickets WHERE auto_narrative = 1 AND kind = 'pr' AND pr_state = 'open' AND project_id IS NOT NULL ORDER BY created_at`,
+    ),
     pendingAutoReviews: db.prepare<[], TicketRow>(
       `SELECT * FROM tickets WHERE auto_review_depth IS NOT NULL AND kind = 'pr' AND pr_state = 'open' AND project_id IS NOT NULL ORDER BY created_at`,
     ),
