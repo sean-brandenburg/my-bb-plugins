@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PullRequest } from "../../shared/board";
+import type { ReviewDepth } from "../../shared/review";
 import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
 
 export type KanbanDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
@@ -71,6 +72,10 @@ export function prepareStatements(db: KanbanDatabase) {
          source_id = COALESCE(source_id, ?), title_edited = 1, updated_at = ? WHERE id = ?`,
     ),
     setLeftSource: db.prepare<[number, string]>(`UPDATE tickets SET left_source = ? WHERE id = ?`),
+    setAutoReview: db.prepare<[ReviewDepth | null, string]>(`UPDATE tickets SET auto_review_depth = ? WHERE id = ?`),
+    pendingAutoReviews: db.prepare<[], TicketRow>(
+      `SELECT * FROM tickets WHERE auto_review_depth IS NOT NULL AND kind = 'pr' AND pr_state = 'open' AND project_id IS NOT NULL ORDER BY created_at`,
+    ),
     // CI flips without anyone editing the card, so this leaves updated_at alone.
     setPrHead: db.prepare<[string, PullRequest["checks"], string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ? WHERE id = ?`),
     setTags: db.prepare<[string, number, string]>(`UPDATE tickets SET tags = ?, updated_at = ? WHERE id = ?`),

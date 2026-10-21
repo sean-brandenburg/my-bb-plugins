@@ -734,7 +734,7 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               stdout: sources
                 .map(
                   (source) =>
-                    `${source.id}${source.enabled ? "" : " (disabled)"}  ${source.name}  [${source.kind}] ${source.kind === "github-search" ? source.query : source.jql}  → ${source.tags.map((tag) => `#${tag}`).join(" ")}${source.doneWhenGone ? "  (done when gone)" : ""}`,
+                    `${source.id}${source.enabled ? "" : " (disabled)"}  ${source.name}  [${source.kind}] ${source.kind === "github-search" ? source.query : source.jql}  → ${source.tags.map((tag) => `#${tag}`).join(" ")}${source.doneWhenGone ? "  (done when gone)" : ""}${source.kind === "github-search" && source.reviewNewPrs !== null ? `  (${REVIEW_DEPTH_LABEL[source.reviewNewPrs]} review of new PRs)` : ""}`,
                 )
                 .join("\n"),
             };

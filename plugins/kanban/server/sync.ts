@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Column, JiraIssue, PullRequest, Source, SyncStatus } from "../shared/board";
+import { reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { doneColumn, initialColumn, type BoardStore } from "./board";
 import type { CardThreads } from "./card-threads";
 import type { PrComments } from "./comments/pr-comments";
@@ -8,6 +9,7 @@ import type { TicketRow } from "./db/rows";
 import { fetchPrHeads, github, prStateOf, repoFromRepositoryUrl, resolveToken, searchPulls, type GithubPull } from "./github";
 import { JIRA_FIELDS, adfToText, jira, jiraConfig, searchJira, toJiraIssue, type JiraConfig, type JiraSearchIssue } from "./jira";
 import type { Projects } from "./projects";
+import type { Reviews } from "./reviews/reviews";
 import type { KanbanSettingsValues } from "./settings";
 import { errorMessage, normalizeTags, parseStringArray } from "./util";
 
@@ -28,8 +30,8 @@ interface SyncPass {
 }
 
 /** One item can appear in several sources: it gets every source's tags, and the first source owns it. */
-function groupBySource<T>(results: Array<{ source: Source; items: T[] }>, keyOf: (item: T) => string): Map<string, { item: T; sources: Source[] }> {
-  const seen = new Map<string, { item: T; sources: Source[] }>();
+function groupBySource<S extends Source, T>(results: Array<{ source: S; items: T[] }>, keyOf: (item: T) => string): Map<string, { item: T; sources: S[] }> {
+  const seen = new Map<string, { item: T; sources: S[] }>();
   for (const { source, items } of results) {
     for (const item of items) {
       const key = keyOf(item);
@@ -39,6 +41,12 @@ function groupBySource<T>(results: Array<{ source: Source; items: T[] }>, keyOf:
     }
   }
   return seen;
+}
+
+/** The deepest review any of the item's sources asks for, or null when none reviews new PRs. */
+function autoReviewDepth(sources: GithubSource[]): ReviewDepth | null {
+  const depths = new Set(sources.map((source) => source.reviewNewPrs));
+  return [...reviewDepthSchema.options].reverse().find((depth) => depths.has(depth)) ?? null;
 }
 
 export async function loadSyncStatus(bb: BbPluginApi): Promise<SyncStatus> {
@@ -55,7 +63,7 @@ export async function loadSyncStatus(bb: BbPluginApi): Promise<SyncStatus> {
 /** Pulls every enabled source into the board: new cards, state refreshes, and cards that left their source. */
 export function createSourceSync(
   ctx: KanbanContext,
-  { board, threads, projects, prComments }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments },
+  { board, threads, projects, prComments, reviews }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments; reviews: Reviews },
 ) {
   const { bb, settings, stmts, sync, publish } = ctx;
   const { getTicket, getColumns, getSources, createTicket, moveTicket } = board;
@@ -136,7 +144,31 @@ export function createSourceSync(
       }
     }
 
+    // After the card threads start, so each review thread is a child of its card's thread.
+    await startAutoReviews(pass);
+
     if (pass.problems.length > 0) throw new Error(pass.problems.join(" · "));
+  }
+
+  /**
+   * Reviews a source asked for. A card waits while its project is still being cloned, while it is a draft, or while
+   * another review of it runs; a monitored card's loop runs its own reviews instead.
+   */
+  async function startAutoReviews(pass: SyncPass): Promise<void> {
+    for (const row of stmts.pendingAutoReviews.all()) {
+      const ticket = getTicket(row.id);
+      if (ticket.loop?.monitored === true) {
+        stmts.setAutoReview.run(null, row.id);
+        continue;
+      }
+      if (stmts.latestReview.get(row.id)?.status === "running") continue;
+      stmts.setAutoReview.run(null, row.id);
+      try {
+        await reviews.startReview(row.id, null, "incremental", row.auto_review_depth!);
+      } catch (error) {
+        pass.problems.push(`Could not start the review of ${row.pr_repo}#${row.pr_number}: ${errorMessage(error)}`);
+      }
+    }
   }
 
   /** Runs every source's search; a failed source is reported and counts as having returned nothing. */
@@ -220,6 +252,8 @@ export function createSourceSync(
           projectId,
           pr,
         });
+        const depth = autoReviewDepth(itemSources);
+        if (depth !== null) stmts.setAutoReview.run(depth, ticket.id);
         if (pass.autoStartThreads && projectId !== null) pass.toSpawn.push(ticket.id);
         continue;
       }
@@ -231,6 +265,8 @@ export function createSourceSync(
         if ((pr.state === "open" || pr.state === "draft") && existing.column_id === doneColumn(pass.columns)) {
           moveTicket(existing.id, initialColumn(pass.columns, pr), null);
         }
+        const depth = autoReviewDepth(itemSources);
+        if (depth !== null && (pr.state === "open" || pr.state === "draft")) stmts.setAutoReview.run(depth, existing.id);
       }
     }
     // Cards still without a project (created before auto-creation, or whose clone failed): try again each sync.

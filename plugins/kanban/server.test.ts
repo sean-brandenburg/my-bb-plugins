@@ -2254,6 +2254,88 @@ describe("tags and sources", () => {
   });
 });
 
+describe("source code reviews", () => {
+  const reviewSource = (reviewNewPrs: string | null, extra: Record<string, unknown> = {}) => ({
+    id: "pr-reviews",
+    name: "Review requests",
+    kind: "github-search",
+    query: "is:pr is:open user-review-requested:@me",
+    tags: ["pr-reviews"],
+    doneWhenGone: true,
+    enabled: true,
+    reviewNewPrs,
+    ...extra,
+  });
+  const reviewThreads = () => spawned.filter((args) => (args.pluginMetadata as { role?: string } | undefined)?.role === "review");
+
+  it("reviews each new PR from the source at its depth under the card's thread, once, leaving earlier cards alone", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1, { user: { login: "alice" } })] }));
+    await load();
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource(null)] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads()).toHaveLength(0);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [1, 2].map((number) => searchItem("acme-co/widgets", number, { title: "Please review", user: { login: "alice" } })) }));
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("quick")] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    await current().harness.behavior.callRpc("sync_now", null);
+    const card = (await board()).tickets.find((ticket) => ticket.pr?.number === 2)!;
+    expect(reviewThreads()).toEqual([
+      expect.objectContaining({ title: "Review widgets#2: Please review", parentThreadId: card.threadId, visibility: "hidden", pluginMetadata: { ticketId: card.id, role: "review" } }),
+    ]);
+    expect(card.latestReview).toMatchObject({ status: "running", depth: "quick" });
+    expect((await board()).sync.lastError).toBeNull();
+
+    const cli = await current().harness.behavior.runCli(["sources"]);
+    expect(cli.stdout).toContain("(Quick review of new PRs)");
+  });
+
+  it("waits for a draft PR to open before reviewing it", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1, { draft: true })] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("standard")] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads()).toHaveLength(0);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads().map((args) => args.title)).toEqual(["Review widgets#1: PR 1"]);
+  });
+
+  it("leaves a card the review loop monitors to the loop", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("standard", { monitorNewCards: true })] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect((await board()).tickets[0]!.loop).toMatchObject({ monitored: true });
+    expect(reviewThreads()).toHaveLength(0);
+  });
+
+  it("re-reviews a PR that comes back to the source, once the running review has finished", async () => {
+    const open = { state: "open" as const, merged: false };
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 4)] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("standard")] });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads()).toHaveLength(1);
+
+    vi.stubGlobal("fetch", stubGithub({ requested: [], pulls: { "acme-co/widgets#4": open } }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 4)], pulls: { "acme-co/widgets#4": open } }));
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads()).toHaveLength(1);
+
+    const ctx = { threadId: "thr_1", signal: new AbortController().signal };
+    await current().harness.behavior.runCli(["review-record", "--commit", "0123456789abcdef0123456789abcdef01234567", "--base", "main"], ctx);
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_1", projectId: "proj_acme" }), lastAssistantText: "No findings." });
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads().map((args) => String(args.title))).toEqual(["Review widgets#4: PR 4", "Re-review widgets#4: PR 4"]);
+    await current().harness.behavior.callRpc("sync_now", null);
+    expect(reviewThreads()).toHaveLength(2);
+  });
+});
+
 describe("Jira sources", () => {
   const jiraSettings = { jiraSiteUrl: "https://acme.atlassian.net/", jiraEmail: "dev@acme.example", jiraApiToken: "jt" };
   const jiraSource = {

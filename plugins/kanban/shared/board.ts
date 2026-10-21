@@ -2,7 +2,7 @@ import { z } from "zod";
 import { COLUMN } from "./columns";
 import { dumpSchema } from "./dump";
 import { loopStateSchema, projectSettingsSchema } from "./loop";
-import { reviewSummarySchema } from "./review";
+import { reviewDepthSchema, reviewSummarySchema } from "./review";
 import { tokensSchema } from "./spend";
 
 export const TICKET_TITLE_MAX_LENGTH = 200;
@@ -57,6 +57,8 @@ export const githubSourceSchema = sourceBaseSchema.extend({
   kind: z.literal("github-search"),
   /** GitHub search query, e.g. `is:pr is:open author:@me archived:false`. */
   query: z.string().trim().min(1).max(500),
+  /** Depth of the code review started on every PR card this source creates or brings back; null starts none. */
+  reviewNewPrs: reviewDepthSchema.nullable().default(null),
 });
 
 export const jiraSourceSchema = sourceBaseSchema.extend({
@@ -84,6 +86,7 @@ export const DEFAULT_SOURCES: Source[] = [
     enabled: true,
     projectId: null,
     monitorNewCards: false,
+    reviewNewPrs: null,
   },
   {
     id: "pr-reviews",
@@ -95,6 +98,7 @@ export const DEFAULT_SOURCES: Source[] = [
     enabled: true,
     projectId: null,
     monitorNewCards: false,
+    reviewNewPrs: null,
   },
 ];
 

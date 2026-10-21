@@ -34,7 +34,7 @@ export function createServices(ctx: KanbanContext) {
   const tour = createTour(ctx, { changes, threads, projects, codeReviewThreads });
   const dumps = createDumps(ctx, { board, threads });
   const subtasks = createSubtasks(ctx, { board, threads, projects });
-  const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments });
+  const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments, reviews });
   const loop = createLoop(ctx, { board, threads, codeReviewThreads, projectSettings, reviews, diffComments, prComments, changes, viewed, tour });
   return { spend, board, projectSettings, loop, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
 }

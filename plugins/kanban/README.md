@@ -34,6 +34,15 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Each source has tags, an optional project for its card threads (GitHub
   sources match the repo's git remote first), and a "done when it leaves this
   search" flag.
+  A GitHub source can also review its PRs: pick Quick, Standard or Deep under
+  "Review new PRs" and every PR card it creates gets a code review at that
+  depth, as if Review PR had been pressed, and a re-review of the commits since
+  whenever the PR comes back to the search (your review is requested again).
+  Turn it on for `#pr-reviews` to have everything you're asked to review
+  reviewed by the time you open it. Cards already on the board are left alone.
+  A review waits while the PR is a draft, while its project is still being
+  cloned, or while another review of it runs; a monitored card's loop runs its
+  own reviews instead. Several sources on one PR take the deepest depth.
 - The page's controls live in bb's title bar next to the Kanban name: the
   Board/Todo toggle, the **Settings** cog (Columns, Sources, Keyboard shortcuts, "Sync sources
   now" with the last-sync status) and New card; on a card's changes page the

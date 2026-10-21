@@ -3,7 +3,7 @@ import type { PullRequest, Ticket } from "../../shared/board";
 import type { CommentApply, DiffComment, DiffCommentTarget, PrComment } from "../../shared/comments";
 import { proposalSchema, type Dump, type Proposal } from "../../shared/dump";
 import { parseLoopState, type CheckCommand } from "../../shared/loop";
-import type { Review } from "../../shared/review";
+import type { Review, ReviewDepth } from "../../shared/review";
 import type { HunkExplanation, Narrative } from "../../shared/tour";
 import { parseNarrative, parseReviewReport } from "../agent-output";
 import { jiraCategory } from "../jira";
@@ -48,6 +48,8 @@ export interface TicketRow {
   column_entered_at: number | null;
   /** The review loop's state as JSON; null until the card is first monitored. */
   loop_state: string | null;
+  /** A source asked for a review of this PR card that has not started yet. */
+  auto_review_depth: ReviewDepth | null;
   created_at: number;
   updated_at: number;
 }

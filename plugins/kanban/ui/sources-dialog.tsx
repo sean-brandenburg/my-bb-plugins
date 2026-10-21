@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { OPACITY_TRANSITION, enter, useArrivals, usePresenceList } from "bb-motion";
 import type { Source, SourceKind } from "../shared/board";
+import { REVIEW_DEPTH_LABEL, reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,7 +20,7 @@ function newSource(kind: SourceKind, id: string): Source {
   const base = { id, name: kind === "jira-jql" ? "Jira issues" : "GitHub search", tags: [], doneWhenGone: false, enabled: true, projectId: null, monitorNewCards: false };
   return kind === "jira-jql"
     ? { ...base, kind, jql: "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC" }
-    : { ...base, kind, query: "" };
+    : { ...base, kind, query: "", reviewNewPrs: null };
 }
 
 function sourceQuery(source: Source): string {
@@ -201,6 +202,26 @@ export function SourcesDialog({
                     Monitor new cards, with the default gates; a card's own flag wins
                   </label>
                 </dd>
+                {source.kind === "github-search" ? (
+                  <>
+                    <dt className="pt-1.5 text-xs text-muted-foreground">Review new PRs</dt>
+                    <dd>
+                      <Select
+                        aria-label={`Code review of new PRs from ${source.name}`}
+                        value={source.reviewNewPrs ?? ""}
+                        className="h-8"
+                        onChange={(value) => update(source.id, (entry) => (entry.kind === "github-search" ? { ...entry, reviewNewPrs: value === "" ? null : (value as ReviewDepth) } : entry))}
+                      >
+                        <option value="">Don't review new PRs</option>
+                        {reviewDepthSchema.options.map((depth) => (
+                          <option key={depth} value={depth}>
+                            {REVIEW_DEPTH_LABEL[depth]} review when a PR arrives or comes back to this search
+                          </option>
+                        ))}
+                      </Select>
+                    </dd>
+                  </>
+                ) : null}
               </dl>
               <p className="text-[11px] text-muted-foreground">
                 Source id <code>{source.id}</code> is fixed at creation; cards remember which source made them by this id, and <code>bb kanban sources</code> lists it.
