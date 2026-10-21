@@ -154,6 +154,7 @@ export function prepareStatements(db: KanbanDatabase) {
     reviewByThread: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1`,
     ),
+    runningReviews: db.prepare<[], ReviewRow>(`SELECT * FROM reviews WHERE status = 'running'`),
     reviewByApplyThread: db.prepare<[string], ReviewRow>(
       `SELECT * FROM reviews WHERE apply_thread_id = ? ORDER BY created_at DESC LIMIT 1`,
     ),

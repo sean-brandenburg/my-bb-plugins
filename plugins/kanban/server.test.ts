@@ -8,12 +8,13 @@ import {
   makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
+import type { PluginThreadEventPayloads, PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import type { ReadingPlan } from "./shared/reading-plan";
 import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
 import { phaseChip } from "./shared/loop";
 
 type Host = ReturnType<typeof createFakePluginHost>;
+type ThreadResponse = ReturnType<typeof makeThreadResponse>;
 
 interface SearchItem {
   number: number;
@@ -227,6 +228,8 @@ function stubGithub(options: {
 let spawned: Array<Record<string, unknown>>;
 /** Final outputs served by `threads.output`; set before a reload since stubs do not survive one. */
 const threadOutputs = new Map<string, string>();
+/** Statuses served by `threads.get`, idle when unset; set before a reload like `threadOutputs`. */
+const threadStatuses = new Map<string, ThreadResponse["status"]>();
 let posted: Array<{ comments?: Array<{ path: string; body: string }>; body?: string }> = [];
 let repliesPosted: Array<{ to: number; body: string }> = [];
 let host: Host | null = null;
@@ -234,6 +237,7 @@ let host: Host | null = null;
 async function load(settings: Record<string, string | number | boolean> = {}) {
   spawned = [];
   threadOutputs.clear();
+  threadStatuses.clear();
   posted = [];
   repliesPosted = [];
   host = createFakePluginHost({
@@ -271,9 +275,11 @@ async function load(settings: Record<string, string | number | boolean> = {}) {
           return makeThreadResponse({ id: `thr_${spawned.length}`, projectId: String(args.projectId) });
         },
         get: async ({ threadId }: { threadId: string }) =>
-          makeThreadResponse({ id: threadId, projectId: "proj_acme", environmentId: `env_${threadId}` }),
+          makeThreadResponse({ id: threadId, projectId: "proj_acme", environmentId: `env_${threadId}`, status: threadStatuses.get(threadId) ?? "idle" }),
         updatePluginMetadata: async () => ({}),
         output: async ({ threadId }: { threadId: string }) => ({ output: threadOutputs.get(threadId) ?? null }),
+        retry: async () => ({ ok: true, delivery: "sent", attempt: 2, turnRequestId: "req_retry" }),
+        queue: { list: async () => [] },
       },
     },
   });
@@ -1095,6 +1101,103 @@ describe("persisted reviews", () => {
     });
     const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
     expect(reviews[0]!.body).toBe(final);
+  });
+
+  const turnFailed = (overrides: Partial<PluginTurnFailedEvent> = {}): PluginTurnFailedEvent => ({
+    threadId: "thr_2",
+    requestId: "req_1",
+    turnId: "turn_1",
+    errorInfo: null,
+    inputAccepted: true,
+    rateLimits: null,
+    attemptNumber: 1,
+    ...overrides,
+  });
+  async function failReviewThread(failure: PluginTurnFailedEvent | null): Promise<void> {
+    threadStatuses.set("thr_2", "error");
+    await current().harness.behavior.emitThreadEvent("thread.failed", { thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme", status: "error" }), error: null });
+    if (failure !== null) await current().harness.behavior.emitThreadEvent("turn.failed", failure);
+  }
+  const retries = () => current().harness.inspection.sdk.callsTo("threads.retry");
+
+  it("resumes a review whose thread failed mid-turn, as when the machine slept, and records the resumed run's report", async () => {
+    await reviewedCard();
+    await failReviewThread(turnFailed());
+    await vi.waitFor(() => expect(retries()).toEqual([[expect.objectContaining({ threadId: "thr_2", turnRequestId: "req_1" })]]));
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "running" });
+    expect(spawned).toHaveLength(2);
+
+    await current().harness.behavior.runCli(["review-record", "--commit", sha], ctx("thr_2"));
+    const findings = ["```json review-findings", JSON.stringify({ version: 1, summary: "x", commit: sha, findings: [{ id: "F1", severity: "important", title: "Drop", locations: [] }] }), "```"].join("\n");
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_2", projectId: "proj_acme" }), lastAssistantText: findings });
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "completed", counts: { critical: 0, important: 1, minor: 0 } });
+  });
+
+  it("fails the review when the failure isn't transient", async () => {
+    await reviewedCard();
+    await failReviewThread(turnFailed({ errorInfo: { category: "unauthorized", httpStatusCode: 401, providerCode: null } }));
+    await vi.waitFor(async () => expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "failed" }));
+    expect(retries()).toEqual([]);
+  });
+
+  it("fails the review once two resumes have failed", async () => {
+    await reviewedCard();
+    await failReviewThread(turnFailed({ attemptNumber: 3 }));
+    await vi.waitFor(async () => expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "failed" }));
+    expect(retries()).toEqual([]);
+  });
+
+  describe("waiting on a failure's outcome", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("leaves a rate limit to the provider-retry plugin, keeping the review running while its retry is queued", async () => {
+      await reviewedCard();
+      current().harness.sdk.stub("threads.queue.list", async () => [{ threadId: "thr_2", payload: { kind: "retry", attempt: 2, reason: "Rate limited", retryOfTurnRequestId: "req_1" } }]);
+      await failReviewThread(turnFailed({ errorInfo: { category: "rate-limit", httpStatusCode: 429, providerCode: null } }));
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(retries()).toEqual([]);
+      expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "running" });
+
+      current().harness.sdk.stub("threads.queue.list", async () => []);
+      await current().harness.behavior.emitThreadEvent("message.cancelled", {
+        entry: { threadId: "thr_2", payload: { kind: "retry", attempt: 2, reason: "Rate limited", retryOfTurnRequestId: "req_1" } } as PluginThreadEventPayloads["message.cancelled"]["entry"],
+      });
+      await vi.waitFor(async () => expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "failed" }));
+    });
+
+    it("fails a review whose thread failed outside a turn once the wait is up", async () => {
+      await reviewedCard();
+      await failReviewThread(null);
+      await vi.advanceTimersByTimeAsync(14_000);
+      expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "running" });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.waitFor(async () => expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "failed" }));
+      expect(retries()).toEqual([]);
+    });
+  });
+
+  it("resumes on load a review whose thread failed while the plugin was unloaded, and records one that finished then", async () => {
+    const card = await reviewedCard();
+    threadStatuses.set("thr_2", "error");
+    host = await current().harness.lifecycle.reload(plugin);
+    threadStatuses.set("thr_2", "error");
+    await vi.waitFor(() => expect(retries()).toEqual([[expect.objectContaining({ threadId: "thr_2" })]]));
+    expect((await board()).tickets[0]!.latestReview).toMatchObject({ status: "running" });
+
+    await current().harness.behavior.runCli(["review-record", "--commit", sha], ctx("thr_2"));
+    const final = ["```json review-findings", JSON.stringify({ version: 1, summary: "x", commit: sha, findings: [] }), "```"].join("\n");
+    threadOutputs.set("thr_2", final);
+    threadStatuses.set("thr_2", "idle");
+    host = await current().harness.lifecycle.reload(plugin);
+    await vi.waitFor(async () => {
+      const { reviews } = (await current().harness.behavior.callRpc("review_list", { ticketId: card.id })) as { reviews: Review[] };
+      expect(reviews[0]).toMatchObject({ status: "completed", body: final });
+    });
   });
 
   it("repairs a review recorded from an interim message from its thread's final output on load", async () => {
@@ -1962,6 +2065,23 @@ describe("monitored review loop", () => {
     expect((await card()).loop).toMatchObject({ phase: "checking", retries: 1 });
     await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_3", projectId: "proj_acme" }), lastAssistantText: "I could not run it" });
     await vi.waitFor(async () => expect(await card()).toMatchObject({ columnId: "review", loop: { reason: "loop-error", failedThreadId: "thr_3" } }));
+  });
+
+  it("resumes a review thread that failed mid-turn instead of starting a fresh review", async () => {
+    await monitoredCard();
+    await ready();
+    await recordChecks("thr_2", 0);
+    await classify("thr_3", 2);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId: expect.any(String) }));
+    const { reviewId } = (await card()).loop!;
+    await current().harness.behavior.emitThreadEvent("thread.failed", { thread: makeThreadResponse({ id: "thr_4", projectId: "proj_acme", status: "error" }), error: null });
+    await current().harness.behavior.emitThreadEvent("turn.failed", { threadId: "thr_4", requestId: "req_1", turnId: null, errorInfo: null, inputAccepted: true, rateLimits: null, attemptNumber: 1 });
+    await vi.waitFor(() => expect(current().harness.inspection.sdk.callsTo("threads.retry")).toHaveLength(1));
+    expect(spawned).toHaveLength(4);
+    expect((await card()).loop).toMatchObject({ phase: "reviewing", reviewId, retries: 0 });
+
+    await completeReview("thr_4", reviewBody(sha, []), sha);
+    await vi.waitFor(async () => expect((await card()).loop).toMatchObject({ phase: "needs-you", reason: "clean" }));
   });
 
   it("pauses on the card thread's question without moving the card, and resumes at its next ready", async () => {

@@ -3,15 +3,17 @@ import { doneColumn, type BoardStore } from "./board";
 import type { KanbanContext } from "./context";
 import type { Dumps } from "./dumps";
 import type { Loop } from "./loop/loop";
+import type { ReviewResume } from "./reviews/resume";
 import type { Reviews } from "./reviews/reviews";
 import type { Tour } from "./tour";
 
 /** Cards follow their threads: activity moves them on, archiving finishes them, and idle threads deliver their output. */
-export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour, reviews, loop }: { board: BoardStore; dumps: Dumps; tour: Tour; reviews: Reviews; loop: Loop }): void {
+export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour, reviews, loop, reviewResume }: { board: BoardStore; dumps: Dumps; tour: Tour; reviews: Reviews; loop: Loop; reviewResume: ReviewResume }): void {
   const { bb, settings, stmts, publish } = ctx;
   const { getColumns, moveTicket } = board;
 
   bb.events.on("thread.active", async ({ thread }) => {
+    reviewResume.threadActive(thread.id);
     const { autoMoveOnActivity } = await settings.get();
     if (!autoMoveOnActivity) return;
     const row = stmts.byThread.get(thread.id);
@@ -32,7 +34,13 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     if (reviews.handleIdle(thread.id, lastAssistantText)) void loop.reviewFinished(thread.id);
   });
 
-  bb.events.on("thread.failed", ({ thread, error }) => loop.threadFailed(thread.id, error));
+  bb.events.on("thread.failed", ({ thread, error }) => reviewResume.threadFailed(thread.id, error));
+
+  bb.events.on("turn.failed", (event) => reviewResume.turnFailed(event));
+
+  bb.events.on("message.queued", ({ entry }) => reviewResume.messageQueued(entry));
+
+  bb.events.on("message.cancelled", ({ entry }) => reviewResume.messageCancelled(entry));
 
   bb.events.on("interaction.pending", ({ thread }) => loop.questionAsked(thread.id));
 

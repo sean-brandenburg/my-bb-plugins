@@ -148,8 +148,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   stops it with reason "not converging". A clean review moves the card to
   Needs you. After three fix rounds the loop stops: at Needs you with reason
   "cap" while a critical or important finding is open, or as clean with the
-  open minors listed. A checks or review thread that fails, is deleted, or
-  ends without a result is started again once; a second failure stops the
+  open minors listed. A checks or review thread that fails (after a review's
+  resumes), is deleted, or ends without a result is started again once; a second failure stops the
   loop as a loop error, with a link to the thread in the card panel. While
   the card's thread waits on you (a question or an approval) the loop pauses
   as `stuck · question` without moving the card, and resumes at its next
@@ -221,6 +221,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   has no thread, no commits beyond that branch, or its thread runs on another
   machine than the project's checkout. Re-reviews only continue from a review
   of the same kind, so a card reviewed locally and as a PR keeps two chains.
+  A review whose thread dies mid-turn (the machine slept, the connection
+  dropped, bb was quit) is resumed where it stopped, up to twice, rather than
+  failing and starting over; one that died while bb or the plugin was down is
+  resumed when it loads. Rate limits and overloads are left to bb's
+  provider-retry, and the review keeps running while its retry is queued.
   Every thread a code review button starts (reviews from the button, `bb kanban
   review` or an automation, applying findings or comments, tours, and hunk
   explanations) runs hidden, so it stays out of the sidebar and the project's

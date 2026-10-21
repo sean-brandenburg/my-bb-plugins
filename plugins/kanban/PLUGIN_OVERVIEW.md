@@ -39,7 +39,8 @@ A kanban board where every card is a BB thread.
   apply, defer or drop; the apply round gets the ones triaged apply unless you
   pick otherwise, and deferred ones are a click from a card. Synced PR comments
   (and your local ones) go to an `apply-pr-comments` thread. Findings and PR
-  comment threads render inline in the diff.
+  comment threads render inline in the diff. A review interrupted mid-turn (the
+  machine slept, bb was quit) resumes where it stopped instead of failing.
 - **Monitored cards**: flag a card and the board runs the loop for it. Its
   thread commits and reports ready with evidence; a hidden thread re-runs the
   project's check command at that commit in a fresh worktree; failing checks go

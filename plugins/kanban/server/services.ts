@@ -11,6 +11,7 @@ import { createDumps } from "./dumps";
 import { createLoop } from "./loop/loop";
 import { createProjectSettings } from "./project-settings";
 import { createProjects } from "./projects";
+import { createReviewResume } from "./reviews/resume";
 import { createReviews } from "./reviews/reviews";
 import { createSpend } from "./spend/spend";
 import { createSubtasks } from "./subtasks";
@@ -36,7 +37,8 @@ export function createServices(ctx: KanbanContext) {
   const subtasks = createSubtasks(ctx, { board, threads, projects });
   const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments, reviews });
   const loop = createLoop(ctx, { board, threads, codeReviewThreads, projectSettings, reviews, diffComments, prComments, changes, viewed, tour });
-  return { spend, board, projectSettings, loop, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
+  const reviewResume = createReviewResume(ctx, { reviews, loop });
+  return { spend, board, projectSettings, loop, reviewResume, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync };
 }
 
 export type Services = ReturnType<typeof createServices>;
