@@ -59,10 +59,27 @@ export const TOP_BAR_FRAME_CSS = `
   /* The title bar's controls float over the top bar. Back and forward hide
      but stay mounted, because History keys' Ctrl+O / Ctrl+I click them and
      their box marks where the window buttons end. */
+  /* The title bar spans the whole top bar but must not drag the window:
+     Electron drag regions ignore pointer-events, and the title bar paints
+     over the page header, so it would swallow clicks on the header's buttons.
+     The header drags the window itself, leaving its buttons clickable. */
   ${TITLE_BAR} {
     ${UNZOOM}
     --bb-window-title-bar-height: ${TOP_BAR_HEIGHT_PX}px !important;
     pointer-events: none;
+    app-region: initial !important;
+    -webkit-app-region: initial !important;
+  }
+  /* With the title bar no longer dragging, the window buttons' corner above
+     the sidebar needs a drag strip of its own. */
+  ${FRAMED} ${SIDEBAR} > [data-sidebar="panel"]::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: ${unzoomed(TOP_BAR_HEIGHT_PX)};
+    pointer-events: none;
+    app-region: drag;
+    -webkit-app-region: drag;
   }
   ${TITLE_BAR} > div {
     pointer-events: auto;
