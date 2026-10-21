@@ -55,7 +55,7 @@ const SIDEBAR_TRIGGER_OVERLAY = '[data-testid="app-sidebar-trigger-overlay"]';
 const HEADER_ROW = '[data-testid="app-page-header-content-row"]';
 // A side panel's tab strip, whose right end (bb's Full Screen button) sits
 // under the floating panel toggle once the title bar row is gone.
-const PANEL_CHROME = ".thread-secondary-panel-top-chrome";
+const PANEL_CHROME = '[data-testid="thread-secondary-panel-top-chrome"]';
 
 export const SLIM_SIDEBAR_CSS = `
 @media ${WIDE_VIEWPORT} {

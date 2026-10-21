@@ -246,7 +246,7 @@ function renderFrame() {
       </div>
       <header id="top" style="padding: 0 16px"><div id="top-row" data-testid="app-page-header-content-row"></div></header>
       <header id="lower"><div id="lower-row" data-testid="app-page-header-content-row"></div></header>
-      <aside><div><div id="chrome" class="thread-secondary-panel-top-chrome"></div></div></aside>
+      <aside><div><div id="chrome" data-testid="thread-secondary-panel-top-chrome"></div></div></aside>
     </div>`;
   place("controls", 84, 12, 176, 40);
   place("toggle", 1355, 12, 1383, 40);
