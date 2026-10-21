@@ -246,11 +246,13 @@ function renderFrame() {
       </div>
       <header id="top" style="padding: 0 16px"><div id="top-row" data-testid="app-page-header-content-row"></div></header>
       <header id="lower"><div id="lower-row" data-testid="app-page-header-content-row"></div></header>
+      <aside><div><div id="chrome" class="thread-secondary-panel-top-chrome"></div></div></aside>
     </div>`;
   place("controls", 84, 12, 176, 40);
   place("toggle", 1355, 12, 1383, 40);
   place("top", 45, 0, 1400);
   place("lower", 45, 300, 1400);
+  place("chrome", 1400, 0, 1400);
 }
 
 const framed = (id: string) => byId(id).hasAttribute("data-slim-sidebar-frame");
@@ -274,6 +276,18 @@ describe("arrangeHeaders", () => {
     expect(indent("top-row", "right")).toBeNull();
   });
 
+  it("indents a side panel's tab strip clear of the panel toggle over its right end", () => {
+    renderFrame();
+    place("top", 45, 0, 700);
+    place("chrome", 700, 0, 1400);
+    arrangeHeaders(document, true);
+    expect(indent("chrome", "right")).toBe("53px");
+
+    place("chrome", 700, 300, 1400);
+    arrangeHeaders(document, true);
+    expect(indent("chrome", "right")).toBeNull();
+  });
+
   it("needs no indent outside the macOS frame, and undoes everything at phone width", () => {
     renderFrame();
     byId("top").parentElement!.removeAttribute("data-framed");
@@ -283,6 +297,47 @@ describe("arrangeHeaders", () => {
 
     arrangeHeaders(document, false);
     expect(framed("top")).toBe(false);
+  });
+});
+
+describe("mountSlimSidebar resize", () => {
+  it("indents the top bar again once a closing side panel has finished resizing it", async () => {
+    const observers: Array<{ callback: () => void; targets: Set<Element> }> = [];
+    class FakeResizeObserver {
+      targets = new Set<Element>();
+      constructor(callback: () => void) {
+        observers.push({ callback, targets: this.targets });
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
+    }
+    const original = window.ResizeObserver;
+    window.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      renderFrame();
+      place("top", 45, 0, 700);
+      const cleanup = mountSlimSidebar(document, window);
+      await nextFrame();
+      expect(indent("top-row", "right")).toBeNull();
+      expect(observers[0]!.targets.has(byId("top"))).toBe(true);
+
+      place("top", 45, 0, 1400);
+      observers[0]!.callback();
+      await nextFrame();
+      expect(indent("top-row", "right")).toBe("37px");
+
+      cleanup();
+      expect(observers[0]!.targets.size).toBe(0);
+    } finally {
+      window.ResizeObserver = original;
+    }
   });
 });
 

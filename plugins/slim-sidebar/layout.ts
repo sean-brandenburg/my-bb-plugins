@@ -53,6 +53,9 @@ const TITLE_BAR_CONTROLS = `${TITLE_BAR} > div:has([data-sidebar="trigger"])`;
 const PANEL_TOGGLE = '[data-testid="window-right-panel-toggle"]';
 const SIDEBAR_TRIGGER_OVERLAY = '[data-testid="app-sidebar-trigger-overlay"]';
 const HEADER_ROW = '[data-testid="app-page-header-content-row"]';
+// A side panel's tab strip, whose right end (bb's Full Screen button) sits
+// under the floating panel toggle once the title bar row is gone.
+const PANEL_CHROME = ".thread-secondary-panel-top-chrome";
 
 export const SLIM_SIDEBAR_CSS = `
 @media ${WIDE_VIEWPORT} {
@@ -145,6 +148,9 @@ export const SLIM_SIDEBAR_CSS = `
     transform: none !important;
     padding-left: var(${CLEAR_LEFT}, 0px) !important;
     padding-right: var(${CLEAR_RIGHT}, 0px) !important;
+  }
+  ${FRAMED} ${PANEL_CHROME} {
+    padding-right: var(${CLEAR_RIGHT}, var(--bb-panel-chrome-padding)) !important;
   }
 
   /* The footer's own icons sit beside Settings, in the part of the footer
@@ -337,14 +343,24 @@ function controlBox(doc: Document, selector: string): DOMRect | null {
   return control.getBoundingClientRect();
 }
 
+/** The boxes whose size decides the top bar's indents. */
+function topBarBoxes(doc: Document): HTMLElement[] {
+  return [
+    ...[...doc.querySelectorAll<HTMLElement>(HEADER_ROW)].map(headerOf),
+    ...doc.querySelectorAll<HTMLElement>(PANEL_CHROME),
+  ];
+}
+
 /**
- * Marks the page headers in the top row as the top bar and indents them clear
- * of the controls that float over it.
+ * Marks the page headers in the top row as the top bar and indents them, and
+ * side panels' tab strips, clear of the controls that float over them.
  */
 export function arrangeHeaders(doc: Document, isWide: boolean, zoom = 1): void {
   const rows = [...doc.querySelectorAll<HTMLElement>(HEADER_ROW)];
+  const chromes = [...doc.querySelectorAll<HTMLElement>(PANEL_CHROME)];
   if (!isWide) {
     rows.forEach(clearRow);
+    chromes.forEach((chrome) => chrome.style.removeProperty(CLEAR_RIGHT));
     return;
   }
   const topRowBottom = TOP_BAR_HEIGHT_PX / zoom;
@@ -373,6 +389,39 @@ export function arrangeHeaders(doc: Document, isWide: boolean, zoom = 1): void {
     setClearance(row, CLEAR_LEFT, clearance.left);
     setClearance(row, CLEAR_RIGHT, clearance.right);
   }
+  // A tab strip's own padding is replaced rather than added to, and it is not
+  // unzoomed, so it is measured without either.
+  for (const chrome of chromes) {
+    const box = chrome.getBoundingClientRect();
+    const overlapsToggle =
+      panelToggle !== null && box.top < topRowBottom && panelToggle.left < box.right && panelToggle.right > box.left;
+    const { right } = headerClearance(
+      box,
+      { left: 0, right: 0 },
+      { leftEnd: null, rightStart: overlapsToggle ? panelToggle.left : null },
+    );
+    setClearance(chrome, CLEAR_RIGHT, right);
+  }
+}
+
+/**
+ * Observes exactly these boxes. Each box is observed once: observing it again
+ * reports its size again, which would re-arrange every frame.
+ */
+function observeOnly(observer: ResizeObserver, observed: Set<Element>, boxes: Element[]) {
+  const wanted = new Set(boxes);
+  for (const box of observed) {
+    if (!wanted.has(box)) {
+      observer.unobserve(box);
+      observed.delete(box);
+    }
+  }
+  for (const box of wanted) {
+    if (!observed.has(box)) {
+      observer.observe(box);
+      observed.add(box);
+    }
+  }
 }
 
 /** Installs the stylesheet and keeps the rail numbered and the top bar arranged; returns cleanup. */
@@ -395,6 +444,7 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
       applyZoom(doc, zoom);
       arrangeHeaders(doc, wide.matches, zoom);
       labelRail(doc, platform, held);
+      if (resized !== null) observeOnly(resized, observed, topBarBoxes(doc));
     });
   };
   const hold = (next: boolean) => {
@@ -411,6 +461,10 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
   };
   const release = () => hold(false);
   const observer = new MutationObserver(schedule);
+  // A side panel opening or closing animates the page's width after the
+  // mutation that starts it, so the indents are measured again once it settles.
+  const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+  const observed = new Set<Element>();
   // data-state and class changes move headers: the sidebar collapsing, a
   // panel opening.
   observer.observe(doc.body, {
@@ -427,6 +481,7 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
   schedule();
   return () => {
     observer.disconnect();
+    resized?.disconnect();
     win.removeEventListener("keydown", onKeyDown, true);
     win.removeEventListener("keyup", onKeyUp, true);
     win.removeEventListener("blur", release);
@@ -436,6 +491,7 @@ export function mountSlimSidebar(doc: Document, win: Window): () => void {
     style.remove();
     applyZoom(doc, 1);
     doc.querySelectorAll<HTMLElement>(HEADER_ROW).forEach(clearRow);
+    doc.querySelectorAll<HTMLElement>(PANEL_CHROME).forEach((chrome) => chrome.style.removeProperty(CLEAR_RIGHT));
     doc.querySelectorAll(`[${SLOT_ATTRIBUTE}]`).forEach((item) => item.removeAttribute(SLOT_ATTRIBUTE));
     doc.querySelectorAll(`[${HELD_ATTRIBUTE}]`).forEach((rail) => rail.removeAttribute(HELD_ATTRIBUTE));
   };
