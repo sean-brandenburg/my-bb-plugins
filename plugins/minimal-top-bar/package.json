@@ -9,7 +9,7 @@
   },
   "bb": {
     "name": "Minimal top bar",
-    "description": "Clears out bb's top bar: the thread title sits centered and opens the thread menu on click, and buttons with keyboard equivalents, plus Commit and the sidebar toggle, are hidden.",
+    "description": "Clears out bb's top bar and merges it with the macOS title bar row at a fixed size under any zoom: the thread title sits centered and opens the thread menu on click, and buttons with keyboard equivalents, plus Commit and the sidebar toggle, are hidden.",
     "branding": {
       "icon": "PanelTop"
     },
