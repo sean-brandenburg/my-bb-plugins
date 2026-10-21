@@ -7,7 +7,7 @@ Clears out bb's top bar: a centered thread title that opens the thread menu, and
 - Fewer top-bar buttons. Those with a keyboard equivalent are hidden:
   - Open in editor or terminal: Cmd+O.
   - Close pane: Cmd+W.
-- bb's Commit button is hidden too.
+- bb's Commit button and the sidebar toggle are hidden too.
 
 ## How it works
 

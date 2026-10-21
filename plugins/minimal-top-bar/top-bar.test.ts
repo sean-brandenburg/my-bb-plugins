@@ -58,6 +58,14 @@ describe("mountMinimalTopBar", () => {
     cleanup();
   });
 
+  it("hides bb's sidebar toggle", () => {
+    document.body.innerHTML = `<button id="toggle" data-sidebar="trigger"></button><button id="back"></button>`;
+    const cleanup = mountMinimalTopBar(document, window);
+    expect(getComputedStyle(document.getElementById("toggle")!).display).toBe("none");
+    expect(getComputedStyle(document.getElementById("back")!).display).not.toBe("none");
+    cleanup();
+  });
+
   it("applies at every window width", () => {
     // bb's compact layout brings back the ⋯ and close buttons, so the restyle can't be limited to wide windows.
     expect(MINIMAL_TOP_BAR_CSS).not.toContain("@media");

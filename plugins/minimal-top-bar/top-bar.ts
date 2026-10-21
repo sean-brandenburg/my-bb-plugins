@@ -22,6 +22,11 @@ button[aria-label="Choose another app to open workspace"],
 button[aria-label="Close pane"] {
   display: none !important;
 }
+/* The thread list is replaced by the Project switcher's picker, so nothing
+   should open or close the sidebar. */
+[data-sidebar="trigger"] {
+  display: none !important;
+}
 [${HIDDEN_ATTRIBUTE}] {
   display: none !important;
 }
