@@ -17,6 +17,11 @@ const WORKFLOW_ACTION =
 // sidebar, even while it is collapsed to the rail.
 const LIST_PAGE_SIDEBAR =
   '[data-side="left"][data-collapsible="rail"]:has([data-testid="settings-sidebar-body"], [data-testid="plugins-sidebar-body"], [data-testid="skills-sidebar-body"])';
+// bb only renders this element at desktop widths; compact windows get a
+// drawer, which is itself the panel.
+const EXPANDED_SIDEBAR =
+  '[data-side="left"][data-variant="sidebar"][data-state="expanded"]:not([data-sidebar])';
+const SIDEBAR_TRIGGER = '[data-sidebar="trigger"]';
 
 export const MINIMAL_TOP_BAR_CSS = `
 /* Top-bar clutter with keyboard equivalents: open in editor/terminal is
@@ -27,8 +32,8 @@ button[aria-label="Close pane"] {
   display: none !important;
 }
 /* The thread list is replaced by the Project switcher's picker, so nothing
-   should open or close the sidebar. */
-[data-sidebar="trigger"] {
+   should open or close the sidebar (see collapseSidebar). */
+${SIDEBAR_TRIGGER} {
   display: none !important;
 }
 /* Without the toggle a sidebar collapsed to the rail can't reopen, so the
@@ -91,6 +96,16 @@ function hideCommitButtons(doc: Document, hide: boolean) {
 }
 
 /**
+ * Keeps the sidebar collapsed to the rail. bb remembers it open, opens it by
+ * default, and opens it on its sidebar.toggle key, so the hidden toggle is
+ * pressed whenever it shows; that also saves the collapsed state.
+ */
+function collapseSidebar(doc: Document) {
+  if (doc.querySelector(EXPANDED_SIDEBAR) === null) return;
+  doc.querySelector<HTMLElement>(SIDEBAR_TRIGGER)?.click();
+}
+
+/**
  * A single click on a header title opens the thread menu. It waits briefly so
  * a double-click still reaches bb's rename. Wide windows get a radix dropdown,
  * which opens on pointerdown; compact ones get a sheet, which opens on click.
@@ -145,6 +160,7 @@ export function mountMinimalTopBar(doc: Document, win: Window): () => void {
     frame = win.requestAnimationFrame(() => {
       frame = 0;
       hideCommitButtons(doc, true);
+      collapseSidebar(doc);
     });
   };
   const observer = new MutationObserver(schedule);

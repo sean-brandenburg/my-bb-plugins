@@ -66,6 +66,47 @@ describe("mountMinimalTopBar", () => {
     cleanup();
   });
 
+  it("collapses the sidebar to the rail whenever bb expands it", async () => {
+    document.body.innerHTML = `
+      <div id="sidebar" data-side="left" data-variant="sidebar" data-state="expanded" data-collapsible=""></div>
+      <div id="drawer" data-sidebar="panel" data-side="left" data-variant="sidebar" data-state="expanded"></div>
+      <button id="toggle" data-sidebar="trigger"></button>`;
+    const sidebar = document.getElementById("sidebar")!;
+    const toggle = document.getElementById("toggle")!;
+    const presses = vi.fn(() => {
+      const expanded = sidebar.dataset.state === "expanded";
+      sidebar.dataset.state = expanded ? "collapsed" : "expanded";
+      sidebar.dataset.collapsible = expanded ? "rail" : "";
+    });
+    toggle.addEventListener("click", presses);
+    const cleanup = mountMinimalTopBar(document, window);
+    await nextFrame();
+    expect(presses).toHaveBeenCalledTimes(1);
+    expect(sidebar.dataset.state).toBe("collapsed");
+
+    await nextFrame();
+    expect(presses).toHaveBeenCalledTimes(1);
+
+    sidebar.dataset.state = "expanded";
+    await nextFrame();
+    await nextFrame();
+    expect(presses).toHaveBeenCalledTimes(2);
+    expect(sidebar.dataset.state).toBe("collapsed");
+    cleanup();
+  });
+
+  it("leaves the compact window's sidebar drawer alone", async () => {
+    document.body.innerHTML = `
+      <div data-sidebar="panel" data-side="left" data-variant="sidebar" data-state="expanded"></div>
+      <button id="toggle" data-sidebar="trigger"></button>`;
+    const presses = vi.fn();
+    document.getElementById("toggle")!.addEventListener("click", presses);
+    const cleanup = mountMinimalTopBar(document, window);
+    await nextFrame();
+    expect(presses).not.toHaveBeenCalled();
+    cleanup();
+  });
+
   it("shows a collapsed sidebar's page list on Settings, Plugins, and Skills but not elsewhere", () => {
     const sidebar = (page: string) => `
       <div id="${page}" data-side="left" data-collapsible="rail">
