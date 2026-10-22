@@ -1,0 +1,52 @@
+{
+  "name": "bb-plugin-activity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.15"
+  },
+  "bb": {
+    "name": "Activity log",
+    "description": "Records how bb and its plugins get used: every button clicked, every vim key command run, and every page opened, attributed to the plugin it happened in. An Activity page and `bb activity` CLI rank controls and keys by use, so unused features can be pruned and the most-used ones get the design attention.",
+    "branding": {
+      "icon": "Activity"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "dependencies": {
+    "bb-motion": "file:../motion/lib",
+    "bb-vim-keys": "file:../vim-mode/lib",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.15",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "better-sqlite3": "^12.0.0",
+    "cron-parser": "^5.5.0",
+    "hono": "^4.11.9",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "bb-motion": "link:../motion/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
+    }
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

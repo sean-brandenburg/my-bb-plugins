@@ -22,6 +22,7 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `prompt-keys` | Vim keys for the questions, tool approvals, and plan reviews bb asks you to answer |
 | `local-voice` | Voice input transcribed by a local speech model: whisper.cpp kept warm by the plugin, or any OpenAI-compatible transcription server |
 | `no-selection-menu` | Hides the Add to chat / Reply in side chat toolbar bb pops up over highlighted text |
+| `activity` | Logs every click, vim key command, and page across bb and the plugins, attributed to the plugin it happened in, with an Activity page and `bb activity` CLI that rank them so unused features can be pruned |
 
 ## Install
 

@@ -22,6 +22,7 @@
     { "name": "prompt-keys", "source": "./plugins/prompt-keys" },
     { "name": "local-voice", "source": "./plugins/local-voice" },
     { "name": "no-selection-menu", "source": "./plugins/no-selection-menu" },
-    { "name": "dashboard", "source": "./plugins/dashboard" }
+    { "name": "dashboard", "source": "./plugins/dashboard" },
+    { "name": "activity", "source": "./plugins/activity" }
   ]
 }
