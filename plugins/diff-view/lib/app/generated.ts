@@ -5,6 +5,8 @@ const GENERATED_PATH_PATTERNS: RegExp[] = [
   /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|Cargo\.lock|poetry\.lock|Pipfile\.lock|Gemfile\.lock|composer\.lock|flake\.lock|bun\.lockb?)$/u,
   /\.(pb|pb\.gw|pb\.validate|sql|gen|generated|g|min|d|snap|map|swagger|openapi)\.(go|ts|js|py|dart|json|yaml|yml|css|rb|kt|swift)$/u,
   /(^|\/)(zz_generated|wire_gen)[^/]*\.go$/u,
+  // sqlc's models.go, db.go, querier.go, copyfrom.go and batch.go carry no filename signature; its output directory does.
+  /(^|\/)sqlc\/[^/]+\.go$/u,
   /(^|\/)(mock_[^/]+\.go|[^/]+_mock\.go|[^/]+\.mock\.ts|[^/]+_string\.go|[^/]+_pb2(_grpc)?\.py|[^/]+_generated\.[^/]+|[^/]+\.generated\.[^/]+)$/u,
 ];
 

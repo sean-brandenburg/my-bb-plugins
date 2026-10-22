@@ -452,6 +452,15 @@ describe("isGeneratedFile", () => {
     expect(isGeneratedFile(file("src/app.ts", 1, 0, true))).toBe(true);
     for (const path of ["src/app.ts", "README.md", "src/build.ts"]) expect(isGeneratedFile(file(path)), path).toBe(false);
   });
+  it("recognises every file sqlc writes, but not the queries, schema and store code around them", () => {
+    const sqlc = "internal/storage/sql/sqlc";
+    for (const name of ["partner.sql.go", "models.go", "db.go", "querier.go", "copyfrom.go", "batch.go"]) {
+      expect(isGeneratedFile(file(`${sqlc}/${name}`)), name).toBe(true);
+    }
+    for (const path of ["internal/storage/sql/queries/partner.sql", "migrations/0001_init.sql", "internal/storage/sql/store.go", "internal/storage/sqlc_adapter.go"]) {
+      expect(isGeneratedFile(file(path)), path).toBe(false);
+    }
+  });
 });
 
 describe("startsCollapsed", () => {
