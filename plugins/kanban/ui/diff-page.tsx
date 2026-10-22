@@ -17,6 +17,7 @@ import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT, SegmentedTabs } from "./primitives";
 import { toastError } from "./actions";
 import { HandoffStrip } from "./brief-panel";
+import { DiffPageHeading } from "./diff-heading";
 import { planStory } from "./reading-plan";
 import { notifyViewedChanged } from "./use-reading-plan";
 
@@ -299,7 +300,12 @@ export function KanbanDiffView({
       onOpenThread={onOpenThread}
       refreshSignal={boardChanges}
       labels={KANBAN_DIFF_LABELS}
-      toolbar={ticket === null ? undefined : <HandoffStrip ticket={ticket} rpc={rpc} plan={plan} onOpenThread={onOpenThread} />}
+      toolbar={
+        <>
+          <DiffPageHeading subjectId={subjectId} ticket={ticket} />
+          {ticket === null ? null : <HandoffStrip ticket={ticket} rpc={rpc} plan={plan} onOpenThread={onOpenThread} />}
+        </>
+      }
       renderSubmitBar={(pending) => <KanbanSubmitBar subjectId={subjectId} pending={pending} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
       // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}
