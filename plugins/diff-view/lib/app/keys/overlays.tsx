@@ -7,6 +7,7 @@ import { KeyHelp, type Keymap, useKeyHandler, usePickerKeys, useSearchBoxKeys } 
 import type { KeyHelpSection } from "../ui/vim-keys-core";
 import { KEY_HELP } from "./keymap";
 import { rankFiles } from "./rank-files";
+import { ChangeCounts } from "../file-marks";
 
 const PANEL = "absolute inset-x-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg";
 
@@ -128,12 +129,7 @@ export function fileItems(files: readonly DiffFile[], query: string): PickerItem
   return rankFiles(files, query).map((file) => ({
     id: file.path,
     label: file.path,
-    detail: (
-      <>
-        <span className="shrink-0 tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
-        <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
-      </>
-    ),
+    detail: <ChangeCounts additions={file.additions} deletions={file.deletions} />,
   }));
 }
 

@@ -7,14 +7,17 @@ import { cn } from "../utils";
 import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { SEVERITY_DOT, SEVERITY_LABEL, type InlineFinding } from "./findings";
 import { useFindingControls, useIsFocused, useIsReading } from "../keys/review-keys-context";
+import { CARD_BODY, CARD_FOOTER, CARD_HEADER, SPANNING_CARD } from "../ui/spanning-card";
 import { Badge } from "../ui/badge";
 import { SuggestionsContext } from "../suggestions/context";
 import { SuggestionDiff } from "../suggestions/suggestion-diff";
 import { findingSuggestionLabel } from "../suggestions/finding-suggestion";
 
-const SUGGESTION_BUTTON = cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS);
+const SUGGESTION_BUTTON = cn("rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS);
 
-const SEVERITY_BORDER: Record<FindingSeverity, string> = { critical: "border-red-500/70", important: "border-amber-500/70", minor: "border-border" };
+/** The rule down the card's left, in the severity's hue. */
+const SEVERITY_RULE: Record<FindingSeverity, string> = { critical: "border-l-red-500/80", important: "border-l-amber-500/80", minor: "border-l-slate-400/70" };
+const SEVERITY_TEXT: Record<FindingSeverity, string> = { critical: "text-red-600 dark:text-red-400", important: "text-amber-700 dark:text-amber-300", minor: "text-muted-foreground" };
 
 /**
  * A review finding under the line it is about: one quiet strip (checkbox, severity, title) that expands to the details,
@@ -74,7 +77,6 @@ export function FindingAnnotation({
   const field = "w-full rounded-md border border-border bg-background px-2 py-1 text-xs";
   const reveal = useOpenedSinceMount(expanded) ? cn(enter.rise, FAST) : undefined;
   const meta = [
-    SEVERITY_LABEL[finding.severity],
     finding.locations.length > 1 ? `${finding.locations.length} instances` : null,
     item.carriedFrom !== null ? `still open from ${item.carriedFrom}` : null,
     item.edited ? "reworded by you" : null,
@@ -87,28 +89,28 @@ export function FindingAnnotation({
     finding.class != null && finding.class !== "" ? `class: ${finding.class}` : null,
   ].filter((part) => part !== null);
   return (
-    <div data-finding-anchor="" className={cn("my-0.5 min-w-0 max-w-full break-words border-l-2 pl-2 text-sm [&_pre]:max-w-full [&_pre]:overflow-x-auto", entering && [enter.fade, FAST], OPACITY_TRANSITION, SEVERITY_BORDER[finding.severity], !item.selected && "opacity-60", focused && "rounded-r-md ring-1 ring-primary/70")}>
-      <div className="flex items-center gap-2 py-0.5 text-xs">
+    <div data-finding-anchor="" className={cn(SPANNING_CARD, "break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto", entering && [enter.fade, FAST], OPACITY_TRANSITION, SEVERITY_RULE[finding.severity], !item.selected && "opacity-60", focused && "ring-1 ring-primary/70")}>
+      <div className={CARD_HEADER}>
         <Checkbox checked={item.selected} onCheckedChange={(checked) => onToggle(checked === true)} aria-label={`${item.selected ? "Exclude" : "Include"} ${finding.id} in the apply round`} className="size-3.5" />
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={toggle} aria-expanded={expanded} data-bbm-open={expanded}>
           <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON)} />
           <span className={cn("size-1.5 shrink-0 rounded-full", SEVERITY_DOT[finding.severity])} title={SEVERITY_LABEL[finding.severity]} />
-          <span className="min-w-0 flex-1 truncate text-foreground">{finding.title}</span>
+          <span className={cn("min-w-0 flex-1 truncate font-medium", item.selected ? "text-foreground" : "text-muted-foreground")}>{finding.title}</span>
         </button>
-        {item.isNew ? <span className="shrink-0 rounded border border-sky-500/50 px-1 text-[10px] text-sky-700 dark:text-sky-300" title="Reported since you last looked">new</span> : null}
-        {item.touched ? <span className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-300" title="These lines changed since you last looked">touched</span> : null}
+        {item.isNew ? <span className="shrink-0 rounded border border-sky-500/40 px-1 text-[10px] leading-4 text-sky-700 dark:text-sky-300" title="Reported since you last looked">new</span> : null}
+        {item.touched ? <span className="shrink-0 rounded border border-amber-500/40 px-1 text-[10px] leading-4 text-amber-700 dark:text-amber-300" title="These lines changed since you last looked">touched</span> : null}
+        <span className={cn("shrink-0 text-[11px]", SEVERITY_TEXT[finding.severity])}>{SEVERITY_LABEL[finding.severity]}</span>
       </div>
       {/* Mounted while folded: it opens as the cursor passes, and mounting it then restyles the whole page under bb
           themes with broad :has() rules. */}
       {!editing ? (
-        <div className={cn("flex flex-col gap-1 pb-1.5 text-sm", reveal, !expanded && "hidden")}>
+        <div className={cn(CARD_BODY, "text-sm", reveal, !expanded && "hidden")}>
           <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             <span className="min-w-0">
               <span className={cn("font-mono", scores.length > 0 && "cursor-help underline decoration-dotted underline-offset-2")} title={scores.length > 0 ? scores.join("\n") : undefined}>
                 {finding.id}
               </span>
-              {" · "}
-              {meta.join(" · ")}
+              {meta.length > 0 ? ` · ${meta.join(" · ")}` : ""}
             </span>
             <button type="button" className={cn("ml-auto rounded px-1 hover:bg-state-hover hover:text-foreground", PRESS)} onClick={beginEdit}>
               Edit
@@ -116,8 +118,8 @@ export function FindingAnnotation({
           </div>
           {finding.description !== "" ? <Markdown content={finding.description} /> : <p className="text-muted-foreground">No description.</p>}
           {finding.fix !== null && finding.fix !== "" ? (
-            <div className="flex gap-1.5">
-              <Icon name="diff-view-wrench" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <div className="flex gap-2 rounded-md bg-muted/30 px-2.5 py-1.5">
+              <Icon name="diff-view-wrench" className="mt-0.5 size-3.5 shrink-0 text-primary" />
               <Markdown content={finding.fix} className="min-w-0 flex-1" />
             </div>
           ) : null}
@@ -160,7 +162,7 @@ export function FindingAnnotation({
       ) : null}
       {editing ? (
         // Escape cancels the edit like the Cancel button and hands the keyboard back to the diff; ⌘↩ saves.
-        <div data-escape-cancels="always" className={cn("flex flex-col gap-1.5 pb-1.5", enter.fade, FAST)}>
+        <div data-escape-cancels="always" className={cn(CARD_BODY, enter.fade, FAST)}>
           <input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} onKeyDown={onFieldKeyDown} className={field} aria-label="Finding title" />
           <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} onKeyDown={onFieldKeyDown} rows={4} className={cn(field, "font-mono")} aria-label="Finding description" placeholder="Description (Markdown)" />
           <textarea value={draft.fix ?? ""} onChange={(event) => setDraft({ ...draft, fix: event.target.value })} onKeyDown={onFieldKeyDown} rows={3} className={cn(field, "font-mono")} aria-label="Suggested fix" placeholder="Suggested fix (optional)" />
@@ -174,7 +176,7 @@ export function FindingAnnotation({
           </div>
         </div>
       ) : null}
-      <p className={cn("pb-1 font-mono text-[10px] text-muted-foreground", enter.fade, FAST, !focused && "hidden")}>
+      <p className={cn(CARD_FOOTER, enter.fade, FAST, !focused && "hidden")}>
         {[
           applicable !== null && suggestions.apply !== null ? "A apply suggestion" : null,
           applicable !== null && suggestions.apply !== null ? (inBatch ? "B unbatch" : "B batch") : null,

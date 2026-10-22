@@ -13,6 +13,19 @@ export function FileGlyph({ file, className }: { file: DiffFile; className?: str
   return <Glyph glyph={glyph} label={mark?.label} title={mark?.label} className={cn("text-muted-foreground", className)} />;
 }
 
+/**
+ * A file's +/− counts as one fixed-width block, so every row of a list lands its numbers in the same two columns and
+ * the names take whatever width is left.
+ */
+export function ChangeCounts({ additions, deletions, className }: { additions: number; deletions: number; className?: string }) {
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 tabular-nums", className)}>
+      <span className="min-w-[4.5ch] text-right text-emerald-600 dark:text-emerald-400">+{additions}</span>
+      <span className="min-w-[4.5ch] text-right text-red-600 dark:text-red-400">−{deletions}</span>
+    </span>
+  );
+}
+
 /** Without a Nerd Font: git's status letter for files that weren't just modified. */
 export function FileStatusLetter({ file }: { file: DiffFile }) {
   const mark = statusMark(file);

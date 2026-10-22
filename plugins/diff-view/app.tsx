@@ -89,9 +89,10 @@ function SendToThreadBar({ threadId, pending }: { threadId: string; pending: Pen
     }
   };
   return (
-    <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop, speed.fast)}>
-      <span className="text-sm">
-        <span key={count} className={cx("inline-block font-medium tabular-nums", POP)}>{count}</span> comment{count === 1 ? "" : "s"} not sent yet
+    // The amber rule is the one the diff's unsent comments carry, so the bar reads as their sum.
+    <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border border-l-2 border-l-amber-500/80 bg-muted/20 px-3 py-1.5", enter.drop, speed.fast)}>
+      <span className="text-sm text-muted-foreground">
+        <span key={count} className={cx("inline-block font-medium tabular-nums text-foreground", POP)}>{count}</span> comment{count === 1 ? "" : "s"} not sent yet
       </span>
       <span title="Send them to this thread's agent as one message">
         <Button type="button" className={COMPACT} disabled={sending} onClick={() => void send()}>

@@ -19,7 +19,7 @@ function CardButton({ entry, onMakeCard }: { entry: ListedFinding; onMakeCard: (
   const { source } = useDiffSource();
   const [card, setCard] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
-  const className = cn("shrink-0 rounded border border-border px-1.5 py-px hover:bg-state-hover disabled:opacity-50", PRESS);
+  const className = cn("shrink-0 rounded-md border border-border px-2 py-px text-primary hover:bg-state-hover disabled:opacity-50", PRESS);
   if (card !== null && source.reviews?.openCard !== undefined) {
     const open = source.reviews.openCard;
     return (
@@ -86,11 +86,18 @@ function ListedRow({ entry, index, onMakeCard }: { entry: ListedFinding; index: 
   );
 }
 
-function GroupToggle({ open, onToggle, label, title }: { open: boolean; onToggle: () => void; label: string; title: string }) {
+function GroupToggle({ open, onToggle, count, label, title }: { open: boolean; onToggle: () => void; count: number; label: string; title: string }) {
   return (
-    <button type="button" className={cn("inline-flex items-center gap-1 rounded px-1 font-medium hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none", PRESS)} aria-expanded={open} data-bbm-open={open} title={title} onClick={onToggle}>
+    <button
+      type="button"
+      className={cn("inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none", PRESS, open && "bg-background text-foreground")}
+      aria-expanded={open}
+      data-bbm-open={open}
+      title={title}
+      onClick={onToggle}
+    >
       <Icon name="ChevronRight" className={cn("size-3 text-muted-foreground", CHEVRON)} />
-      {label}
+      <span className="font-medium tabular-nums text-foreground">{count}</span> {label}
     </button>
   );
 }
@@ -135,27 +142,29 @@ export function OutsideFindings({
     },
   });
   return (
-    <section ref={sectionRef} data-outside-findings="" aria-label="Findings outside the diff" className={cn("flex flex-col gap-0.5 border-b border-border px-3 py-1 text-xs", enter.fade)} onKeyDown={onKeyDown}>
-      <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+    <section ref={sectionRef} data-outside-findings="" aria-label="Findings outside the diff" className={cn("flex flex-col gap-1 border-b border-border bg-muted/20 px-3 py-1.5 text-xs", enter.fade)} onKeyDown={onKeyDown}>
+      <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+        <span className="mr-1">Also found</span>
         {preExisting.length > 0 ? (
           <GroupToggle
             open={preExistingOpen}
             onToggle={() => setPreExistingOpen(!preExistingOpen)}
-            label={`${preExisting.length} pre-existing`}
+            count={preExisting.length}
+            label="pre-existing"
             title="Findings already in the code before this change: never applied with it, but each can become a card of its own"
           />
         ) : null}
-        {filtered.length > 0 ? <GroupToggle open={filteredOpen} onToggle={() => onFilteredOpen(!filteredOpen)} label={`${filtered.length} filtered`} title={`${labels.filteredFindings} (gF; gp moves the keyboard here)`} /> : null}
+        {filtered.length > 0 ? <GroupToggle open={filteredOpen} onToggle={() => onFilteredOpen(!filteredOpen)} count={filtered.length} label="filtered" title={`${labels.filteredFindings} (gF; gp moves the keyboard here)`} /> : null}
       </div>
       {preExisting.length > 0 && preExistingOpen ? (
-        <ul aria-label="Pre-existing findings" className="flex flex-col">
+        <ul aria-label="Pre-existing findings" className="flex flex-col rounded-md border border-border bg-card px-2 py-1">
           {preExisting.map((entry, index) => (
             <ListedRow key={listedKey(entry)} entry={entry} index={index} onMakeCard={onMakeCard} />
           ))}
         </ul>
       ) : null}
       {filtered.length > 0 && filteredOpen ? (
-        <ul aria-label="Filtered findings" className="flex flex-col opacity-70">
+        <ul aria-label="Filtered findings" className="flex flex-col rounded-md border border-border bg-card px-2 py-1 opacity-70">
           {filtered.map((entry, index) => (
             <ListedRow key={listedKey(entry)} entry={entry} index={index} onMakeCard={null} />
           ))}

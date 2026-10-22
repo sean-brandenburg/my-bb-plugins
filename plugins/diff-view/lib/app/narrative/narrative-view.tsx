@@ -15,6 +15,8 @@ import type { NarrativeReader } from "./use-narrative-reader";
 /** The outline beside the steps; its rows take the list keys before the review keys. */
 export const NARRATIVE_OUTLINE = "[data-narrative-outline]";
 const ROW_FOCUS = "outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/70";
+/** A chapter page's section names, set like the view's other labels rather than as small caps. */
+const SECTION_HEADING = "border-b border-border pb-1 text-xs font-medium text-foreground";
 /** The prose reads in a measured column; the excerpts under it take the pane's whole width, so split diffs wrap less. */
 const PROSE = "mx-auto flex w-full max-w-5xl flex-col gap-3";
 
@@ -177,7 +179,7 @@ function ChapterIntro({ chapter, stale, writing, onGo, onOpenPath }: { chapter: 
   return (
     <>
       <div className="flex items-center gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{chapter.kind === "revision" ? "Revision" : chapter.current ? "Current narrative" : "Earlier narrative"}</p>
+        <p className="text-xs font-medium text-muted-foreground">{chapter.kind === "revision" ? "Revision" : chapter.current ? "Current narrative" : "Earlier narrative"}</p>
         {chapter.current ? (
           <span className="ml-auto text-xs text-muted-foreground">
             <WritingButton writing={writing} />
@@ -189,7 +191,7 @@ function ChapterIntro({ chapter, stale, writing, onGo, onOpenPath }: { chapter: 
       <Markdown content={chapter.summary} className="text-sm" />
       {chapter.readingOrder.length > 0 ? (
         <section className="flex flex-col gap-1">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reading order</h3>
+          <h3 className={SECTION_HEADING}>Reading order</h3>
           <ol className="flex flex-col gap-0.5">
             {chapter.readingOrder.map((entry, index) => (
               <li key={`${entry.path}-${index}`} className={cn("flex items-baseline gap-2 text-xs", enter.rise, FAST, STAGGER)} style={stagger(index + 1)}>
@@ -220,7 +222,7 @@ function ChapterIntro({ chapter, stale, writing, onGo, onOpenPath }: { chapter: 
       ) : null}
       {chapter.notes.length > 0 ? (
         <section className="flex flex-col gap-1">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{chapter.kind === "revision" ? "Notes" : "Watch out"}</h3>
+          <h3 className={SECTION_HEADING}>{chapter.kind === "revision" ? "Notes" : "Watch out"}</h3>
           <ul className="list-disc pl-5 text-xs text-muted-foreground">
             {chapter.notes.map((note, index) => (
               <li key={index}>{note}</li>
@@ -236,7 +238,7 @@ function ChapterIntro({ chapter, stale, writing, onGo, onOpenPath }: { chapter: 
         </p>
       ) : null}
       <section className="flex flex-col gap-1">
-        <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Steps</h3>
+        <h3 className={SECTION_HEADING}>Steps</h3>
         <ol className="flex flex-col gap-0.5 text-sm">
           {chapter.steps.map((entry, index) => (
             <li key={`${entry.id}-${index}`} className="flex items-baseline gap-2">
@@ -259,11 +261,11 @@ function StepPage({ chapter, step, index, affected, children }: { chapter: Narra
   return (
     <>
       <div className={PROSE}>
-        <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          <span>
+        <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+          <span className="font-medium tabular-nums">
             {chapter.kind === "revision" ? "What changed" : "Step"} {index + 1} of {chapter.steps.length}
           </span>
-          <span className="min-w-0 truncate font-normal normal-case tracking-normal">{chapter.title}</span>
+          <span className="min-w-0 truncate">{chapter.title}</span>
         </p>
         <h2 className={cn("text-base font-semibold", uncovered && "text-amber-700 dark:text-amber-300")}>{step.title}</h2>
         {step.body !== "" ? <Markdown content={step.body} className="text-sm" /> : null}
@@ -365,8 +367,8 @@ function NarrativeOutline({
   };
   return (
     <nav aria-label="Narrative outline" data-narrative-outline="" className="hidden w-64 shrink-0 flex-col border-r border-border text-xs @3xl:flex" onKeyDown={onKeyDown}>
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1 text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">Outline</span>
+      <div className="flex items-center gap-1 border-b border-border bg-muted/20 px-2 py-1 text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">Outline</span>
         {stale ? (
           <span className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-300" title="The code moved since the newest narrative">
             stale

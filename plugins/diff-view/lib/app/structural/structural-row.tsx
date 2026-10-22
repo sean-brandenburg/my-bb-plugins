@@ -202,7 +202,7 @@ export const EXPAND_STEP_LINES = 20;
 
 function ExpanderButton({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
   return (
-    <button type="button" title={title} aria-label={title} className={cn("rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={onClick}>
+    <button type="button" title={title} aria-label={title} className={cn("rounded px-1.5 py-0.5 text-primary hover:bg-state-hover", PRESS)} onClick={onClick}>
       {label}
     </button>
   );
@@ -216,7 +216,9 @@ export const GapRow = memo(function GapRow({ path, from, to, total, first, last,
   const trailing = to === total;
   const range = `${first.rhs ?? first.lhs}–${last.rhs ?? last.lhs}`;
   return (
-    <tr data-gap={from} className="bg-sky-500/10 text-[11px] text-muted-foreground">
+    // A neutral band lighter than a file's header, since these lines did not change: nothing about them is coloured
+    // but the way to show them.
+    <tr data-gap={from} className="bg-muted/20 text-[11px] text-muted-foreground">
       <td colSpan={columns} className={cn("px-2 py-0.5", atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
         <div className="flex items-center gap-1">
           {count <= EXPAND_STEP_LINES ? (

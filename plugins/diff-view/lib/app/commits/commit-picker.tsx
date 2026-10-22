@@ -44,7 +44,7 @@ export function CommitsButton({ label, partial, onOpen }: { label: string; parti
     <button
       type="button"
       aria-haspopup="dialog"
-      className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS, partial && "border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300")}
+      className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs", PRESS, partial ? "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300" : "border-border text-muted-foreground hover:bg-state-hover hover:text-foreground")}
       title={partial ? "The diff shows only these commits; comments and viewed marks need the range to end at the head. Click (or gr) to pick others." : "The diff shows every commit. Click (or gr) to read one commit, a range, or what changed since a review."}
       onClick={onOpen}
     >

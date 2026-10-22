@@ -12,6 +12,7 @@ import { DiffCommentForm } from "./comment-form";
 import { DiffCommentsContext } from "./context";
 import { isUnsent, localCommentState, threadIsOpen, threadKeyActions, type DiffThread, type LocalCommentState, type ThreadEntry } from "./threads";
 import { returnToDiff, useIsFocused, useThreadControls } from "../keys/review-keys-context";
+import { CARD_BODY, CARD_FOOTER, CARD_HEADER, SPANNING_CARD } from "../ui/spanning-card";
 import { SuggestionsContext } from "../suggestions/context";
 import { CommentBody } from "../suggestions/suggestion-diff";
 import type { ThreadSuggestion } from "../suggestions/thread-suggestion";
@@ -31,6 +32,9 @@ function EntryBody({ id, body, shown }: { id: string; body: string; shown: Entry
   const { suggestion } = shown;
   return <CommentBody body={body} expected={suggestion?.current ?? null} startLine={suggestion?.startLine ?? null} badge={suggestion?.commentId === id ? <SuggestionBadges {...shown} /> : undefined} />;
 }
+
+/** The small bordered actions under an open thread: reply, resolve, and the suggestion ones. */
+const THREAD_ACTION = "rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50";
 
 function useNow(intervalMs = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -218,7 +222,7 @@ function ThreadKeyHint({ thread, open, shown, suggestion }: { thread: DiffThread
     open ? "↩ fold" : "↩ unfold",
     "c next",
   ].filter((hint): hint is string => hint !== null);
-  return <p className={cn("border-t border-border/60 px-2.5 py-1 font-mono text-[10px] text-muted-foreground", enter.fade, FAST, !shown && "hidden")}>{hints.join(" · ")}</p>;
+  return <p className={cn(CARD_FOOTER, enter.fade, FAST, !shown && "hidden")}>{hints.join(" · ")}</p>;
 }
 
 /** One thread under its line: the root, its replies (GitHub and local interleaved by time), and a reply box. Resolved threads start collapsed. */
@@ -283,23 +287,39 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
       data-comment-state={unsent ? "pending" : "done"}
       data-thread-id={thread.id}
       data-suggestion-batch={inBatch ? "" : undefined}
-      className={cn("my-1 min-w-0 max-w-full break-words rounded-md border bg-card text-sm [&_pre]:max-w-full [&_pre]:overflow-x-auto", enter.fade, FAST, OPACITY_TRANSITION, unsent ? "border-amber-500/60" : "border-border", inBatch && "outline outline-1 outline-offset-1 outline-primary/60", !threadIsOpen(thread) && "opacity-75", focused && "ring-1 ring-primary/70")}
+      className={cn(
+        SPANNING_CARD,
+        "break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+        enter.fade,
+        FAST,
+        OPACITY_TRANSITION,
+        // The rule's hue says where the thread stands: unsent, settled, on GitHub, or plain local.
+        unsent ? "border-l-amber-500/80" : !threadIsOpen(thread) ? "border-l-emerald-500/60" : root.source === "github" ? "border-l-sky-500/60" : "border-l-border",
+        inBatch && "outline outline-1 outline-offset-1 outline-primary/60",
+        !threadIsOpen(thread) && "opacity-75",
+        focused && "ring-1 ring-primary/70",
+      )}
     >
-      <button type="button" className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs" onClick={() => setOpen((value) => !value)} aria-expanded={open} data-bbm-open={open}>
+      <button type="button" className={cn(CARD_HEADER, "w-full text-left")} onClick={() => setOpen((value) => !value)} aria-expanded={open} data-bbm-open={open}>
         <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON)} />
         <span className="shrink-0 font-mono text-muted-foreground">{where}</span>
         {root.source === "github" ? <Badge tone="outline">GitHub</Badge> : null}
+        {unsent ? <Badge tone="warning">unsent</Badge> : null}
         {thread.resolved === true ? <Badge tone="success">resolved</Badge> : null}
         {thread.outdated ? <Badge title={`Left on ${longLineLabel(root.comment) ?? "a line"}, which the latest push changed`}>outdated · {shortLineLabel(root.comment) ?? "L?"}</Badge> : null}
         {suggestion !== null ? <SuggestionBadges {...shown} /> : null}
         {!open ? <span className="min-w-0 flex-1 truncate text-foreground">{firstLine}</span> : <span className="flex-1" />}
-        {replies.length > 0 ? <span className="shrink-0 text-muted-foreground">{replies.length} repl{replies.length === 1 ? "y" : "ies"}</span> : null}
+        {replies.length > 0 ? (
+          <span className="shrink-0 tabular-nums text-muted-foreground">
+            {replies.length} repl{replies.length === 1 ? "y" : "ies"}
+          </span>
+        ) : null}
       </button>
       {open ? (
-        <div className={cn("flex flex-col gap-2 px-2.5 pb-2", reveal)}>
+        <div className={cn(CARD_BODY, "gap-2.5", reveal)}>
           <ThreadEntryView entry={root} thread={thread} isRoot now={now} shown={shown} {...entryEditing(root)} />
           {replies.length > 0 ? (
-            <div className="flex flex-col gap-2 border-l-2 border-border pl-3">
+            <div className="flex flex-col gap-2.5 border-l-2 border-border/70 pl-3">
               {replies.map((entry) => (
                 <ThreadEntryView key={entryKey(entry)} entry={entry} thread={thread} isRoot={false} now={now} arrived={!seen.has(entryKey(entry))} shown={shown} {...entryEditing(entry)} />
               ))}
@@ -317,14 +337,14 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
               onCancel={() => setReplying(false)}
             />
           ) : (
-            <div className="flex items-center gap-1.5">
-              <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} onClick={() => setReplying(true)}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" className={cn(THREAD_ACTION, PRESS)} onClick={() => setReplying(true)}>
                 Reply
               </button>
               {canResolve ? (
                 <button
                   type="button"
-                  className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)}
+                  className={cn(THREAD_ACTION, PRESS)}
                   disabled={resolving}
                   title={thread.resolved === true ? "Reopen this thread on GitHub" : "Mark this thread resolved on GitHub"}
                   onClick={() => void setResolved(thread.resolved !== true)}
@@ -336,7 +356,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
                 <>
                   <button
                     type="button"
-                    className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)}
+                    className={cn(THREAD_ACTION, PRESS)}
                     disabled={suggestions.busy}
                     title="Apply this suggestion to the code now (A)"
                     onClick={() => void suggestions.apply?.([applicable])}
@@ -346,7 +366,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
                   <button
                     type="button"
                     aria-pressed={inBatch}
-                    className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS, inBatch && "bg-state-active text-foreground")}
+                    className={cn(THREAD_ACTION, PRESS, inBatch && "bg-state-active text-foreground")}
                     title="Apply it with others in one go: Commit N suggestions above the diff, or gB (B)"
                     onClick={() => suggestions.toggleBatch(applicable)}
                   >

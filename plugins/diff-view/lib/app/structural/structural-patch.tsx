@@ -327,7 +327,7 @@ export function StructuralPatch({
     if (list.length === 0 && !composing && lineFindings.length === 0) return null;
     return (
       <tr key={`${side}-${line}-notes`}>
-        <td colSpan={columns} className="px-3 py-1">
+        <td colSpan={columns} className="px-3 py-0.5">
           {list.map((thread) => (
             <DiffThreadView key={thread.id} thread={thread} />
           ))}
@@ -353,12 +353,16 @@ export function StructuralPatch({
     if (wholeFile && labels.length === 0 && explanation === null) return null;
     return (
       <Fragment key={`hunk-${index}`}>
-        <tr className="group/hunk bg-muted/30 text-[11px] text-muted-foreground">
+        {/* Plain and ruled above, where a fold is a tinted band: the two rows that break a file up read as different things. */}
+        <tr className="group/hunk border-t border-border/60 text-[11px] text-muted-foreground">
           <td colSpan={columns} className="px-3 py-0.5">
             <div className="flex items-center gap-2">
-              <code className="min-w-0 truncate text-muted-foreground/80" title={enclosing ?? undefined}>
-                @@ {span.side === "new" ? "" : "old "}{span.start}–{span.stop}
-                {enclosing !== null ? ` ${enclosing}` : ""}
+              <code className="min-w-0 truncate" title={enclosing ?? undefined}>
+                <span className="text-muted-foreground/70">
+                  @@ {span.side === "new" ? "" : "old "}
+                  {span.start}–{span.stop}
+                </span>
+                {enclosing !== null ? <span className="text-foreground/80"> {enclosing}</span> : null}
               </code>
               {labels.map((change, labelIndex) => (
                 <span key={labelIndex} className="inline-flex min-w-0 items-center gap-1 rounded border border-violet-500/40 px-1.5 py-px font-sans text-[10px] text-violet-700 dark:text-violet-300" title={change.label}>

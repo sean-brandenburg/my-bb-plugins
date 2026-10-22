@@ -77,8 +77,11 @@ export function FileTreeSidebar({
         </div>
       ) : null}
       <aside data-file-tree="" className={cn("relative hidden shrink-0 flex-col border-r border-border @3xl:flex", !open && "@3xl:hidden")} style={{ width }}>
-        <div className="flex items-center gap-1 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">Files{diff !== null ? ` · ${fileCount}` : ""}</span>
+        <div className="flex items-center gap-1 border-b border-border bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium text-foreground">Files</span>
+            {diff !== null ? <span className="tabular-nums"> · {fileCount}</span> : null}
+          </span>
           {diff !== null && diff.files.length > 0 ? <FileFilterButton active={filter.active} onClick={filter.onOpen} /> : null}
           <button type="button" className={cn("rounded p-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Hide file list" title="Hide file list (t)" onClick={() => setOpen(false)}>
             <Icon name="ChevronDown" className="size-3.5 rotate-90" />

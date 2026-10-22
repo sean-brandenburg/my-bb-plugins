@@ -11,7 +11,7 @@ import { RISK_DOT } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
 import { runListMotion, runListScroll, useKeyHandler } from "../ui/vim-keys";
 import { FILE_TREE_KEYMAP, type FileTreeCommand } from "../keys/keymap";
-import { FileGlyph, FileStatusLetter } from "../file-marks";
+import { ChangeCounts, FileGlyph, FileStatusLetter } from "../file-marks";
 import { useNerdFont } from "../ui/nerd-font";
 
 /** Row positions handed out in render order, so a cascade runs top to bottom from wherever it starts. */
@@ -114,7 +114,7 @@ export function FileTree({
         <button
           type="button"
           onClick={() => toggle(dir.path)}
-          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs text-muted-foreground hover:bg-state-hover", ROW_ENTER, ROW_FOCUS)}
+          className={cn("flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs font-medium text-muted-foreground hover:bg-state-hover", ROW_ENTER, ROW_FOCUS)}
           style={{ paddingLeft: 8 + depth * 12, ...stagger(cascade.next++) }}
           data-nav-row="group"
           aria-expanded={!isClosed}
@@ -122,8 +122,7 @@ export function FileTree({
         >
           <Icon name="ChevronRight" className={cn("size-3 shrink-0", CHEVRON)} />
           <TruncatedName text={dir.name} full={dir.path} />
-          <span className="shrink-0 tabular-nums text-emerald-600 dark:text-emerald-400">+{dir.additions}</span>
-          <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">−{dir.deletions}</span>
+          <ChangeCounts additions={dir.additions} deletions={dir.deletions} className="font-normal opacity-70" />
         </button>
         {isClosed ? null : <ul>{renderChildren(dir, depth + 1, dir.path === lastOpened ? { next: 0 } : cascade)}</ul>}
       </li>
@@ -140,13 +139,14 @@ export function FileTree({
         <button
           type="button"
           onClick={() => onSelect(file.path)}
-          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", ROW_ENTER, file.path === activePath && "bg-state-active", ROW_FOCUS)}
+          className={cn("flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs hover:bg-state-hover", ROW_ENTER, file.path === activePath && "bg-state-active", ROW_FOCUS)}
           style={{ paddingLeft: 8 + depth * 12 + 16, ...stagger(cascade.next++) }}
           data-nav-row="item"
           data-file-tree-path={file.path}
         >
-          {isViewed ? <Icon name="Check" className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" /> : fileRisk !== null ? <span className={cn("size-1.5 shrink-0 rounded-full", RISK_DOT[fileRisk])} aria-hidden="true" /> : null}
-          {changedSince(file.path) ? <span className="shrink-0 rounded border border-sky-500/50 px-1 text-[10px] text-sky-700 dark:text-sky-300" title="Changed since you last looked">changed</span> : null}
+          <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden={isViewed ? undefined : "true"}>
+            {isViewed ? <Icon name="Check" className="size-3 text-emerald-600 dark:text-emerald-400" /> : fileRisk !== null ? <span className={cn("size-1.5 rounded-full", RISK_DOT[fileRisk])} /> : null}
+          </span>
           {nerdFont ? <FileGlyph file={file} className={cn("text-[13px]", (isViewed || generated) && "opacity-50")} /> : null}
           <TruncatedName
             text={name}
@@ -154,12 +154,14 @@ export function FileTree({
             extra={fileRisk === null ? null : `review attention ${fileRisk}/5`}
             className={cn((isViewed || generated) && "text-muted-foreground", isViewed && "line-through decoration-muted-foreground/50")}
           />
-          {generated ? <span className="shrink-0 rounded border border-border px-1 text-[10px] uppercase tracking-wide text-muted-foreground">gen</span> : null}
-          {findingCount(file.path) > 0 ? <Badge tone="danger" title="Review findings in this file">{findingCount(file.path)}</Badge> : null}
-          {count > 0 ? <Badge tone="warning">{count}</Badge> : null}
-          {nerdFont ? null : <FileStatusLetter file={file} />}
-          <span className="shrink-0 tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
-          <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
+          <span className="flex shrink-0 items-center gap-1">
+            {changedSince(file.path) ? <span className="rounded border border-sky-500/40 px-1 text-[10px] leading-4 text-sky-700 dark:text-sky-300" title="Changed since you last looked">changed</span> : null}
+            {generated ? <span className="rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">gen</span> : null}
+            {findingCount(file.path) > 0 ? <Badge tone="danger" title="Review findings in this file">{findingCount(file.path)}</Badge> : null}
+            {count > 0 ? <Badge tone="warning" title="Open comment threads in this file">{count}</Badge> : null}
+            {nerdFont ? null : <FileStatusLetter file={file} />}
+          </span>
+          <ChangeCounts additions={file.additions} deletions={file.deletions} />
         </button>
       </li>
     );

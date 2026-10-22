@@ -9,6 +9,7 @@ import { useDiffSource } from "../source";
 import { useHostThemeName } from "../theme";
 import { StructuralLine } from "../structural/structural-line";
 import { shikiLangFor, useShikiTokens } from "../structural/syntax";
+import { CARD_HEADER, SPANNING_CARD } from "../ui/spanning-card";
 
 /** Per-symbol results shared by the hover preview and the peek panel. */
 export interface SymbolData {
@@ -47,7 +48,7 @@ function PeekCode({
 }) {
   const tokens = useShikiTokens(target.lines.join("\n"), shikiLangFor(target.path), useHostThemeName());
   const widen = (direction: "up" | "down") => (
-    <button type="button" className={cn("block w-full bg-sky-500/10 py-px text-center text-[11px] text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={() => onWiden(direction)}>
+    <button type="button" className={cn("block w-full bg-muted/40 py-px text-center text-[11px] text-primary hover:bg-state-hover", PRESS)} onClick={() => onWiden(direction)}>
       {direction === "up" ? "↑" : "↓"} {WIDEN_STEP_LINES} more lines
     </button>
   );
@@ -175,22 +176,22 @@ export function SymbolPeek({
     onOpenFile(data.lookup, { path: current.path, line: current.line, snippet: current.snippet, context: null });
   };
   return (
-    <div className={cn("my-1 flex flex-col overflow-hidden rounded-md border border-sky-500/40 bg-background text-sm shadow-sm", enter.drop, FAST)} role="region" aria-label={`Peek ${symbol}`}>
-      <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-2 py-1 text-xs">
+    <div className={cn(SPANNING_CARD, "flex flex-col border-l-sky-500/70 shadow-sm", enter.drop, FAST)} role="region" aria-label={`Peek ${symbol}`}>
+      <div className={cn(CARD_HEADER, "border-b border-border")}>
         {trail.length > 1 ? (
           <button type="button" className={cn("rounded px-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} title={`Back to ${trail.at(-2)}`} onClick={onBack}>
             ←
           </button>
         ) : null}
         <code className="font-medium">{symbol}</code>
-        <div role="tablist" className="flex rounded border border-border p-px">
+        <div role="tablist" className="flex items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5">
           {(["definition", "usages"] as const).map((entry) => (
             <button
               key={entry}
               type="button"
               role="tab"
               aria-selected={tab === entry}
-              className={cn("rounded px-1.5 py-px", PRESS, tab === entry ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-[5px] px-1.5 py-px", PRESS, tab === entry ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
               onClick={() => {
                 setTab(entry);
                 setSelected(0);

@@ -17,7 +17,7 @@ import { StructuralPatch } from "./structural/structural-patch";
 import { AnnotatedPatch } from "./text/annotated-patch";
 import { DiffErrorBoundary } from "./text/diff-error-boundary";
 import { CURSOR_RING, CURSOR_SHOWN, useCursorOnHeader, usePublishNavModel, type FileNavModel } from "./keys/review-keys-context";
-import { FileGlyph } from "./file-marks";
+import { ChangeCounts, FileGlyph } from "./file-marks";
 import { useNerdFont } from "./ui/nerd-font";
 import { PatchPlaceholder } from "./large-diff";
 import { FileHeaderMenu } from "./file-actions";
@@ -99,39 +99,39 @@ export function FileSection({
   const drawn = shown.patch;
   return (
     <section ref={sectionRef} className={cn("border-b border-border", entrance?.className)} style={entrance?.style}>
-      <div className={cn("group/header sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
+      {/* bg-card is opaque: the header is sticky, so the code scrolling under it must not show through. */}
+      <div className={cn("group/header sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-1.5", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
         {nerdFont ? <FileGlyph file={file} className="text-[14px]" /> : null}
-        <code className="min-w-0 flex-1 truncate text-xs">
-          {file.previousPath !== null ? `${file.previousPath} → ` : ""}
+        <code className={cn("min-w-0 flex-1 truncate text-xs font-medium", viewed && "text-muted-foreground")}>
+          {file.previousPath !== null ? <span className="font-normal text-muted-foreground">{file.previousPath} → </span> : null}
           {file.path}
         </code>
-        {!nerdFont && file.status !== "modified" ? <Badge>{file.status}</Badge> : null}
+        {!nerdFont && file.status !== "modified" ? <Badge tone="outline">{file.status}</Badge> : null}
         {isGeneratedFile(file) ? (
-          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground" title={file.vendored ? "Vendored; collapsed by default and shown as a text diff" : "Looks generated; collapsed by default"}>
+          <Badge tone="outline" title={file.vendored ? "Vendored; collapsed by default and shown as a text diff" : "Looks generated; collapsed by default"}>
             {file.vendored ? "vendored" : "generated"}
-          </span>
+          </Badge>
         ) : isLargeFile(file) ? (
-          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground" title={`Over ${LARGE_FILE_CHANGED_LINES.toLocaleString()} changed lines; collapsed by default`}>
+          <Badge tone="outline" title={`Over ${LARGE_FILE_CHANGED_LINES.toLocaleString()} changed lines; collapsed by default`}>
             large
-          </span>
+          </Badge>
         ) : null}
         {shown.onlyWhitespace ? (
-          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="Every change in this file is whitespace, which is hidden; collapsed by default (W shows whitespace changes)">
+          <Badge tone="outline" title="Every change in this file is whitespace, which is hidden; collapsed by default (W shows whitespace changes)">
             Only whitespace changed
-          </span>
+          </Badge>
         ) : null}
-        <span className="text-xs tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
-        <span className="text-xs tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
+        <ChangeCounts additions={file.additions} deletions={file.deletions} className="text-xs" />
         <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && `${CURSOR_SHOWN}opacity-100`)}>
           <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5 text-muted-foreground")} onClick={onCommentOnFile} aria-label="Comment on file">
             <Icon name="MessageSquare" className="size-3.5" />
           </Button>
         </span>
         <FileHeaderMenu file={file} />
-        <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground">
+        <label className={cn("inline-flex cursor-pointer select-none items-center gap-1.5 text-xs", viewed ? "text-foreground" : "text-muted-foreground")}>
           <Checkbox checked={viewed} onCheckedChange={onMarkViewed} aria-label={`Mark ${file.path} as viewed`} />
           Viewed
         </label>
@@ -141,7 +141,7 @@ export function FileSection({
         : annotations.findings
             .filter((entry) => entry.line === null)
             .map((entry) => (
-              <div key={`${entry.item.reviewId}:${entry.item.finding.id}`} className={cn("px-3", reveal)}>
+              <div key={`${entry.item.reviewId}:${entry.item.finding.id}`} className={cn("px-3 py-1", reveal)}>
                 <FindingAnnotation item={entry.item} anchorId={findingAnchorId(entry)} onToggle={(selected) => annotations.onToggleFinding(entry.item, selected)} onEdit={(edit) => annotations.onEditFinding(entry.item, edit)} />
               </div>
             ))}

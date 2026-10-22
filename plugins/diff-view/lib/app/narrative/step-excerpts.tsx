@@ -46,13 +46,13 @@ export function ExcerptSection({
   const { narrativeLayout } = useDiffPreferences();
   const inert = annotations === null;
   return (
-    <section ref={sectionRef} data-narrative-excerpt={excerpt.path} className="overflow-hidden rounded-md border border-border">
-      <div className={cn("group/header flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
+    <section ref={sectionRef} data-narrative-excerpt={excerpt.path} className="overflow-hidden rounded-lg border border-border">
+      <div className={cn("group/header flex flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1 text-xs", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand excerpt" : "Collapse excerpt"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
         <button type="button" className={cn("flex min-w-0 flex-1 items-baseline gap-2 text-left hover:underline", PRESS)} title="Open these lines in the files view (gf)" onClick={onOpen}>
-          <code className="min-w-0 truncate">{excerpt.path}</code>
+          <code className="min-w-0 truncate font-medium">{excerpt.path}</code>
           <span className="shrink-0 text-muted-foreground">{excerpt.refs.map(refLabel).join(", ")}</span>
         </button>
         {inert ? null : (

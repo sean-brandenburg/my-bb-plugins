@@ -43,9 +43,9 @@ export function DeltaStrip({
   actions: ReactNode;
 }) {
   return (
-    <section className={cn("border-b border-border px-3 py-1 text-xs", enter.fade)}>
+    <section className={cn("border-b border-border bg-muted/20 px-3 py-1.5 text-xs", enter.fade)}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-medium">Since you last looked</span>
+        <span className="font-medium text-foreground">Since you last looked</span>
         <span className="text-muted-foreground">
           {shortSha(delta.fromSha)} → {shortSha(delta.toSha)} · {delta.files.length} file{delta.files.length === 1 ? "" : "s"} changed
           {findingCount(newFindings, findingFilter, (count) => `new finding${count === 1 ? "" : "s"}`)}
@@ -55,7 +55,7 @@ export function DeltaStrip({
           <button
             key={file.path}
             type="button"
-            className={cn("rounded border border-sky-500/40 px-1.5 py-px font-mono text-[11px] text-sky-700 hover:bg-sky-500/15 dark:text-sky-300", enter.pop, FAST, STAGGER, PRESS)}
+            className={cn("rounded-md border border-sky-500/40 px-1.5 py-px font-mono text-[11px] text-sky-700 hover:bg-sky-500/15 dark:text-sky-300", enter.pop, FAST, STAGGER, PRESS)}
             style={stagger(index)}
             title={file.path}
             onClick={() => onJump(file.path)}
