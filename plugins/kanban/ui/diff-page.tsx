@@ -186,7 +186,7 @@ function ReviewPopover({
       ref={rootRef}
       role="dialog"
       aria-label="Finish your review"
-      className={cn("absolute right-0 top-full z-20 mt-1.5 flex w-80 flex-col gap-3 rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md", POPOVER_MOTION)}
+      className={cn("absolute right-0 top-full z-20 mt-1.5 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-3 rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md", POPOVER_MOTION)}
       onKeyDown={(keyboard) => {
         if ((keyboard.metaKey || keyboard.ctrlKey) && keyboard.key === "Enter") {
           keyboard.preventDefault();
@@ -350,7 +350,7 @@ function KanbanSubmitBar({
         </>
       ) : null}
       {canPostToGithub ? (
-        <span className={cn("relative flex items-center gap-x-3", local.length > 0 && "ml-auto")}>
+        <span className="relative ml-auto flex items-center gap-x-3">
           {githubDrafts.length > 0 ? (
             <span className="whitespace-nowrap text-sm">
               <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
