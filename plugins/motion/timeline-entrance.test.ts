@@ -79,6 +79,33 @@ describe("watchTimelineEntrances", () => {
     expect(batch.some(isNew)).toBe(false);
   });
 
+  it("leaves a summary row alone when it regroups a row already shown", async () => {
+    start();
+    const summary = row("t1:work-summary:a:2", 2);
+    items.lastElementChild!.replaceWith(summary);
+    await flush();
+    expect(isNew(summary)).toBe(false);
+  });
+
+  it("marks a new row arriving beside a regrouped one", async () => {
+    start();
+    const summary = row("t1:work-summary:a:2", 2);
+    const appended = row("a:3", 3);
+    items.lastElementChild!.replaceWith(summary, appended);
+    await flush();
+    expect(isNew(summary)).toBe(false);
+    expect(isNew(appended)).toBe(true);
+  });
+
+  it("only treats a whole shown id after a colon as regrouped", async () => {
+    items.lastElementChild!.setAttribute("data-timeline-row-id", "a:5");
+    start();
+    const summary = row("t1:work-summary:a:51", 3);
+    items.append(summary);
+    await flush();
+    expect(isNew(summary)).toBe(true);
+  });
+
   it("marks a user message and status row arriving together", async () => {
     start();
     const pair = [row("a:3", 3), row("a:4", 4)];

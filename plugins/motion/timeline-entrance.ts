@@ -5,6 +5,9 @@
 // the tail of a list that was already showing rows, with an id this list has
 // never shown, outside the settling period after a navigation, and arriving
 // alone or in a pair rather than as a batch the virtualizer realized at once.
+// bb also regroups rows it already showed: a run of work collapses into a
+// summary row whose id ends with the first wrapped row's id, so a row whose id
+// ends with ":<an id already shown>" is the same content under a new key.
 
 export const NEW_ROW_ATTR = "data-bbm-new-row";
 
@@ -31,6 +34,13 @@ export type TimelineEntranceOptions = {
 function rowIndex(row: Element): number {
   const value = Number(row.getAttribute(INDEX_ATTR));
   return Number.isFinite(value) ? value : -1;
+}
+
+function regroupsShownRow(id: string, seen: Set<string>): boolean {
+  for (let at = id.indexOf(":"); at !== -1; at = id.indexOf(":", at + 1)) {
+    if (seen.has(id.slice(at + 1))) return true;
+  }
+  return false;
 }
 
 function isRow(node: Node): node is Element {
@@ -73,8 +83,12 @@ export function watchTimelineEntrances(options: TimelineEntranceOptions = {}): (
       lists.set(list, state);
     }
     const seen = state.seen;
+    for (const row of removed) seen.add(row.getAttribute(ROW_ID_ATTR)!);
 
-    const fresh = added.filter((row) => !seen.has(row.getAttribute(ROW_ID_ATTR)!));
+    const fresh = added.filter((row) => {
+      const id = row.getAttribute(ROW_ID_ATTR)!;
+      return !seen.has(id) && !regroupsShownRow(id, seen);
+    });
     for (const row of added) seen.add(row.getAttribute(ROW_ID_ATTR)!);
 
     if (now() - navigatedAt < SETTLE_MS || previous.length === 0 || fresh.length === 0 || fresh.length > MAX_NEW_PER_BATCH) return;
