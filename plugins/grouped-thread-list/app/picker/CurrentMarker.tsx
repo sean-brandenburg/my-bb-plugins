@@ -21,32 +21,25 @@ export function CurrentMarker({ projectId }: { projectId: string | null }) {
   );
 }
 
-/**
- * A hairline across the top of a row. Rows are `relative` and `rounded-md`, so
- * a pseudo-element keeps the line straight where a border would curve.
- */
-export const ROW_DIVIDER =
-  "before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-border/50";
+/** The trailing number slot every row shares, so numbers land in one column. */
+export const ROW_NUMBER_CLASS =
+  "w-7 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground";
 
 /**
- * A row gets the divider unless a group label sits above it or the highlight
- * touches it, so the highlight's rounded edges stay clean.
+ * A ruled header over a run of rows: the name, a hairline out to the right
+ * edge, and the run's count in the rows' number column. Not an option, so keys
+ * skip it. `accent` marks the one section that asks for attention.
  */
-export function showsRowDivider(
-  startsGroup: boolean,
-  painted: boolean,
-  previousPainted: boolean,
-): boolean {
-  return !startsGroup && !painted && !previousPainted;
-}
-
-/** A small uppercase label over a run of rows; not an option, so keys skip it. */
 export function GroupLabel({
   label,
+  count,
+  accent = false,
   className,
   style,
 }: {
   label: string;
+  count?: number;
+  accent?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
@@ -55,11 +48,20 @@ export function GroupLabel({
       role="presentation"
       style={style}
       className={cn(
-        "flex h-6 select-none items-end px-2 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground/80",
+        "flex h-7 select-none items-center gap-2 px-2 pt-1.5 text-[11px] font-medium text-muted-foreground",
         className,
       )}
     >
-      {label}
+      {accent ? (
+        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
+      ) : null}
+      <span className={cn("shrink-0", accent && "text-foreground")}>{label}</span>
+      <span aria-hidden="true" className="h-px min-w-0 flex-1 bg-border" />
+      {count === undefined ? null : (
+        <span className={cn(ROW_NUMBER_CLASS, accent && "font-medium text-foreground")}>
+          {count}
+        </span>
+      )}
     </div>
   );
 }

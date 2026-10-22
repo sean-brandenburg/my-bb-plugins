@@ -20,7 +20,7 @@ import { createThreadProjectResolver } from "../model/active-project.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { threadListIndicatorStateForThread } from "../model/thread-activity.js";
 import { useSidebarData, type SidebarProject } from "../model/use-sidebar-data.js";
-import { GroupLabel } from "../picker/CurrentMarker.js";
+import { GroupLabel, ROW_NUMBER_CLASS } from "../picker/CurrentMarker.js";
 import { formatAge } from "../picker/picker-model.js";
 import { openProjectPicker, type PickerStart } from "../picker/picker-store.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
@@ -268,7 +268,7 @@ function FlyoutRow({
         <span className="min-w-0 flex-1 truncate">{thread.displayTitle}</span>
         <span
           className={cn(
-            "shrink-0 text-xs tabular-nums text-muted-foreground",
+            ROW_NUMBER_CLASS,
             thread.isUnread && "group-hover:invisible",
           )}
         >
@@ -293,6 +293,7 @@ function FlyoutSection({
   label,
   threads,
   running = false,
+  accent = false,
   projectFor,
   draftIds,
   onDone,
@@ -300,6 +301,8 @@ function FlyoutSection({
   label: string;
   threads: readonly SidebarThread[];
   running?: boolean;
+  /** The section the badge in the rail counts in the primary colour. */
+  accent?: boolean;
   projectFor: (thread: SidebarThread) => SidebarProject | undefined;
   draftIds: ReadonlySet<string>;
   onDone: () => void;
@@ -308,7 +311,7 @@ function FlyoutSection({
   const hidden = threads.length - ROWS_PER_SECTION;
   return (
     <section aria-label={label}>
-      <GroupLabel label={`${label} · ${threads.length}`} />
+      <GroupLabel label={label} count={threads.length} accent={accent} />
       {threads.slice(0, ROWS_PER_SECTION).map((thread) => (
         <FlyoutRow
           key={thread.id}
@@ -320,7 +323,7 @@ function FlyoutSection({
         />
       ))}
       {hidden > 0 ? (
-        <div className="px-2 py-1 text-xs text-muted-foreground">
+        <div className="px-2 py-1 text-[11px] text-muted-foreground">
           {hidden} more
         </div>
       ) : null}
@@ -407,7 +410,7 @@ export function ThreadIndicators() {
             />
             <CornerBadge
               value={running}
-              className="-bottom-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
+              className="-bottom-0.5 bg-muted-foreground text-background"
             />
           </>
         }
@@ -419,6 +422,7 @@ export function ThreadIndicators() {
               <FlyoutSection
                 label="Needs you"
                 threads={inbox.needsYou}
+                accent
                 projectFor={projectFor}
                 draftIds={draftIds}
                 onDone={close}
@@ -444,7 +448,7 @@ export function ThreadIndicators() {
             <Icon name="Pin" className="size-[18px]" />
             <CornerBadge
               value={pinned}
-              className="-bottom-0.5 bg-sidebar-foreground/20 text-sidebar-foreground"
+              className="-bottom-0.5 bg-muted-foreground text-background"
             />
           </>
         }

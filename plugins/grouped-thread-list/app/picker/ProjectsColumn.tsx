@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { enter, POP, PRESS, speed, STAGGER, stagger, useChangedSinceMount } from "bb-motion";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -10,12 +10,7 @@ import { isSidebarProjectThread } from "../model/project-thread-groups.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
 import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import {
-  CurrentMarker,
-  GroupLabel,
-  ROW_DIVIDER,
-  showsRowDivider,
-} from "./CurrentMarker.js";
+import { CurrentMarker, GroupLabel, ROW_NUMBER_CLASS } from "./CurrentMarker.js";
 import { formatAge, LEFT_GROUP_LABELS, type LeftEntry } from "./picker-model.js";
 
 const ENTRY_ICONS: Record<Exclude<LeftEntry["kind"], "project">, IconName> = {
@@ -47,20 +42,44 @@ function activityState(
   };
 }
 
-function EntryCount({ count }: { count: number }) {
+/**
+ * Every row ends in the same two slots, a glyph and a number, so the glyphs
+ * and the numbers each fall in one column down the list.
+ */
+function Trailing({
+  glyph,
+  number,
+  strong = false,
+}: {
+  glyph?: ReactNode;
+  number: ReactNode;
+  strong?: boolean;
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <span className="flex size-4 items-center justify-center">{glyph}</span>
+      <span
+        aria-hidden="true"
+        className={cn(ROW_NUMBER_CLASS, strong && "font-medium text-foreground")}
+      >
+        {number}
+      </span>
+    </span>
+  );
+}
+
+function EntryCount({ count, strong = false }: { count: number; strong?: boolean }) {
   const changed = useChangedSinceMount(count);
   if (count === 0) return null;
   return (
-    <span
-      key={changed ? count : undefined}
-      aria-hidden="true"
-      className={cn(
-        "shrink-0 text-xs tabular-nums text-muted-foreground",
-        changed && POP,
-      )}
-    >
-      {count}
-    </span>
+    <Trailing
+      strong={strong}
+      number={
+        <span key={changed ? count : undefined} className={cn("inline-block", changed && POP)}>
+          {count}
+        </span>
+      }
+    />
   );
 }
 
@@ -87,26 +106,21 @@ function EntryTrailing({
     case "project": {
       const activeAt = latestActivity.get(entry.project.id);
       return (
-        <span className="flex shrink-0 items-center gap-1.5">
-          <ThreadStatusGlyph
-            {...activityState(
-              entry.project.threads.filter(isSidebarProjectThread),
-              draftIds,
-            )}
-          />
-          {activeAt === undefined ? null : (
-            <span
-              aria-hidden="true"
-              className="w-6 text-right text-[11px] tabular-nums text-muted-foreground/70"
-            >
-              {formatAge(activeAt, now)}
-            </span>
-          )}
-        </span>
+        <Trailing
+          glyph={
+            <ThreadStatusGlyph
+              {...activityState(
+                entry.project.threads.filter(isSidebarProjectThread),
+                draftIds,
+              )}
+            />
+          }
+          number={activeAt === undefined ? null : formatAge(activeAt, now)}
+        />
       );
     }
     case "unread":
-      return <EntryCount count={counts.unread} />;
+      return <EntryCount count={counts.unread} strong />;
     case "pinned":
       return <EntryCount count={counts.pinned} />;
     case "search":
@@ -164,7 +178,7 @@ export function ProjectsColumn({
       aria-label="Projects"
       data-picker-column="left"
       className={cn(
-        "w-64 shrink-0 overflow-y-auto border-r border-border p-1",
+        "w-68 shrink-0 overflow-y-auto border-r border-border p-1",
         focused ? "bg-transparent" : "bg-muted/20",
       )}
     >
@@ -182,7 +196,7 @@ export function ProjectsColumn({
               <GroupLabel
                 label={LEFT_GROUP_LABELS[entry.group]}
                 className={cn(
-                  index > 0 && "mt-2",
+                  index > 0 && "mt-1.5",
                   intro && [enter.fade, STAGGER],
                 )}
                 style={introStyle}
@@ -197,11 +211,6 @@ export function ProjectsColumn({
                 "relative flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-sm",
                 PRESS,
                 intro && [enter.rise, speed.fast, STAGGER],
-                showsRowDivider(
-                  startsGroup,
-                  selected,
-                  index - 1 === selectedIndex,
-                ) && ROW_DIVIDER,
                 current && "font-medium text-foreground",
                 selected &&
                   (focused

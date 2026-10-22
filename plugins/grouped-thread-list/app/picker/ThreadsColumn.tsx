@@ -7,13 +7,8 @@ import type { SidebarProjectIdResolver } from "../model/active-project.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ThreadStatusGlyph } from "../rows/ThreadStatusGlyph.js";
-import { ProjectMonogram } from "../rows/ProjectMonogram.js";
-import {
-  CurrentMarker,
-  GroupLabel,
-  ROW_DIVIDER,
-  showsRowDivider,
-} from "./CurrentMarker.js";
+import { getProjectColor, ProjectMonogram } from "../rows/ProjectMonogram.js";
+import { CurrentMarker, GroupLabel, ROW_NUMBER_CLASS } from "./CurrentMarker.js";
 import {
   formatAge,
   THREAD_SECTION_LABELS,
@@ -21,6 +16,7 @@ import {
   type LeftEntry,
   type PickerColumn,
   type ThreadRowModel,
+  type ThreadSection,
 } from "./picker-model.js";
 
 function emptyMessage(entry: LeftEntry | undefined): string {
@@ -76,23 +72,42 @@ function ThreadsHeader({
   }
   const icon = HEADER_ICONS[entry.kind];
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-sm">
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 text-sm">
       {entry.kind === "project" ? (
         <ProjectMonogram projectId={entry.project.id} name={entry.project.name} />
       ) : icon ? (
         <Icon name={icon} className="size-4 text-muted-foreground" />
       ) : null}
-      <span className="min-w-0 truncate font-medium">{entry.label}</span>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-        {count === 1 ? "1 thread" : `${count} threads`}
-      </span>
+      <span className="min-w-0 truncate font-semibold">{entry.label}</span>
       {current ? (
-        <span className="ml-auto shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-1.5 text-[10.5px] font-medium text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className="size-1.5 rounded-full bg-foreground/70"
+            style={
+              entry.kind === "project"
+                ? { backgroundColor: getProjectColor(entry.project.id) }
+                : undefined
+            }
+          />
           Current
         </span>
       ) : null}
+      <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+        {count === 1 ? "1 thread" : `${count} threads`}
+      </span>
     </div>
   );
+}
+
+/** Roots per section, for the section headers; children belong to their parent. */
+function sectionCounts(rows: readonly ThreadRowModel[]): Map<ThreadSection, number> {
+  const counts = new Map<ThreadSection, number>();
+  for (const row of rows) {
+    if (row.section === null || row.depth !== 0) continue;
+    counts.set(row.section, (counts.get(row.section) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** Pops when the row is pinned in view, not when it mounts already pinned. */
@@ -157,6 +172,7 @@ export function ThreadsColumn({
 
   const now = Date.now();
   const withMonograms = showsProjectMonograms(entry);
+  const counts = sectionCounts(rows);
   const entryIsCurrent =
     (entry?.kind === "project" && entry.project.id === currentProjectId) ||
     (entry?.kind === "personal" && entry.projectId === currentProjectId);
@@ -165,6 +181,8 @@ export function ThreadsColumn({
       className={cn(
         "flex min-h-0 flex-col",
         narrow ? "w-96 shrink-0" : "min-w-0 flex-1",
+        // Like the projects column: the focused column is the brighter one.
+        column === "right" ? "bg-transparent" : "bg-muted/20",
       )}
     >
       {status === null ? (
@@ -194,8 +212,6 @@ export function ThreadsColumn({
             // The remembered row stays unpainted while the cursor is in the
             // projects column, so only one column shows a cursor.
             const selected = index === highlightedIndex && column !== "left";
-            const previousSelected =
-              index - 1 === highlightedIndex && column !== "left";
             const projectId = resolveProjectId(row.thread);
             const project = withMonograms
               ? orderedProjects.find((candidate) => candidate.id === projectId)
@@ -209,8 +225,10 @@ export function ThreadsColumn({
                 {startsSection && row.section !== null ? (
                   <GroupLabel
                     label={THREAD_SECTION_LABELS[row.section]}
+                    count={counts.get(row.section)}
+                    accent={row.section === "attention"}
                     className={cn(
-                      index > 0 && "mt-2",
+                      index > 0 && "mt-1.5",
                       intro && [enter.fade, STAGGER],
                     )}
                     style={introStyle}
@@ -227,11 +245,6 @@ export function ThreadsColumn({
                     PRESS,
                     SOFT,
                     intro && [enter.rise, speed.fast, STAGGER],
-                    showsRowDivider(
-                      index === 0 || startsSection,
-                      selected,
-                      previousSelected,
-                    ) && ROW_DIVIDER,
                     selected &&
                       (column === "right"
                         ? "bg-state-active text-foreground"
@@ -262,9 +275,11 @@ export function ThreadsColumn({
                   <span className="min-w-0 flex-1 truncate">
                     {row.thread.displayTitle}
                   </span>
-                  <PinnedMark pinned={row.thread.pinnedAt !== null} />
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {rowAge(row, now)}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <span className="flex size-3 items-center justify-center">
+                      <PinnedMark pinned={row.thread.pinnedAt !== null} />
+                    </span>
+                    <span className={ROW_NUMBER_CLASS}>{rowAge(row, now)}</span>
                   </span>
                 </div>
               </Fragment>

@@ -97,8 +97,8 @@ function PreviewHeader({
   const branch = thread.environment?.branchName ?? null;
   const age = formatAge(thread.createdAt, Date.now());
   return (
-    <div className="shrink-0 border-b border-border px-4 py-2">
-      <div className="truncate text-sm font-medium" title={thread.displayTitle}>
+    <div className="shrink-0 border-b border-border bg-muted/40 px-4 py-2">
+      <div className="truncate text-sm font-semibold" title={thread.displayTitle}>
         {thread.displayTitle}
       </div>
       <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
