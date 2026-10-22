@@ -292,6 +292,7 @@ export function prepareStatements(db: KanbanDatabase) {
       `SELECT * FROM diff_comments WHERE ticket_id = ? AND target = 'github' AND author IS NULL AND posted_at IS NULL AND github_comment_id LIKE 'review-comment:%' ORDER BY created_at, rowid`,
     ),
     setDiffCommentBody: db.prepare<[string, number, string]>(`UPDATE diff_comments SET body = ?, updated_at = ? WHERE id = ?`),
+    setDiffCommentRange: db.prepare<[number | null, string, number | null, string | null, number, string]>(`UPDATE diff_comments SET line = ?, side = ?, start_line = ?, start_side = ?, updated_at = ? WHERE id = ?`),
     pendingReviewForTicket: db.prepare<[string], PendingReviewRow>(`SELECT * FROM pending_reviews WHERE ticket_id = ?`),
     upsertPendingReview: db.prepare<[string, number | null, string | null, string | null, string, number, number | null, number]>(
       `INSERT INTO pending_reviews (ticket_id, review_id, node_id, url, body, body_dirty, pulled_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)

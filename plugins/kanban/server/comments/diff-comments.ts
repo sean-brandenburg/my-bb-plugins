@@ -363,11 +363,15 @@ export function createDiffComments(
     if (row === undefined) return { deleted: false };
     const sent = (comment: DiffCommentRow) => comment.author === null && (comment.apply_id !== null || comment.posted_at !== null);
     if (sent(row)) throw new Error("This comment was already sent; it can no longer be deleted");
-    if (stmts.diffCommentRepliesTo.all(row.ticket_id, row.id).some(sent)) throw new Error("Replies in this thread were already sent; delete the unsent ones instead");
-    const staged = [row, ...stmts.diffCommentRepliesTo.all(row.ticket_id, row.id)]
+    // Replies to a staged root point at its GitHub id, and go with it like replies to a local root do.
+    const stagedRoot = row.posted_at === null && (row.github_comment_id?.startsWith("review-comment:") ?? false) ? row.github_comment_id! : null;
+    const replies = [...stmts.diffCommentRepliesTo.all(row.ticket_id, row.id), ...(stagedRoot === null ? [] : stmts.diffCommentRepliesTo.all(row.ticket_id, stagedRoot))];
+    if (replies.some(sent)) throw new Error("Replies in this thread were already sent; delete the unsent ones instead");
+    const staged = [row, ...replies]
       .filter((comment) => comment.target === "github" && comment.posted_at === null && (comment.github_comment_id?.startsWith("review-comment:") ?? false))
       .map((comment) => comment.github_comment_id!);
     const result = stmts.deleteDiffComment.run(id, id);
+    if (stagedRoot !== null) stmts.deleteDiffComment.run(stagedRoot, stagedRoot);
     if (result.changes > 0) {
       publish();
       pendingReview.unstage(row.ticket_id, staged);

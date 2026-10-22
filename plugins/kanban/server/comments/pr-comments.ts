@@ -104,6 +104,8 @@ export function createPrComments(
       }),
     ]);
     const mine = (login: string) => (sync.login !== null && login === sync.login ? 1 : 0);
+    // Comments of a pending review are not published; they reach the board through the pending-review pull instead.
+    const pendingReviewIds = new Set(reviews.filter((review) => review.state === "PENDING").map((review) => review.id));
     const ids: string[] = [];
     const write = db.transaction(() => {
       for (const comment of issueComments) {
@@ -117,6 +119,7 @@ export function createPrComments(
         });
       }
       for (const comment of reviewComments) {
+        if (comment.pull_request_review_id != null && pendingReviewIds.has(comment.pull_request_review_id)) continue;
         const id = `review-comment:${comment.id}`;
         ids.push(id);
         const author = comment.user?.login ?? "";

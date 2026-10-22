@@ -4,7 +4,7 @@ import type { KanbanContext } from "../context";
 import type { BoardStore } from "../board";
 import type { DiffCommentRow, PendingReviewRow, TicketRow } from "../db/rows";
 import type { Changes } from "../diff/changes";
-import { GithubHttpError, githubGraphql, githubPages, githubPost, githubRequest, resolveToken, reviewThreads, type GithubReview, type GithubReviewComment } from "../github";
+import { GithubHttpError, github, githubGraphql, githubPages, githubPost, githubRequest, resolveToken, reviewThreads, type GithubReview, type GithubReviewComment } from "../github";
 import { errorMessage, shortId } from "../util";
 import { locationLabel } from "bb-diff-view/line-range";
 
@@ -274,7 +274,19 @@ export function createPendingReview(ctx: KanbanContext, { board, changes }: { bo
         publish();
         return;
       }
-      const comments = await githubPages<GithubReviewComment>(`/repos/${pr.repo}/pulls/${pr.number}/reviews/${remote.id}/comments`, auth, signal);
+      // The review's comment list is GitHub's legacy shape, without line or side; each new comment's own record has them.
+      const listed = await githubPages<GithubReviewComment>(`/repos/${pr.repo}/pulls/${pr.number}/reviews/${remote.id}/comments`, auth, signal);
+      const comments = await Promise.all(
+        listed.map(async (comment) => {
+          const existing = stmts.diffCommentByGithubId.get(row.id, `${REVIEW_COMMENT}${comment.id}`);
+          // A row pulled before the record was read sits on no line yet; its record places it.
+          if (existing !== undefined && existing.line !== null) return comment;
+          return github<GithubReviewComment>(`/repos/${pr.repo}/pulls/comments/${comment.id}`, auth, signal).catch((error: unknown) => {
+            bb.log.warn(`could not read pending comment ${comment.id} on ${pr.repo}#${pr.number}: ${String(error)}`);
+            return comment;
+          });
+        }),
+      );
       const now = Date.now();
       let changed = false;
       db.transaction(() => {
@@ -284,20 +296,25 @@ export function createPendingReview(ctx: KanbanContext, { board, changes }: { bo
           seen.add(githubId);
           const existing = stmts.diffCommentByGithubId.get(row.id, githubId);
           const body = comment.body ?? "";
+          const startLine = comment.start_line ?? comment.original_start_line ?? null;
+          const line = comment.line ?? comment.original_line ?? null;
           if (existing !== undefined) {
             if (existing.body !== body && existing.posted_at === null) {
               stmts.setDiffCommentBody.run(body, now, existing.id);
               changed = true;
             }
+            if (existing.line === null && line !== null && existing.posted_at === null) {
+              stmts.setDiffCommentRange.run(line, comment.side === "LEFT" ? "LEFT" : "RIGHT", startLine, startLine === null ? null : comment.start_side === "LEFT" ? "LEFT" : "RIGHT", now, existing.id);
+              changed = true;
+            }
             continue;
           }
-          const startLine = comment.start_line ?? comment.original_start_line ?? null;
           const id = shortId();
           stmts.insertDiffComment.run({
             id,
             ticket_id: row.id,
             path: comment.path,
-            line: comment.line ?? comment.original_line ?? null,
+            line,
             side: comment.side === "LEFT" ? "LEFT" : "RIGHT",
             start_line: startLine,
             start_side: startLine === null ? null : comment.start_side === "LEFT" ? "LEFT" : "RIGHT",
@@ -366,7 +383,8 @@ export function createPendingReview(ctx: KanbanContext, { board, changes }: { bo
           bullets.push(current);
         }
       }
-      const body = reviewBody(summary, summarizeDrafts(bullets));
+      // GitHub wants a body on a change request; the canned line stands in when nothing was written.
+      const body = reviewBody(summary, summarizeDrafts(bullets)) || (event === "REQUEST_CHANGES" ? "Requesting changes; see my comments in the review threads." : "");
       const submitted = await githubPost<{ id: number; html_url: string }>(`/repos/${pr.repo}/pulls/${pr.number}/reviews/${remote.review_id}/events`, auth, {
         event,
         ...(body === "" ? {} : { body }),

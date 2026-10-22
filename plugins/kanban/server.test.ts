@@ -174,10 +174,11 @@ function stubGithub(options: {
       return json({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } });
     }
     const pendingCommentRoute = /\/pulls\/comments\/(\d+)$/u.exec(path);
-    if (pendingCommentRoute !== null && (method === "PATCH" || method === "DELETE")) {
+    if (pendingCommentRoute !== null) {
       const id = Number(pendingCommentRoute[1]);
       const review = ghPending.reviews.find((entry) => entry.comments.some((comment) => comment.id === id));
       if (review === undefined) return new Response("not found", { status: 404 });
+      if (method === "GET") return json(pendingCommentJson(review, review.comments.find((comment) => comment.id === id)!));
       if (method === "DELETE") {
         review.comments = review.comments.filter((comment) => comment.id !== id);
         return new Response(null, { status: 204 });
@@ -232,7 +233,13 @@ function stubGithub(options: {
     const reviewReadBack = /\/pulls\/\d+\/reviews\/(\d+)\/comments/u.exec(url);
     if (reviewReadBack !== null) {
       const pendingReview = ghPending.reviews.find((entry) => entry.id === Number(reviewReadBack[1]));
-      if (pendingReview !== undefined) return json(pendingReview.comments.map((comment) => pendingCommentJson(pendingReview, comment)));
+      if (pendingReview !== undefined) {
+        // GitHub's legacy review-comment shape: no line, side or start line.
+        return json(pendingReview.comments.map((comment) => {
+          const { line, side, start_line, start_side, original_line, original_start_line, ...legacy } = pendingCommentJson(pendingReview, comment);
+          return { ...legacy, position: line ?? null };
+        }));
+      }
       if (options.failReadBack) return new Response("boom", { status: 502 });
       const review = posted[Number(reviewReadBack[1]) - 901];
       return json(
@@ -3329,6 +3336,26 @@ describe("pending review staged on GitHub", () => {
     await rpc("pending_review_set_body", { ticketId: card.id, body: "" });
     await waitFor(() => ghPending.reviews.length === 0);
     expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
+  });
+
+  it("takes a staged root's replies with it, keeps pending comments out of the published sync, and submits a bodiless change request", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })], pending: { comments: [{ path: "a.go", line: 3, body: "From GitHub" }] } }));
+    await load({ autoStartThreads: false, stageOnGithub: true });
+    const card = await theirs();
+    // Pending comments list as drafts here, never as published review comments.
+    expect(((await rpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] }).comments).toEqual([]);
+    expect((await list(card.id)).map((comment) => comment.githubCommentId)).toEqual(["review-comment:9000"]);
+
+    const root = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 2, body: "Root", target: "github" })) as DiffComment;
+    const reply = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", body: "Reply", inReplyTo: root.id, target: "github" })) as DiffComment;
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === reply.id)?.githubCommentId !== null);
+    expect((await list(card.id)).find((comment) => comment.id === reply.id)).toMatchObject({ inReplyTo: "review-comment:9001", githubCommentId: "review-comment:9002" });
+    await rpc("diff_comment_delete", { id: root.id });
+    await waitFor(() => ghPending.reviews[0]!.comments.length === 1);
+    expect((await list(card.id)).map((comment) => comment.githubCommentId)).toEqual(["review-comment:9000"]);
+
+    await rpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, reviewEvent: "REQUEST_CHANGES", address: false });
+    expect(events).toEqual([{ reviewId: 600, event: "REQUEST_CHANGES", body: "Requesting changes; see my comments in the review threads." }]);
   });
 
   it("pulls a pending review begun on GitHub, follows its changes there, and submits it from the board", async () => {
