@@ -274,13 +274,25 @@ export function createPendingReview(ctx: KanbanContext, { board, changes }: { bo
         publish();
         return;
       }
-      // The review's comment list is GitHub's legacy shape, without line or side; each new comment's own record has them.
+      // The review's comment list is GitHub's legacy shape, without line or side. The thread each comment is in
+      // has them; a comment's own record does too, but GitHub serves no record for some pending comments.
       const listed = await githubPages<GithubReviewComment>(`/repos/${pr.repo}/pulls/${pr.number}/reviews/${remote.id}/comments`, auth, signal);
+      const unplaced = listed.filter((comment) => stmts.diffCommentByGithubId.get(row.id, `${REVIEW_COMMENT}${comment.id}`)?.line == null);
+      const threads =
+        unplaced.length === 0
+          ? new Map()
+          : await reviewThreads(pr.repo, pr.number, auth, signal).catch((error: unknown) => {
+              bb.log.warn(`could not read the review threads of ${pr.repo}#${pr.number}: ${String(error)}`);
+              return new Map<number, never>();
+            });
       const comments = await Promise.all(
-        listed.map(async (comment) => {
-          const existing = stmts.diffCommentByGithubId.get(row.id, `${REVIEW_COMMENT}${comment.id}`);
-          // A row pulled before the record was read sits on no line yet; its record places it.
-          if (existing !== undefined && existing.line !== null) return comment;
+        listed.map(async (comment): Promise<GithubReviewComment> => {
+          // A row pulled before its place was known sits on no line yet; this pull places it.
+          if (!unplaced.includes(comment)) return comment;
+          const thread = threads.get(comment.in_reply_to_id ?? comment.id);
+          if (thread !== undefined) {
+            return { ...comment, path: thread.path, line: thread.line, original_line: thread.line, side: thread.side, start_line: thread.startLine, original_start_line: thread.startLine, start_side: thread.startSide };
+          }
           return github<GithubReviewComment>(`/repos/${pr.repo}/pulls/comments/${comment.id}`, auth, signal).catch((error: unknown) => {
             bb.log.warn(`could not read pending comment ${comment.id} on ${pr.repo}#${pr.number}: ${String(error)}`);
             return comment;

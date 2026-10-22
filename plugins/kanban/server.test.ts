@@ -97,6 +97,8 @@ function stubGithub(options: {
   failReadBack?: boolean;
   /** A pending review already on GitHub when the test starts, as if begun there. */
   pending?: { login?: string; body?: string; comments: Array<Omit<StubPendingComment, "id" | "side" | "start_line" | "start_side"> & Partial<Pick<StubPendingComment, "side" | "start_line" | "start_side">>> };
+  /** GitHub serves no record for a pending comment read by id, as it does for some left on github.com. */
+  pendingRecordsMissing?: boolean;
 }) {
   const json = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -175,12 +177,22 @@ function stubGithub(options: {
         return json({ data });
       }
       const roots = new Set(options.resolvedThreads ?? []);
-      const nodes = (options.comments?.review ?? [])
-        .filter((comment) => comment.replyTo === undefined)
-        .map((comment) => ({ id: `PRRT_${comment.id}`, isResolved: roots.has(comment.id), comments: { nodes: [{ databaseId: comment.id }] } }));
+      const threadNode = (comment: { id: number; path: string; line: number | null; side?: "LEFT" | "RIGHT"; start_line?: number | null; start_side?: "LEFT" | "RIGHT" | null }, isResolved: boolean) => ({
+        id: `PRRT_${comment.id}`,
+        isResolved,
+        path: comment.path,
+        line: comment.line,
+        originalLine: comment.line,
+        startLine: comment.start_line ?? null,
+        originalStartLine: comment.start_line ?? null,
+        diffSide: comment.side ?? "RIGHT",
+        startDiffSide: comment.start_side ?? null,
+        comments: { nodes: [{ databaseId: comment.id }] },
+      });
+      const nodes = (options.comments?.review ?? []).filter((comment) => comment.replyTo === undefined).map((comment) => threadNode({ ...comment, start_line: comment.startLine }, roots.has(comment.id)));
       for (const review of ghPending.reviews) {
         for (const comment of review.comments) {
-          if (comment.in_reply_to_id === undefined) nodes.push({ id: `PRRT_${comment.id}`, isResolved: false, comments: { nodes: [{ databaseId: comment.id }] } });
+          if (comment.in_reply_to_id === undefined) nodes.push(threadNode(comment, false));
         }
       }
       return json({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } });
@@ -189,7 +201,7 @@ function stubGithub(options: {
     if (pendingCommentRoute !== null) {
       const id = Number(pendingCommentRoute[1]);
       const review = ghPending.reviews.find((entry) => entry.comments.some((comment) => comment.id === id));
-      if (review === undefined) return new Response("not found", { status: 404 });
+      if (review === undefined || (method === "GET" && options.pendingRecordsMissing === true)) return new Response("not found", { status: 404 });
       if (method === "GET") return json(pendingCommentJson(review, review.comments.find((comment) => comment.id === id)!));
       if (method === "DELETE") {
         review.comments = review.comments.filter((comment) => comment.id !== id);
@@ -3447,6 +3459,31 @@ describe("pending review staged on GitHub", () => {
     expect(after.find((comment) => comment.id === refused.id)?.githubCommentId).toBe("review:600");
     expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
     expect((await board()).tickets.find((ticket) => ticket.id === card.id)).toMatchObject({ columnId: "done", pendingDiffComments: 0 });
+  });
+
+  it("places a pulled pending comment from its review thread when GitHub serves no record for it, and places one pulled before onto its line", async () => {
+    const fetchStub = stubGithub({
+      requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })],
+      pending: { comments: [{ path: "a.go", line: 3, body: "Left on github.com" }, { path: "a.go", line: 8, side: "LEFT", start_line: 6, start_side: "LEFT", body: "On a range of the old side" }, { path: "a.go", line: null, body: "On the file" }] },
+      pendingRecordsMissing: true,
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    await load({ autoStartThreads: false, stageOnGithub: true });
+    const card = await theirs();
+    const placed = (comments: DiffComment[]) => comments.map((comment) => [comment.body, comment.line, comment.side, comment.startLine, comment.startSide]).sort((a, b) => Number(a[1] ?? 0) - Number(b[1] ?? 0));
+    expect(placed(await list(card.id))).toEqual([
+      ["On the file", null, "RIGHT", null, null],
+      ["Left on github.com", 3, "RIGHT", null, null],
+      ["On a range of the old side", 8, "LEFT", 6, "LEFT"],
+    ]);
+    // Placing came from the threads, not from the records GitHub does not serve.
+    expect(fetchStub.mock.calls.map(([input]) => String(input instanceof Request ? input.url : input)).filter((url) => /\/pulls\/comments\/\d+$/u.test(url))).toEqual([]);
+
+    // A draft that was pulled before its place was known (its row has no line) is placed by the next pull.
+    const [fileLevel] = (await list(card.id)).filter((comment) => comment.body === "On the file");
+    ghPending.reviews[0]!.comments.find((comment) => comment.body === "On the file")!.line = 5;
+    await rpc("sync_now", null);
+    expect((await list(card.id)).find((comment) => comment.id === fileLevel!.id)).toMatchObject({ line: 5, side: "RIGHT" });
   });
 
   it("marks staged drafts posted when the review is submitted on GitHub, and keeps them as drafts when it is discarded there", async () => {

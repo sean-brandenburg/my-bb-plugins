@@ -197,9 +197,23 @@ export interface ReviewThreadInfo {
   /** The thread's node id, which replies into a pending review address. */
   id: string;
   isResolved: boolean;
+  path: string;
+  /** Null for a comment on the file as a whole. An outdated thread keeps the line it was left on. */
+  line: number | null;
+  side: "LEFT" | "RIGHT";
+  startLine: number | null;
+  startSide: "LEFT" | "RIGHT" | null;
 }
 
-/** Each review thread (the signed-in user's pending ones included) keyed by its first comment's id; REST exposes neither. */
+function diffSide(side: string | null | undefined): "LEFT" | "RIGHT" {
+  return side === "LEFT" ? "LEFT" : "RIGHT";
+}
+
+/**
+ * Each review thread (the signed-in user's pending ones included) keyed by its first comment's id, with where it
+ * sits in the diff. REST exposes neither the ids nor, for a pending review's comments, the lines: its list of them
+ * is the legacy shape without `line` or `side`, and reading one by id can 404.
+ */
 export async function reviewThreads(repo: string, number: number, token: string, signal?: AbortSignal): Promise<Map<number, ReviewThreadInfo>> {
   const [owner, name] = repo.split("/");
   const map = new Map<number, ReviewThreadInfo>();
@@ -209,7 +223,18 @@ export async function reviewThreads(repo: string, number: number, token: string,
       repository: {
         pullRequest: {
           reviewThreads: {
-            nodes: Array<{ id?: string; isResolved: boolean; comments: { nodes: Array<{ databaseId: number | null }> } }>;
+            nodes: Array<{
+              id?: string;
+              isResolved: boolean;
+              path: string;
+              line: number | null;
+              originalLine: number | null;
+              startLine: number | null;
+              originalStartLine: number | null;
+              diffSide: "LEFT" | "RIGHT";
+              startDiffSide: "LEFT" | "RIGHT" | null;
+              comments: { nodes: Array<{ databaseId: number | null }> };
+            }>;
             pageInfo?: { hasNextPage: boolean; endCursor: string | null };
           };
         } | null;
@@ -219,7 +244,7 @@ export async function reviewThreads(repo: string, number: number, token: string,
           repository(owner: $owner, name: $name) {
             pullRequest(number: $number) {
               reviewThreads(first: 100, after: $after) {
-                nodes { id isResolved comments(first: 1) { nodes { databaseId } } }
+                nodes { id isResolved path line originalLine startLine originalStartLine diffSide startDiffSide comments(first: 1) { nodes { databaseId } } }
                 pageInfo { hasNextPage endCursor }
               }
             }
@@ -232,7 +257,17 @@ export async function reviewThreads(repo: string, number: number, token: string,
     const threads = data.repository?.pullRequest?.reviewThreads;
     for (const thread of threads?.nodes ?? []) {
       const rootId = thread.comments.nodes[0]?.databaseId;
-      if (rootId !== null && rootId !== undefined) map.set(rootId, { id: thread.id ?? "", isResolved: thread.isResolved });
+      if (rootId === null || rootId === undefined) continue;
+      const startLine = thread.startLine ?? thread.originalStartLine ?? null;
+      map.set(rootId, {
+        id: thread.id ?? "",
+        isResolved: thread.isResolved,
+        path: thread.path,
+        line: thread.line ?? thread.originalLine ?? null,
+        side: diffSide(thread.diffSide),
+        startLine,
+        startSide: startLine === null ? null : diffSide(thread.startDiffSide ?? thread.diffSide),
+      });
     }
     if (threads?.pageInfo?.hasNextPage !== true || threads.pageInfo.endCursor === null) break;
     after = threads.pageInfo.endCursor;
