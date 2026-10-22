@@ -121,8 +121,9 @@ function BacklinksList({ subPath }: { subPath: string }) {
   if (data.backlinks.length === 0) return <PanelMessage>{`No notes link to ${noteTitle(path)}.`}</PanelMessage>;
   return (
     <div className="ob-panel-list">
-      <p className="px-3 pb-1 pt-3 text-xs text-muted-foreground">
-        {data.backlinks.length} linked mention{data.backlinks.length === 1 ? "" : "s"}
+      <p className="px-3 pb-1.5 pt-3 text-xs">
+        <span className="font-medium">{data.backlinks.length}</span>
+        <span className="text-muted-foreground"> linked mention{data.backlinks.length === 1 ? "" : "s"}</span>
       </p>
       {data.backlinks.map((backlink, index) => (
         <FileMatches

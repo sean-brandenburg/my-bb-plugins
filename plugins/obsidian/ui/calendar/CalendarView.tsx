@@ -261,7 +261,7 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
       <div className={cx("ob-cal-inner", enter.rise)}>
         <header className="ob-cal-header">
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{status?.vaultName} · Calendar</p>
+            <p className="text-xs text-muted-foreground">{status?.vaultName} · Calendar</p>
             <h2 className="text-xl font-semibold">
               {dayLabel(dateKey)}
               {dateKey === today ? <span className="ob-cal-badge ml-2 align-middle">today</span> : null}
@@ -356,8 +356,8 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
                     {meetingMeta(meeting) === "" ? null : <div className="ob-cal-meta">{meetingMeta(meeting)}</div>}
                     <div className={cx("ob-cal-note", exists && "ob-cal-note-exists")} title={exists ? "The note exists" : `Enter starts it by the ${meeting.note.rule} rule`}>
                       <span className="ob-cal-note-dot" aria-hidden />
-                      {meeting.note.path.replace(/\.md$/, "")}
-                      {meeting.note.rule === "Meetings" ? null : <span className="ob-cal-badge ml-1.5">{meeting.note.rule}</span>}
+                      <span>{meeting.note.path.replace(/\.md$/, "")}</span>
+                      {meeting.note.rule === "Meetings" ? null : <span className="ob-cal-badge">{meeting.note.rule}</span>}
                     </div>
                   </div>
                   <div className="ob-cal-actions" onClick={(event) => event.stopPropagation()}>

@@ -132,8 +132,12 @@
   padding: 0 0.25rem;
   font-size: 0.8125rem;
 }
+/* Each file's group is ruled off from the next, so a run of matches reads as one file's. */
 .ob-search-result {
-  padding: 0.25rem 0;
+  padding: 0.375rem 0 0.5rem;
+}
+.ob-search-result + .ob-search-result {
+  border-top: 1px solid var(--border);
 }
 .ob-search-file {
   display: flex;
@@ -151,9 +155,9 @@
 .ob-search-match {
   display: block;
   width: 100%;
-  margin: 0.125rem 0;
-  padding: 0.25rem 0.5rem 0.25rem 0.875rem;
-  border-left: 2px solid var(--border);
+  margin: 0.125rem 0 0.125rem 0.5rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.625rem;
+  border-left: 2px solid color-mix(in oklab, var(--primary) 35%, var(--border));
   border-radius: 0 0.375rem 0.375rem 0;
   text-align: left;
   font-size: 0.75rem;
@@ -200,15 +204,87 @@
   padding-bottom: 1rem;
 }
 
+/* Dashboard cards: a tinted header row names the group and carries its count; rows inside are ruled. */
+.ob-dash-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.ob-dash-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  font-size: 0.8125rem;
+}
+.ob-dash-count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.ob-dash-card-footer {
+  padding: 0.375rem 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.6875rem;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.ob-ticket-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+}
+.ob-ticket-key {
+  width: 5.5rem;
+  flex-shrink: 0;
+  font-weight: 500;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-ticket-aside {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  min-width: 9rem;
+}
+/* Title takes the width; the folder and the date sit in fixed columns on the right. */
 .ob-recent-row {
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.75rem;
+  padding: 0.375rem 0.75rem;
   text-align: left;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+}
+.ob-recent-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.ob-recent-folder {
+  max-width: 11rem;
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-recent-date {
+  width: 5.75rem;
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--muted-foreground);
 }
 
 /* bb-motion's press scale shrinks a full-width row by ~20px, so wide rows get
@@ -618,21 +694,23 @@ details.ob-callout > summary {
   min-height: 1.875rem;
   resize: none;
   padding: 0.375rem 0.5rem;
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  background: transparent;
+  background: var(--background);
   color: var(--foreground);
   font-size: 0.8125rem;
   line-height: 1.35;
   outline: none;
 }
+.ob-capture-input::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+}
 .ob-capture-input:focus {
-  border-style: solid;
   border-color: var(--ring, var(--primary));
 }
 .ob-capture-dashboard > .ob-capture-input {
-  min-height: 2.5rem;
-  padding: 0.6rem 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
 }
 .ob-capture-dialog-input > .ob-capture-input {
@@ -650,8 +728,11 @@ details.ob-callout > summary {
   pointer-events: none;
 }
 .ob-dash-row {
-  padding: 0.125rem 0;
+  padding: 0.1875rem 0;
   overflow-wrap: anywhere;
+}
+.ob-dash-row + .ob-dash-row {
+  border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
 }
 
 /* The calendar view: a week strip over one day's meetings. */
@@ -671,11 +752,16 @@ details.ob-callout > summary {
   justify-content: space-between;
   gap: 1rem;
 }
+/* The week is one segmented strip; the shown day stands out of it on the page background. */
 .ob-cal-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.25rem;
+  gap: 0.125rem;
   margin-top: 1rem;
+  padding: 0.125rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
 }
 .ob-cal-day {
   display: flex;
@@ -683,13 +769,16 @@ details.ob-callout > summary {
   align-items: center;
   gap: 0.125rem;
   padding: 0.5rem 0.25rem;
-  border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: 0.375rem;
   font-size: 0.75rem;
   color: var(--muted-foreground);
+  outline: none;
 }
 .ob-cal-day:hover {
-  background: var(--state-hover, var(--accent));
+  color: var(--foreground);
+}
+.ob-cal-day:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--ring, var(--primary));
 }
 .ob-cal-day-number {
   font-size: 1.125rem;
@@ -698,13 +787,18 @@ details.ob-callout > summary {
 }
 .ob-cal-day-count {
   min-height: 1em;
+  font-variant-numeric: tabular-nums;
 }
 .ob-cal-day-today .ob-cal-day-number {
   color: var(--primary);
 }
 .ob-cal-day-active {
-  border-color: var(--border);
-  background: var(--muted);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+.ob-cal-day-active .ob-cal-day-number {
+  font-weight: 700;
 }
 .ob-cal-list {
   margin-top: 1.25rem;
@@ -735,6 +829,7 @@ details.ob-callout > summary {
 }
 .ob-cal-now {
   border-left-color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 6%, transparent);
 }
 .ob-cal-past .ob-cal-time,
 .ob-cal-past .ob-cal-title {
@@ -748,8 +843,9 @@ details.ob-callout > summary {
   flex-direction: column;
   width: 3.25rem;
   flex-shrink: 0;
-  padding-top: 0.0625rem;
+  padding-top: 0.125rem;
   font-size: 0.75rem;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   color: var(--foreground);
 }
@@ -765,7 +861,7 @@ details.ob-callout > summary {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
-  font-weight: 500;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .ob-cal-badge {
@@ -776,9 +872,19 @@ details.ob-callout > summary {
   font-weight: 500;
   color: var(--muted-foreground);
 }
-.ob-cal-meta,
-.ob-cal-note {
+.ob-cal-meta {
   margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+/* The note Enter acts on: set apart from the meta above it, hollow dot until it exists. */
+.ob-cal-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
   font-size: 0.75rem;
   color: var(--muted-foreground);
   overflow-wrap: anywhere;
@@ -790,14 +896,15 @@ details.ob-callout > summary {
   display: inline-block;
   width: 0.5rem;
   height: 0.5rem;
-  margin-right: 0.375rem;
-  border: 1px solid currentColor;
+  flex-shrink: 0;
+  border: 1.5px solid var(--primary);
   border-radius: 9999px;
-  vertical-align: 0;
 }
 .ob-cal-note-exists .ob-cal-note-dot {
   background: var(--primary);
-  border-color: var(--primary);
+}
+.ob-cal-note > .ob-cal-badge {
+  margin-left: 0;
 }
 .ob-cal-actions {
   display: flex;
