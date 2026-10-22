@@ -330,35 +330,26 @@ function KanbanSubmitBar({
       onSubmitted();
     }
   };
+  if (local.length === 0 && !canPostToGithub) return null;
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)} onKeyDown={onBarKeys}>
+    <span data-diff-submit-bar="" className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", enter.fade)} onKeyDown={onBarKeys}>
       {local.length > 0 ? (
-        <>
-          <span className="text-sm">
-            <span key={localPop.key} onAnimationEnd={localPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", localPop.className)}>
-              {local.length}
-            </span>{" "}
-            local comment{local.length === 1 ? "" : "s"}
-          </span>
+        <span className="flex items-center gap-x-2">
           <PushToggle push={push} onChange={setPush} />
-          <span title="Start a thread that addresses these with the apply-pr-comments skill and replies in each thread">
+          <span title="Start a thread that addresses the local comments with the apply-pr-comments skill and replies in each thread">
             <Button type="button" className={COMPACT} disabled={submitting !== null} onClick={() => void submit("agent")}>
               <Icon name="kanban-wrench" className="size-3.5" />
-              Send {local.length} to agent
+              Send{" "}
+              <span key={localPop.key} onAnimationEnd={localPop.onAnimationEnd} className={cn("inline-block tabular-nums", localPop.className)}>
+                {local.length}
+              </span>{" "}
+              to agent
             </Button>
           </span>
-        </>
+        </span>
       ) : null}
       {canPostToGithub ? (
-        <span className="relative ml-auto flex items-center gap-x-3">
-          {githubDrafts.length > 0 ? (
-            <span className="whitespace-nowrap text-sm">
-              <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
-                {githubDrafts.length}
-              </span>{" "}
-              GitHub draft{githubDrafts.length === 1 ? "" : "s"}
-            </span>
-          ) : null}
+        <span className="relative flex items-center">
           <span title="Finish your review: a comment, how it concludes, then submit (new threads post as one review; replies post into their threads)">
             <Button
               ref={triggerRef}
@@ -374,7 +365,11 @@ function KanbanSubmitBar({
             >
               <Icon name="GitPullRequest" className="size-3.5" />
               Submit review
-              {githubDrafts.length > 0 ? <span className="rounded-full bg-foreground/15 px-1.5 text-xs tabular-nums">{githubDrafts.length}</span> : null}
+              {githubDrafts.length > 0 ? (
+                <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block rounded-full bg-foreground/15 px-1.5 text-xs tabular-nums", draftsPop.className)}>
+                  {githubDrafts.length}
+                </span>
+              ) : null}
             </Button>
           </span>
           {open ? (
@@ -392,7 +387,7 @@ function KanbanSubmitBar({
           ) : null}
         </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -461,14 +456,15 @@ export function KanbanDiffView({
       onOpenThread={onOpenThread}
       refreshSignal={boardChanges}
       labels={KANBAN_DIFF_LABELS}
-      toolbar={
+      toolbar={(pending) => (
         <>
-          <DiffPageHeading subjectId={subjectId} ticket={ticket} />
+          <DiffPageHeading
+            subjectId={subjectId}
+            ticket={ticket}
+            actions={<KanbanSubmitBar subjectId={subjectId} pending={pending} canPostToGithub={ticket?.canPostToGithub ?? false} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
+          />
           {ticket === null ? null : <HandoffStrip ticket={ticket} rpc={rpc} plan={plan} onOpenThread={onOpenThread} />}
         </>
-      }
-      renderSubmitBar={(pending) => (
-        <KanbanSubmitBar subjectId={subjectId} pending={pending} canPostToGithub={ticket?.canPostToGithub ?? false} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />
       )}
       // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}

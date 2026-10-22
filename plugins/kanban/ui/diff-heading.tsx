@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { POPOVER_MOTION } from "bb-motion";
 import type { rpcContract } from "../contract";
 import type { Ticket } from "../shared/board";
 import { BOARD_CHANGED } from "../shared/events";
-import { REVIEW_DEPTH_LABEL } from "../shared/review";
 import type { CodeReviewThread } from "../shared/tour";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -19,13 +18,13 @@ import { toastError } from "./actions";
 const PR_LINK = "inline-flex shrink-0 items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /**
- * The changes page's heading: the card's title and PR on the left, its review threads on the
- * right. The host title bar only has room on its right for short controls, so the page names
- * itself here.
+ * The changes page's heading: the card's title and PR on the left; on the right the send controls for the comments
+ * left on the diff, then its review threads. The host title bar only has room on its right for short controls, so
+ * the page names itself here.
  */
-export function DiffPageHeading({ subjectId, ticket }: { subjectId: string; ticket: Ticket | null }) {
+export function DiffPageHeading({ subjectId, ticket, actions }: { subjectId: string; ticket: Ticket | null; actions?: ReactNode }) {
   return (
-    <div data-kanban-diff-heading="" className="flex items-center gap-3 border-b border-border px-3 py-1.5">
+    <div data-kanban-diff-heading="" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <h1 className="min-w-0 truncate text-sm font-semibold" title={ticket?.title}>
         {ticket?.title ?? "Changes"}
       </h1>
@@ -37,9 +36,12 @@ export function DiffPageHeading({ subjectId, ticket }: { subjectId: string; tick
       ) : ticket !== null ? (
         <span className="shrink-0 text-xs text-muted-foreground">{ticket.id}</span>
       ) : null}
-      <span className="ml-auto flex shrink-0 items-center gap-1.5">
-        {ticket !== null ? <ReviewThreadButtons ticket={ticket} /> : null}
-        <CodeReviewThreadsMenu subjectId={subjectId} />
+      <span className="ml-auto flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        {actions}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {ticket !== null ? <ReviewThreadButtons ticket={ticket} /> : null}
+          <CodeReviewThreadsMenu subjectId={subjectId} />
+        </span>
       </span>
     </div>
   );
@@ -53,7 +55,10 @@ const CODE_REVIEW_THREAD_ICON: Record<CodeReviewThread["kind"], string> = {
   explain: "MessageSquare",
 };
 
-/** The latest review and its apply round, one click from the changes page; older threads stay in the Threads menu. */
+/**
+ * Starts the first review from the changes page, or opens the latest review's apply round; the review thread itself
+ * is reached through the Threads menu beside these.
+ */
 export function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
   const rpc = useRpc<typeof rpcContract>();
   const openThread = useOpenThread();
@@ -81,31 +86,15 @@ export function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
       </span>
     );
   }
-  const counts = review.counts;
-  const total = counts === null ? null : counts.critical + counts.important + counts.minor;
   const apply = review.apply;
+  if (apply === null) return null;
   return (
-    <>
-      <span title={`${review.depth === null ? "" : `${REVIEW_DEPTH_LABEL[review.depth]} review. `}${review.status === "running" ? "Open the running review thread" : "Open the review thread to read the findings or keep iterating"}`}>
-        <Button type="button" variant="secondary" className={COMPACT} onClick={() => openThread(review.threadId)}>
-          <Icon name="kanban-search-check" className={cn("size-3.5", review.status === "running" && "animate-pulse")} />
-          {review.status === "running" ? "Reviewing…" : review.sinceCommitSha === null ? "Review" : "Re-review"}
-          {review.status === "failed" ? (
-            <Badge tone="danger">failed</Badge>
-          ) : total !== null && counts !== null ? (
-            <Badge tone={counts.critical > 0 ? "danger" : counts.important > 0 ? "warning" : total === 0 ? "success" : "neutral"}>{total}</Badge>
-          ) : null}
-        </Button>
-      </span>
-      {apply !== null ? (
-        <span title={apply.completedAt === null ? "Open the thread applying the review" : `Fixes ${apply.push ? "pushed" : "committed"} as ${shortSha(apply.pushedCommit)}`}>
-          <Button type="button" variant="ghost" className={COMPACT} onClick={() => openThread(apply.threadId)}>
-            <Icon name="kanban-wrench" className={cn("size-3.5", apply.completedAt === null && "animate-pulse")} />
-            {apply.completedAt === null ? "Applying…" : "Fixes"}
-          </Button>
-        </span>
-      ) : null}
-    </>
+    <span title={apply.completedAt === null ? "Open the thread applying the review" : `Fixes ${apply.push ? "pushed" : "committed"} as ${shortSha(apply.pushedCommit)}`}>
+      <Button type="button" variant="ghost" className={COMPACT} onClick={() => openThread(apply.threadId)}>
+        <Icon name="kanban-wrench" className={cn("size-3.5", apply.completedAt === null && "animate-pulse")} />
+        {apply.completedAt === null ? "Applying…" : "Fixes"}
+      </Button>
+    </span>
   );
 }
 

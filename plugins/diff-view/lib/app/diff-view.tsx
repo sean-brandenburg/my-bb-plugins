@@ -71,8 +71,12 @@ export interface DiffViewProps {
   renderSubmitBar?: (pending: PendingComments) => ReactNode;
   /** Extra controls at the end of the "since you last looked" strip. */
   deltaActions?: ReactNode;
-  /** Controls above the diff, for surfaces with no title bar of their own (a side panel, say). */
-  toolbar?: ReactNode;
+  /**
+   * Controls above the diff, for surfaces with no title bar of their own (a side panel, say). A function gets the
+   * comments waiting to be sent, for a host whose heading row holds the send controls; it then tags their container
+   * `data-diff-submit-bar` so `s` reaches them.
+   */
+  toolbar?: ReactNode | ((pending: PendingComments) => ReactNode);
 }
 
 const NO_PLACED_FINDINGS: PlacedFinding[] = [];
@@ -875,8 +879,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       <DiffCommentsContext.Provider value={commentActions}>
         <ReviewKeysContext.Provider value={keys}>
           <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none">
-            {toolbar}
-            {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0 || source.canPostToGithub === true) ? (
+            {typeof toolbar === "function" ? toolbar({ local: localPending, githubDrafts, reload: comments.loadComments }) : toolbar}
+            {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? (
               <div data-diff-submit-bar="">{renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments })}</div>
             ) : null}
 

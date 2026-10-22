@@ -236,11 +236,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Every thread a code review button starts (reviews from the button, `bb kanban
   review` or an automation, applying findings or comments, tours, and hunk
   explanations) runs hidden, so it stays out of the sidebar and the project's
-  thread list. The changes view's title bar has a Review button showing the
-  latest review's status and finding count that opens its thread (or starts a
-  review when there is none), plus a Fixes button for its apply thread. Older
-  threads are in the "Threads" menu beside them, and tours and explanations
-  have a "thread" link.
+  thread list. The changes view's heading row has a Review button that starts
+  the first review, a Fixes button for the latest review's apply thread once
+  there is one, and the "Threads" menu beside them, which lists every review
+  thread (the review thread itself is reached from there); tours and
+  explanations have a "thread" link.
   Turn off "Keep code review threads out of the sidebar" to show them (existing
   ones follow the setting).
 - **Review depth**: a review runs at Quick (correctness, CLAUDE.md
@@ -445,7 +445,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   PRs carrying the review tag (`#pr-reviews` by default, configurable in
   settings) and on local everywhere else, and holds while the page is open.
   Replies in threads that are not on GitHub stay local either way. "Make local"
-  / "Move to GitHub" switches a comment that has not been sent yet. The bar at the top has two actions:
+  / "Move to GitHub" switches a comment that has not been sent yet. The heading row has two actions for them, beside Fixes and Threads:
   **Send N to agent** hands the local comments to a thread running
   `apply-pr-comments` (with the same and-push option), and **Submit review**
   (with the GitHub draft count on it) opens GitHub's "Finish your review"
