@@ -34,7 +34,11 @@ export function isUnsent(entry: ThreadEntry): boolean {
   return state === "pending" || state === "draft";
 }
 
-/** Merge synced GitHub review comments with the board's own diff comments into threads; posted drafts show once, as their synced copy. */
+/**
+ * Merge synced GitHub review comments with the board's own diff comments into threads; posted drafts show once, as
+ * their synced copy. GitHub threads that are resolved, or outdated by a later push, are over and stay out of the
+ * diff, unless a reply to one is still unsent here.
+ */
 export function buildDiffThreads(local: readonly DiffComment[], github: readonly GithubComment[]): DiffThread[] {
   const synced = new Set(github.filter((comment) => comment.kind === "review-comment").map((comment) => comment.id));
   // Only an inline synced copy replaces a posted draft; drafts that went into a review body have no inline copy to show.
@@ -86,12 +90,13 @@ export function buildDiffThreads(local: readonly DiffComment[], github: readonly
     replies.sort((a, b) => entryTime(a) - entryTime(b));
     thread.entries = [root!, ...replies];
   }
-  return [...threads.values()];
+  return [...threads.values()].filter((thread) => !(thread.resolved === true || thread.outdated) || thread.entries.some(isUnsent));
 }
 
 export function threadIsOpen(thread: DiffThread): boolean {
-  if (thread.resolved === true) return false;
+  // A resolved thread is only in the diff for an unsent reply, which the reader should see.
   if (thread.entries.some(isUnsent)) return true;
+  if (thread.resolved === true) return false;
   const root = thread.entries[0]!;
   return root.source === "github" ? true : root.comment.addressedAt === null;
 }

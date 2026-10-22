@@ -122,8 +122,19 @@ describe("buildDiffThreads", () => {
     expect(thread).toMatchObject({ id: "gone", orphaned: true, onGithub: false });
   });
 
-  it("drops the lines of an outdated GitHub comment", () => {
-    const [thread] = buildDiffThreads([], [github({ id: "review-comment:1", outdated: true, line: 12, startLine: 10, startSide: "RIGHT" })]);
+  it("leaves resolved and outdated GitHub threads out, unless a reply to one is still unsent", () => {
+    const resolved = github({ id: "review-comment:1", resolved: true });
+    const outdated = github({ id: "review-comment:2", outdated: true, line: 12 });
+    const open = github({ id: "review-comment:3" });
+    expect(buildDiffThreads([], [resolved, outdated, open]).map((thread) => thread.id)).toEqual(["review-comment:3"]);
+    const withDraft = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:1", target: "github" })], [resolved, outdated]);
+    expect(withDraft.map((thread) => thread.id)).toEqual(["review-comment:1"]);
+    const sent = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:1", target: "github", postedAt: 1, githubCommentId: "review-comment:9" })], [resolved]);
+    expect(sent).toEqual([]);
+  });
+
+  it("drops the lines of an outdated GitHub comment that still shows for its unsent reply", () => {
+    const [thread] = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:1", target: "github" })], [github({ id: "review-comment:1", outdated: true, line: 12, startLine: 10, startSide: "RIGHT" })]);
     expect(thread).toMatchObject({ line: null, startLine: null, startSide: null, outdated: true });
   });
 
@@ -148,8 +159,8 @@ describe("buildDiffThreads", () => {
 
 describe("threadIsOpen", () => {
   const thread = (locals: DiffComment[], githubs: GithubComment[] = []) => buildDiffThreads(locals, githubs)[0]!;
-  it("closes resolved and addressed threads unless a reply is still unsent", () => {
-    expect(threadIsOpen(thread([], [github({ id: "review-comment:1", resolved: true })]))).toBe(false);
+  it("closes addressed threads unless a reply is still unsent, and opens a resolved one shown for its unsent reply", () => {
+    expect(threadIsOpen(thread([local({ id: "reply", inReplyTo: "review-comment:1", target: "github" })], [github({ id: "review-comment:1", resolved: true })]))).toBe(true);
     expect(threadIsOpen(thread([local({ id: "root", applyId: "s", addressedAt: 1 })]))).toBe(false);
     expect(threadIsOpen(thread([local({ id: "root", applyId: "s", addressedAt: 1 }), local({ id: "reply", inReplyTo: "root" })]))).toBe(true);
     expect(threadIsOpen(thread([local({ id: "root", applyId: "s" })]))).toBe(true);
