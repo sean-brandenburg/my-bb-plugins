@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
@@ -16,7 +17,7 @@ import { usePortalScopeProps } from "@/lib/portal-scope";
 import { relativeTime, shortSha } from "./format";
 import { useBoard, useOpenThread, useNow, useReviewUnavailableReason } from "./data";
 import { pageUi, usePageUi } from "./page-state";
-import { Badge, COMPACT, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
+import { Badge, COMPACT, ExternalLink, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
 import { diffInstanceKey, diffSubjectFromSubPath, findDiffSubjectTicket } from "./diff-page";
 import { toastError } from "./actions";
 
@@ -210,6 +211,29 @@ function CodeReviewThreadsMenu({ subjectId }: { subjectId: string }) {
   );
 }
 
+const TRAIL_LINK = "rounded-sm hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+/**
+ * The way back from a sub-page, as a trail: the parent page is a button, the current page plain
+ * text. The host puts the header on the right of the title bar, where a lone back button reads as
+ * part of whatever follows it; on narrow screens only the parent shows, so it carries a back
+ * chevron there.
+ */
+function Trail({ parent, onParent, children }: { parent: string; onParent: () => void; children: ReactNode }) {
+  return (
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center text-xs">
+      <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5 text-muted-foreground hover:text-foreground")} onClick={onParent}>
+        <Icon name="ChevronLeft" className="size-3.5 md:hidden" />
+        {parent}
+      </Button>
+      <span className="hidden min-w-0 items-center md:inline-flex">
+        <Icon name="ChevronRight" className="size-3.5 shrink-0 text-muted-foreground/60" />
+        {children}
+      </span>
+    </nav>
+  );
+}
+
 /** Controls for the host title bar: board tools on the board, diff tools on a card's changes page. */
 export function BoardHeader({ subPath }: { subPath: string }) {
   const trimmed = subPath.replace(/^\/+|\/+$/gu, "");
@@ -234,13 +258,13 @@ export function BoardHeader({ subPath }: { subPath: string }) {
 
   const onProposals = trimmed === "proposals" || trimmed.startsWith("proposals/");
   if (onProposals) {
+    const atList = trimmed === "proposals";
     return (
       <div className="flex min-w-0 items-center gap-2">
-        <Button type="button" variant="ghost" className={COMPACT} onClick={() => navigate.toPluginPanel("board", { subPath: trimmed === "proposals" ? "" : "proposals" })}>
-          <Icon name="ChevronDown" className="size-3.5 rotate-90" />
-          {trimmed === "proposals" ? "Board" : "Proposals"}
-        </Button>
-        <Button className={cn(COMPACT, "ml-1")} onClick={() => pageUi.set({ dialog: "new", newTicketColumn: null })}>
+        <Trail parent={atList ? "Board" : "Proposals"} onParent={() => navigate.toPluginPanel("board", { subPath: atList ? "" : "proposals" })}>
+          <span className="px-1 text-muted-foreground">{atList ? "Proposals" : "Proposal"}</span>
+        </Trail>
+        <Button className={COMPACT} onClick={() => pageUi.set({ dialog: "new", newTicketColumn: null })}>
           <Icon name="Plus" className="size-3.5" />
           New card
         </Button>
@@ -251,16 +275,28 @@ export function BoardHeader({ subPath }: { subPath: string }) {
     const ticket = findDiffSubjectTicket(board, diffTicketId);
     return (
       <div className="flex min-w-0 items-center gap-2">
-        <Button type="button" variant="ghost" className={COMPACT} onClick={() => navigate.toPluginPanel("board", { subPath: "" })}>
-          <Icon name="ChevronDown" className="size-3.5 rotate-90" />
-          Board
-        </Button>
-        {ticket !== null ? (
-          <span className="hidden min-w-0 items-center gap-1.5 text-xs text-muted-foreground md:inline-flex">
-            <span className="truncate font-medium text-foreground">{ticket.title}</span>
-            <span className="shrink-0">· {ticket.pr !== null ? `${ticket.pr.repo.split("/")[1]}#${ticket.pr.number}` : ticket.id}</span>
-          </span>
-        ) : null}
+        <Trail parent="Board" onParent={() => navigate.toPluginPanel("board", { subPath: "" })}>
+          {ticket !== null ? (
+            <span className="inline-flex min-w-0 items-center gap-1.5 px-1 text-muted-foreground">
+              <span className="max-w-[40vw] truncate font-medium text-foreground" title={ticket.title}>
+                {ticket.title}
+              </span>
+              <span aria-hidden className="shrink-0">
+                ·
+              </span>
+              {ticket.pr !== null ? (
+                <ExternalLink href={ticket.pr.url} title={`Open ${ticket.pr.repo}#${ticket.pr.number} on GitHub`} className={cn("shrink-0", TRAIL_LINK)}>
+                  {ticket.pr.repo.split("/")[1]}#{ticket.pr.number}
+                </ExternalLink>
+              ) : (
+                <span className="shrink-0">{ticket.id}</span>
+              )}
+            </span>
+          ) : (
+            <span className="px-1 text-muted-foreground">Changes</span>
+          )}
+        </Trail>
+        <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border" />
         {ticket !== null ? <ReviewThreadButtons ticket={ticket} /> : null}
         <CodeReviewThreadsMenu subjectId={diffTicketId} />
         <DiffRefreshButton instanceKey={diffInstanceKey(diffTicketId)} />
