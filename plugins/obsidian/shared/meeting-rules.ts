@@ -22,13 +22,43 @@ export interface MeetingRule {
   text: RegExp | null;
   attendees: AttendeeRange | null;
   allDay: boolean | null;
-  /** Placeholder → regex over the title; its first group (or the whole match) fills the placeholder. Not a condition. */
-  extract: Record<string, RegExp>;
+  /** Placeholder → regex over one of the meeting's texts; its first group (or the whole match) fills the placeholder. Not a condition. */
+  extract: Record<string, Extraction>;
   folder: string;
   /** Note name pattern with placeholders, without the extension. */
   file: string;
   /** Vault path of the template note, or null for the built-in one. */
   template: string | null;
+}
+
+/** Which of a meeting's texts an extraction reads. */
+export type ExtractSource = "title" | "notes" | "location" | "organizer" | "text";
+
+export interface Extraction {
+  from: ExtractSource;
+  pattern: RegExp;
+}
+
+const EXTRACT_SOURCES: readonly ExtractSource[] = ["title", "notes", "location", "organizer", "text"];
+
+/** The title, description, location and link together, which `text` conditions and extractions read. */
+function allText(meeting: Meeting): string {
+  return [meeting.title, meeting.notes ?? "", meeting.location ?? "", meeting.meetingUrl ?? ""].join("\n");
+}
+
+function sourceText(meeting: Meeting, source: ExtractSource): string {
+  switch (source) {
+    case "title":
+      return meeting.title;
+    case "notes":
+      return meeting.notes ?? "";
+    case "location":
+      return meeting.location ?? "";
+    case "organizer":
+      return meeting.organizer ?? "";
+    case "text":
+      return allText(meeting);
+  }
 }
 
 export interface RuleSet {
@@ -96,12 +126,19 @@ function ruleFrom(entry: unknown, index: number, defaults: { folder: string; tem
     if (attendees === null) return `${name}: "attendees" must look like 3+, 2-5 or 0.`;
   }
   if (data.allDay !== undefined && data.allDay !== null && typeof data.allDay !== "boolean") return `${name}: "allDay" must be true or false.`;
-  const extract: Record<string, RegExp> = {};
+  const extract: Record<string, Extraction> = {};
   if (data.extract !== undefined && data.extract !== null) {
     if (typeof data.extract !== "object" || Array.isArray(data.extract)) return `${name}: "extract" must map placeholder names to patterns.`;
-    for (const [placeholder, pattern] of Object.entries(data.extract as Record<string, unknown>)) {
-      if (typeof pattern !== "string") return `${name}: extract.${placeholder} must be a pattern.`;
-      extract[placeholder] = compilePattern(pattern);
+    for (const [placeholder, spec] of Object.entries(data.extract as Record<string, unknown>)) {
+      // A bare pattern reads the title; `{ from: notes, pattern: … }` reads another text.
+      if (typeof spec === "string") {
+        extract[placeholder] = { from: "title", pattern: compilePattern(spec) };
+        continue;
+      }
+      if (spec === null || typeof spec !== "object" || typeof (spec as { pattern?: unknown }).pattern !== "string") return `${name}: extract.${placeholder} must be a pattern, or { from, pattern }.`;
+      const from = (spec as { from?: unknown }).from ?? "title";
+      if (!EXTRACT_SOURCES.includes(from as ExtractSource)) return `${name}: extract.${placeholder}.from must be one of ${EXTRACT_SOURCES.join(", ")}.`;
+      extract[placeholder] = { from: from as ExtractSource, pattern: compilePattern((spec as { pattern: string }).pattern) };
     }
   }
   const template = stringOrNull(data.template);
@@ -188,7 +225,7 @@ export function matchRule(rule: MeetingRule, meeting: Meeting): Record<string, s
     [rule.organizer, meeting.organizer ?? ""],
     [rule.calendar, meeting.calendar],
     [rule.location, meeting.location ?? ""],
-    [rule.text, [meeting.title, meeting.notes ?? "", meeting.location ?? "", meeting.meetingUrl ?? ""].join("\n")],
+    [rule.text, allText(meeting)],
   ];
   for (const [pattern, subject] of subjects) {
     if (pattern === null) continue;
@@ -198,8 +235,8 @@ export function matchRule(rule: MeetingRule, meeting: Meeting): Record<string, s
   }
   if (rule.attendees !== null && (meeting.attendees < rule.attendees.min || meeting.attendees > rule.attendees.max)) return null;
   if (rule.allDay !== null && meeting.allDay !== rule.allDay) return null;
-  for (const [placeholder, pattern] of Object.entries(rule.extract)) {
-    const match = pattern.exec(meeting.title);
+  for (const [placeholder, { from, pattern }] of Object.entries(rule.extract)) {
+    const match = pattern.exec(sourceText(meeting, from));
     const value = match === null ? null : (match[1] ?? match[0]);
     if (value !== null && value.trim() !== "") captures[placeholder] = value.trim();
   }
@@ -299,6 +336,42 @@ Daily note: [[{{date}}]]
 - [ ]
 `;
 
+/** The interview template the starter rules name; written beside them when it doesn't exist. */
+export const INTERVIEW_TEMPLATE_PATH = "Templates/Template - Interview Note.md";
+
+export const DEFAULT_INTERVIEW_TEMPLATE = `---
+date: {{date}}
+time: {{time}}
+candidate: "{{candidate|title}}"
+role: "{{role}}"
+tags: [meeting, interview]
+---
+# {{candidate|title}}
+
+Role: {{role}}
+Daily note: [[{{date}}]]
+Briefing: {{briefing}}
+Call: {{url}}
+
+## Format
+
+## Questions asked
+
+## Signals
+### For
+
+### Concerns
+
+## Recommendation
+- [ ] Decision:
+
+## Follow-ups
+- [ ] Feedback written up
+`;
+
+/** Templates the starter rules name, for a vault that doesn't have them yet. */
+export const STARTER_TEMPLATES: ReadonlyArray<{ path: string; content: string }> = [{ path: INTERVIEW_TEMPLATE_PATH, content: DEFAULT_INTERVIEW_TEMPLATE }];
+
 /** The rules note the calendar view creates on request, as a worked example to edit. */
 export function starterRulesNote(defaults: { folder: string; template: string | null }): string {
   const template = defaults.template ?? "Templates/Template - Meeting Note.md";
@@ -306,16 +379,18 @@ export function starterRulesNote(defaults: { folder: string; template: string | 
 
 The Vault calendar (\`gc\`) starts a note for a meeting from the first rule below that matches it. A rule can match on \`title\`, \`organizer\`, \`calendar\`, \`location\` and \`text\` (the title, description, location and link together) with case-insensitive regular expressions, on \`attendees\` (\`3+\`, \`2-5\`, \`0\`) and on \`allDay\`. Every condition a rule names must hold. A rule with no conditions matches everything; meetings no rule matches go to \`${defaults.folder}/\`.
 
-A match puts the note in \`folder\`, named by \`file\` and filled from \`template\`. Placeholders: \`{{title}}\`, \`{{date}}\`, \`{{time}}\`, \`{{end}}\`, \`{{weekday}}\`, \`{{organizer}}\`, \`{{calendar}}\`, \`{{attendees}}\`, \`{{url}}\`, \`{{location}}\`, \`{{notes}}\`, any named group in a condition (\`(?<candidate>…)\`), and anything under \`extract\`, which pulls a placeholder out of the title without being a condition. \`{{a|b}}\` falls back to b when a is empty. Two meetings with one title on a day share a note unless \`file\` includes \`{{time}}\`.
+A match puts the note in \`folder\`, named by \`file\` and filled from \`template\`. Placeholders: \`{{title}}\`, \`{{date}}\`, \`{{time}}\`, \`{{end}}\`, \`{{weekday}}\`, \`{{organizer}}\`, \`{{calendar}}\`, \`{{attendees}}\`, \`{{url}}\`, \`{{location}}\`, \`{{notes}}\`, any named group in a condition (\`(?<candidate>…)\`), and anything under \`extract\`, which pulls a placeholder out of the title (or, as \`{ from: notes, pattern: … }\`, the description, location or organizer) without being a condition. Each rule may name its own \`template\`; the calendar reports one that doesn't exist and uses the built-in meeting template meanwhile. \`{{a|b}}\` falls back to b when a is empty. Two meetings with one title on a day share a note unless \`file\` includes \`{{time}}\`.
 
 \`\`\`yaml
 - name: Interviews
   organizer: Recruiting
   extract:
     candidate: "(?:for|with):?\\\\s*([^-]+?)\\\\s*(?:-|$)"
+    role: "-\\\\s*(.+)$"
+    briefing: { from: notes, pattern: "https://app\\\\.ashbyhq\\\\.com/\\\\S+" }
   folder: Interviews
   file: "{{date}} {{candidate|title}}"
-  template: ${template}
+  template: ${INTERVIEW_TEMPLATE_PATH}
 
 - name: One-on-ones
   attendees: 2

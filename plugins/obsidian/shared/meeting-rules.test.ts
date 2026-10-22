@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Meeting } from "./calendar.ts";
-import { matchRule, noteTarget, parseAttendeeRange, parseMeetingRules, renderPlaceholders, sanitizeNoteName, starterRulesNote } from "./meeting-rules.ts";
+import { DEFAULT_INTERVIEW_TEMPLATE, INTERVIEW_TEMPLATE_PATH, matchRule, noteTarget, parseAttendeeRange, parseMeetingRules, renderPlaceholders, sanitizeNoteName, starterRulesNote } from "./meeting-rules.ts";
 
 const DEFAULTS = { folder: "Meetings", template: "Templates/Template - Meeting Note.md" };
 
@@ -85,11 +85,25 @@ describe("parseMeetingRules", () => {
     assert.match(parseMeetingRules("```yaml\n- [unclosed\n```\n", DEFAULTS).errors[0]!, /valid YAML/);
   });
 
-  it("parses the starter note it offers", () => {
+  it("parses the starter note it offers, whose Interviews rule pulls the candidate, role and briefing", () => {
     const { rules, errors } = parseMeetingRules(starterRulesNote(DEFAULTS), DEFAULTS);
     assert.deepEqual(errors, []);
     assert.equal(rules[0]!.name, "Interviews");
-    assert.equal(noteTarget(rules, meeting(), "2026-10-22").path, "Interviews/2026-10-22 Jordan Rivera.md");
+    const target = noteTarget(rules, meeting(), "2026-10-22");
+    assert.equal(target.path, "Interviews/2026-10-22 Jordan Rivera.md");
+    assert.equal(target.template, INTERVIEW_TEMPLATE_PATH);
+    assert.equal(target.fields.role, "Senior Backend Engineer");
+    assert.equal(target.fields.briefing, "https://app.ashbyhq.com/interview-briefings/0000");
+    assert.match(renderPlaceholders(DEFAULT_INTERVIEW_TEMPLATE, target.fields), /^# Jordan Rivera$/m);
+    assert.match(renderPlaceholders(DEFAULT_INTERVIEW_TEMPLATE, target.fields), /tags: \[meeting, interview\]/);
+  });
+
+  it("reads extractions from the title by default or from another text, and rejects unknown sources", () => {
+    const { rules, errors } = parseMeetingRules('- extract:\n    who: "with (\\\\w+)"\n    link: { from: notes, pattern: "https://\\\\S+" }\n    where: { from: location, pattern: "Room \\\\d+" }\n  folder: X\n- extract:\n    bad: { from: moon, pattern: x }\n', DEFAULTS);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!, /extract\.bad\.from/);
+    const captures = matchRule(rules[0]!, meeting({ title: "Chat with Ada", location: "Room 42", notes: "see https://x.y/z now" }));
+    assert.deepEqual(captures, { who: "Ada", link: "https://x.y/z", where: "Room 42" });
   });
 });
 

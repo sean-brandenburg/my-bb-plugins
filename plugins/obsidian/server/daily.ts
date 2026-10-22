@@ -5,7 +5,7 @@ import type { BbPluginApi, PluginRpcHandlers, PluginSettingDescriptor, PluginSet
 import type { CalendarEvents, NoteContent, VaultTree, WriteResult } from "../contract.ts";
 import type { PlannedMeeting, dailyRpcContract } from "../rpc-contract.ts";
 import { meetingDateKey, meetingsFrom, nextDateKey, parseCalendarNames, type Meeting } from "../shared/calendar.ts";
-import { DEFAULT_MEETING_TEMPLATE, meetingFields, noteTarget, parseMeetingRules, renderPlaceholders, starterRulesNote, type RuleSet } from "../shared/meeting-rules.ts";
+import { DEFAULT_MEETING_TEMPLATE, STARTER_TEMPLATES, meetingFields, noteTarget, parseMeetingRules, renderPlaceholders, starterRulesNote, type RuleSet } from "../shared/meeting-rules.ts";
 import {
   DEFAULT_DAILY_TEMPLATE,
   appendToSection,
@@ -249,7 +249,16 @@ export function createDaily(bb: BbPluginApi, vault: VaultAccess, settingsHandle:
     const path = withMd(meetingRulesNote);
     const note = await vault.read(path);
     const defaults = { folder: meetingsFolder, template: meetingTemplate === "" ? null : withMd(meetingTemplate) };
-    return { path, exists: note !== null, rules: parseMeetingRules(note?.content ?? null, defaults) };
+    const rules = parseMeetingRules(note?.content ?? null, defaults);
+    // A template that isn't there would otherwise fall back to the built-in one without a word.
+    const templates = new Map<string, string[]>();
+    for (const rule of rules.rules) {
+      if (rule.template !== null) templates.set(rule.template, [...(templates.get(rule.template) ?? []), rule.name]);
+    }
+    for (const [template, names] of templates) {
+      if ((await vault.read(template)) === null) rules.errors.push(`${names.join(", ")}: the template ${template} doesn't exist, so the built-in meeting template is used.`);
+    }
+    return { path, exists: note !== null, rules };
   }
 
   async function plan(meetings: Meeting[]): Promise<{ meetings: PlannedMeeting[]; rules: { path: string; exists: boolean; errors: string[] } }> {
@@ -314,6 +323,8 @@ export function createDaily(bb: BbPluginApi, vault: VaultAccess, settingsHandle:
     if (exists) return { path, created: false };
     const { meetingsFolder, meetingTemplate } = await settings();
     const result = await vault.write(path, starterRulesNote({ folder: meetingsFolder, template: meetingTemplate === "" ? null : withMd(meetingTemplate) }), null);
+    // The templates the example names, so its rules work at once; create-only, so a vault's own stay.
+    for (const template of STARTER_TEMPLATES) await vault.write(template.path, template.content, null);
     return { path, created: result.outcome === "written" };
   }
 
