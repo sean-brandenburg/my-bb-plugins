@@ -102,6 +102,13 @@ describe("control names", () => {
     expect(controlKey(by("d"))).toBe("#composer-send");
   });
 
+  it("treats a button whose text is longer than a name as content, grouped by where it sits", () => {
+    html(`<section aria-label="Timeline"><button id="run">Ran bb activity recent --limit 90 --json 2>/dev/null | python3 -I -c "import json"</button></section>`);
+    const run = document.getElementById("run")!;
+    expect(controlKey(run)).toBe("<button> in Timeline");
+    expect(controlLabel(run)).toContain("Ran bb activity recent");
+  });
+
   it("groups list rows by their list rather than their content, and links by their page", () => {
     html(`
       <nav aria-label="Threads">

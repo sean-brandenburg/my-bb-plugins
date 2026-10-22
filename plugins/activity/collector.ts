@@ -30,6 +30,8 @@ const POINTER_CLICK_MS = 500;
 /** Segments that are ids or file names, not page names. */
 const ID_SEGMENT = /^(?:[a-z]+_[A-Za-z0-9]+|[0-9a-f]{8,}|\d+|.+\.[A-Za-z0-9]{1,5})$/u;
 const ROUTE_DEPTH = 3;
+/** Longer than any control's name; past it a button's text is the content it shows. */
+const NAME_LENGTH = 48;
 
 export function clip(text: string): string {
   const collapsed = text.replace(/\s+/gu, " ").trim();
@@ -134,7 +136,9 @@ export function controlKey(element: Element): string {
   }
   const label = element.getAttribute("aria-label") ?? element.getAttribute("title") ?? ownText(element);
   const text = clip(label.replace(/\d[\d,.]*/gu, "#"));
-  return text === "" ? `<${element.tagName.toLowerCase()}> in ${containerName(element)}` : text;
+  // A name is short; a row showing a command bb ran or a message's first line is content.
+  if (text === "" || text.length > NAME_LENGTH) return `<${element.tagName.toLowerCase()}> in ${containerName(element)}`;
+  return text;
 }
 
 function controlOf(target: Element | null, win: Window): Element | null {
