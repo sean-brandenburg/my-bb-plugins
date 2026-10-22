@@ -1,5 +1,6 @@
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import { KeyHelp, returnToRow, runListMotion, runListScroll, useKeyScope } from "bb-vim-keys/react";
+import type React from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { KINDS, type Kind, type Summary, type SummaryItem, type TimelineBucket, type rpcContract } from "../contract";
 import { computeFindings, type Emphasis, type Finding, matchesEmphasis } from "./findings";
@@ -35,7 +36,24 @@ const KIND_BADGE: Readonly<Record<Kind, string>> = {
 /** The order kinds appear in under a plugin: where you went, what you pressed, what you typed. */
 const SECTION_ORDER: readonly Kind[] = ["route", "click", "command", "key"];
 
-const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_minmax(7rem,26%)_7rem_4rem] items-center gap-3";
+/** Name, then a fixed block of numbers on the right: bar with count, mouse against keyboard, last used. */
+const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_11rem_7rem_4.5rem] items-center gap-x-4";
+
+/** Bars take the hue of their kind's badge, so a glance tells pages from clicks from keys. */
+const KIND_BAR: Readonly<Record<Kind, string>> = {
+  click: "bg-sky-500/70",
+  command: "bg-emerald-500/70",
+  key: "bg-foreground/35",
+  route: "bg-violet-500/70",
+};
+
+/** The rule down a kind's section inside a plugin, in the same hue. */
+const KIND_RULE: Readonly<Record<Kind, string>> = {
+  click: "border-sky-500/40",
+  command: "border-emerald-500/40",
+  key: "border-border",
+  route: "border-violet-500/40",
+};
 
 interface Pin {
   start: number;
@@ -149,10 +167,19 @@ function Toggle({ pressed, onClick, children }: { pressed: boolean; onClick: () 
       tabIndex={-1}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`rounded px-2 py-0.5 text-xs outline-none focus:ring-2 focus:ring-ring/60 ${pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent"}`}
+      className={`rounded-[5px] px-2 py-0.5 text-xs outline-none focus:ring-2 focus:ring-ring/60 ${pressed ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
     >
       {children}
     </button>
+  );
+}
+
+/** A row of toggles that read as one control: a bordered strip the pressed one stands out of. */
+function Segmented({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5">
+      {children}
+    </div>
   );
 }
 
@@ -199,13 +226,13 @@ function ShareBar({ plugins, total }: { plugins: Summary["plugins"]; total: numb
   const segments = rest > 0 ? [...named, { plugin: "other", count: rest }] : named;
   const small = segments.filter((segment) => segment.count / total < SHARE_LABEL_MIN);
   return (
-    <div className="flex flex-col gap-1" aria-label="Share of events per plugin">
-      <div className="flex gap-0.5">
-        {segments.map((segment) => {
+    <div className="flex flex-col gap-1.5" aria-label="Share of events per plugin">
+      <div className="flex gap-px overflow-hidden rounded-md">
+        {segments.map((segment, index) => {
           const share = segment.count / total;
           return (
             <div key={segment.plugin ?? "\u0000bb"} className="flex min-w-0 flex-col gap-1" style={{ width: `${share * 100}%` }}>
-              <span className="block h-1.5 rounded-[2px] bg-foreground/60" aria-hidden />
+              <span className="block h-2.5" style={{ backgroundColor: `color-mix(in oklab, var(--primary) ${Math.max(25, 85 - index * 14)}%, var(--muted))` }} aria-hidden />
               {share >= SHARE_LABEL_MIN ? (
                 <span className="truncate text-xs">
                   {pluginName(segment.plugin)} <span className="tabular-nums text-muted-foreground">{Math.round(share * 100)}%</span>
@@ -232,7 +259,7 @@ function ShareBar({ plugins, total }: { plugins: Summary["plugins"]; total: numb
 function Findings({ findings, onApply }: { findings: readonly Finding[]; onApply: (finding: Finding) => void }) {
   if (findings.length === 0) return null;
   return (
-    <section className="flex flex-col gap-0.5" aria-label="Findings">
+    <section className="grid gap-2 sm:grid-cols-2" aria-label="Findings">
       {findings.map((finding) => (
         <button
           key={finding.id}
@@ -240,12 +267,12 @@ function Findings({ findings, onApply }: { findings: readonly Finding[]; onApply
           data-nav-row="item"
           tabIndex={-1}
           onClick={() => onApply(finding)}
-          className="-mx-1.5 flex min-w-0 items-baseline gap-x-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-accent/50 focus:bg-accent"
+          className="flex min-w-0 flex-col gap-1 rounded-md border border-border bg-background px-3 py-2 text-left outline-none hover:border-primary/50 hover:bg-accent/40 focus:border-primary focus:bg-accent/40"
         >
-          <span className="min-w-0 flex-1">
-            <span className="font-semibold tabular-nums">{finding.lead}</span> {finding.rest}
+          <span className="min-w-0 leading-snug">
+            <span className="font-semibold tabular-nums">{finding.lead}</span> <span className="text-muted-foreground">{finding.rest}</span>
           </span>
-          <span className="shrink-0 text-xs text-muted-foreground">{finding.hint}</span>
+          <span className="shrink-0 text-xs text-primary">{finding.hint} ↵</span>
         </button>
       ))}
     </section>
@@ -260,21 +287,21 @@ function ItemRow({ item, now, largest, emphasis }: { item: SummaryItem; now: num
       data-nav-row="item"
       tabIndex={-1}
       aria-label={`${item.label}, ${formatCount(item.count)} ${item.count === 1 ? "use" : "uses"}, last ${formatAgo(item.lastAt, now)}`}
-      className={`${ROW_GRID} -mx-1.5 rounded-md px-1.5 py-[3px] outline-none hover:bg-accent/50 focus:bg-accent ${emphasis !== null && !marked ? "opacity-45" : ""}`}
+      className={`${ROW_GRID} -mx-2 rounded-md px-2 py-1 outline-none hover:bg-accent/50 focus:bg-accent ${emphasis !== null && !marked ? "opacity-45" : ""}`}
     >
       <span className="flex min-w-0 items-baseline gap-2">
         {marked ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" /> : null}
-        <span className={`min-w-0 truncate ${mono ? "font-mono text-[13px]" : ""}`}>{item.label}</span>
-        {item.key !== item.label ? <span className="min-w-0 truncate text-xs text-muted-foreground">{item.key}</span> : null}
+        <span className={`min-w-0 truncate text-[13px] ${mono ? "font-mono" : ""}`}>{item.label}</span>
+        {item.key !== item.label ? <span className="min-w-0 truncate text-[11px] text-muted-foreground">{item.key}</span> : null}
       </span>
       <span className="flex items-center gap-2">
         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
-          <span className="block h-full rounded-full bg-foreground/60 transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${(item.count / largest) * 100}%` }} />
+          <span className={`block h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none ${KIND_BAR[item.kind]}`} style={{ width: `${(item.count / largest) * 100}%` }} />
         </span>
-        <span className="w-8 shrink-0 text-right text-xs tabular-nums">{formatCount(item.count)}</span>
+        <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums">{formatCount(item.count)}</span>
       </span>
       {item.kind === "click" ? <ViaSplit pointer={item.pointer} keyboard={item.keyboard} className="min-w-0" /> : <span />}
-      <span className="truncate text-right text-xs tabular-nums text-muted-foreground">{formatAgo(item.lastAt, now)}</span>
+      <span className="truncate text-right text-[11px] tabular-nums text-muted-foreground">{formatAgo(item.lastAt, now)}</span>
     </div>
   );
 }
@@ -284,9 +311,9 @@ function KindSection({ section, expanded, onExpand, now, largest, emphasis }: { 
   const shown = expanded ? section.items : section.items.slice(0, SECTION_LIMIT);
   const hidden = section.items.length - shown.length;
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="mt-1.5 flex items-baseline gap-2 text-xs text-muted-foreground">
-        <span className={`rounded px-1 text-[10px] font-medium ${KIND_BADGE[section.kind]}`}>{names.section}</span>
+    <div className={`flex flex-col gap-0.5 border-l-2 pl-3 ${KIND_RULE[section.kind]}`}>
+      <div className="mb-0.5 flex items-baseline gap-2 text-xs text-muted-foreground">
+        <span className={`rounded px-1.5 py-px text-[10px] font-medium ${KIND_BADGE[section.kind]}`}>{names.section}</span>
         <span className="tabular-nums">
           {formatCount(section.count)} across {section.items.length} {section.items.length === 1 ? names.one : names.many}
         </span>
@@ -300,7 +327,7 @@ function KindSection({ section, expanded, onExpand, now, largest, emphasis }: { 
           data-nav-row="item"
           tabIndex={-1}
           onClick={onExpand}
-          className="-mx-1.5 rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground outline-none hover:bg-accent/50 focus:bg-accent"
+          className="-mx-2 rounded-md px-2 py-0.5 text-left text-xs text-primary/80 outline-none hover:bg-accent/50 focus:bg-accent"
         >
           {hidden} more {hidden === 1 ? names.one : names.many}
         </button>
@@ -332,20 +359,20 @@ function PluginGroup({
 }) {
   const share = total === 0 ? 0 : Math.round((group.count / total) * 100);
   return (
-    <section data-nav-group className="flex flex-col gap-0.5">
+    <section data-nav-group className="overflow-hidden rounded-lg border border-border">
       <button
         type="button"
         data-nav-row="group"
         aria-expanded={open}
         tabIndex={-1}
         onClick={onToggle}
-        className={`${ROW_GRID} -mx-1.5 rounded-md px-1.5 py-1 text-left outline-none hover:bg-accent/50 focus:bg-accent`}
+        className={`${ROW_GRID} w-full bg-muted/50 px-3 py-2 text-left outline-none hover:bg-muted focus:bg-accent ${open ? "border-b border-border" : ""}`}
       >
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="w-3 shrink-0 text-xs text-muted-foreground" aria-hidden>
             {open ? "▾" : "▸"}
           </span>
-          <span className="truncate font-medium">{pluginName(group.plugin)}</span>
+          <span className="truncate font-semibold">{pluginName(group.plugin)}</span>
         </span>
         <span className="text-right text-xs tabular-nums">
           {formatCount(group.count)} <span className="text-muted-foreground">events, {share}%</span>
@@ -354,7 +381,7 @@ function PluginGroup({
         <span />
       </button>
       {open ? (
-        <div className="flex flex-col gap-0.5 pl-5">
+        <div className="flex flex-col gap-3 px-3 py-2.5">
           {group.sections.map((section) => (
             <KindSection
               key={section.kind}
@@ -491,8 +518,8 @@ export function ActivityPage() {
   const emphasisLabel = emphasis === "mouse-only" ? "Mouse-only controls first" : emphasis === "stale" ? "Unused for two weeks first" : null;
 
   return (
-    <div ref={root} tabIndex={-1} className="flex h-full flex-col gap-3 overflow-y-auto p-4 text-sm outline-none" aria-label="Activity">
-      <header className="flex flex-col gap-2">
+    <div ref={root} tabIndex={-1} className="flex h-full flex-col gap-4 overflow-y-auto p-4 text-sm outline-none" aria-label="Activity">
+      <header className="flex flex-col gap-3">
         <div className="flex items-baseline gap-3">
           <h2 className="text-base font-semibold">Activity</h2>
           {summary !== null ? (
@@ -505,18 +532,21 @@ export function ActivityPage() {
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">? for keys</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-1.5" aria-label="Range and kind">
-            {RANGES.map((option, index) => (
-              <Toggle key={option.label} pressed={index === range} onClick={() => pickRange(index)}>
-                {option.label}
-              </Toggle>
-            ))}
-            <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-            {KIND_FILTERS.map((option, index) => (
-              <Toggle key={option.label} pressed={index === kindIndex} onClick={() => setKindIndex(index)}>
-                {option.label}
-              </Toggle>
-            ))}
+          <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-2" aria-label="Range and kind">
+            <Segmented label="Range">
+              {RANGES.map((option, index) => (
+                <Toggle key={option.label} pressed={index === range} onClick={() => pickRange(index)}>
+                  {option.label}
+                </Toggle>
+              ))}
+            </Segmented>
+            <Segmented label="Kind">
+              {KIND_FILTERS.map((option, index) => (
+                <Toggle key={option.label} pressed={index === kindIndex} onClick={() => setKindIndex(index)}>
+                  {option.label}
+                </Toggle>
+              ))}
+            </Segmented>
           </div>
           <div data-nav-row="field" tabIndex={-1} className="-mx-1.5 min-w-48 flex-1 rounded-md px-1.5 py-0.5 outline-none focus:bg-accent">
             <input
@@ -527,7 +557,7 @@ export function ActivityPage() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Filter by name ( / )"
               aria-label="Filter rows"
-              className="w-full rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/60"
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/60"
             />
           </div>
         </div>
@@ -537,13 +567,23 @@ export function ActivityPage() {
           <KeyHelp sections={HELP} />
         </section>
       ) : null}
-      {buckets.length > 1 ? <Timeline buckets={buckets} bucketMs={bucketMs} offsetMs={offsetMs} pinned={pin?.start ?? null} onPin={pinBucket} /> : null}
-      {pin !== null || emphasisLabel !== null ? (
-        <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
-          {pin !== null ? <Chip onClear={() => setPin(null)}>{`Only ${bucketSpanLabel(pin.start, pin.bucketMs)}`}</Chip> : null}
-          {emphasisLabel !== null ? <Chip onClear={() => setEmphasis(null)}>{emphasisLabel}</Chip> : null}
-          <span className="text-xs text-muted-foreground">Esc clears</span>
-        </div>
+      {buckets.length > 1 || pin !== null || emphasisLabel !== null || (summary !== null && summary.total > 0) ? (
+        <section className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3" aria-label="Overview">
+          {buckets.length > 1 ? <Timeline buckets={buckets} bucketMs={bucketMs} offsetMs={offsetMs} pinned={pin?.start ?? null} onPin={pinBucket} /> : null}
+          {pin !== null || emphasisLabel !== null ? (
+            <div data-nav-row="toolbar" className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
+              {pin !== null ? <Chip onClear={() => setPin(null)}>{`Only ${bucketSpanLabel(pin.start, pin.bucketMs)}`}</Chip> : null}
+              {emphasisLabel !== null ? <Chip onClear={() => setEmphasis(null)}>{emphasisLabel}</Chip> : null}
+              <span className="text-xs text-muted-foreground">Esc clears</span>
+            </div>
+          ) : null}
+          {summary !== null && summary.total > 0 ? (
+            <>
+              <Findings findings={findings} onApply={apply} />
+              <ShareBar plugins={summary.plugins} total={summary.total} />
+            </>
+          ) : null}
+        </section>
       ) : null}
       {error !== null ? <p className="text-xs text-red-600 dark:text-red-400">Couldn't read the log: {error}</p> : null}
       {summary !== null && summary.total === 0 ? (
@@ -551,18 +591,16 @@ export function ActivityPage() {
       ) : null}
       {summary !== null && summary.total > 0 ? (
         <>
-          <Findings findings={findings} onApply={apply} />
-          <ShareBar plugins={summary.plugins} total={summary.total} />
           {groups.length === 0 ? <p className="text-muted-foreground">Nothing matches the filter.</p> : null}
           {groups.length > 0 ? (
-            <div className={`${ROW_GRID} -mx-1.5 px-1.5 text-[11px] text-muted-foreground`} aria-hidden>
+            <div className={`${ROW_GRID} -mb-2 px-3 text-[11px] text-muted-foreground`} aria-hidden>
               <span>Plugin and control</span>
               <span className="text-right">Uses</span>
               <span>Mouse / keyboard</span>
               <span className="text-right">Last used</span>
             </div>
           ) : null}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {groups.map((group) => (
               <PluginGroup
                 key={group.plugin ?? "\u0000bb"}

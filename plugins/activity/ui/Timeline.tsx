@@ -24,7 +24,7 @@ export function Timeline({ buckets, bucketMs, offsetMs, pinned, onPin }: Timelin
   );
   return (
     <div data-nav-row="toolbar" className="flex flex-col" aria-label="Events over time">
-      <div className="flex h-12 items-end gap-0.5">
+      <div className="flex h-16 items-end gap-0.5">
         {buckets.map((bucket) => {
           const isPinned = pinned === bucket.start;
           return (
@@ -36,11 +36,11 @@ export function Timeline({ buckets, bucketMs, offsetMs, pinned, onPin }: Timelin
               aria-label={`${bucketSpanLabel(bucket.start, bucketMs)}: ${formatCount(bucket.count)} events`}
               title={`${bucketSpanLabel(bucket.start, bucketMs)}: ${formatCount(bucket.count)} events`}
               onClick={() => onPin(isPinned ? null : bucket.start)}
-              className="group flex h-full min-w-0 flex-1 items-end rounded-sm outline-none hover:bg-accent/60 focus:bg-accent"
+              className="group flex h-full min-w-0 flex-1 items-end rounded-sm outline-none hover:bg-accent/60 focus:bg-accent focus:ring-1 focus:ring-ring/60"
             >
               <span
                 aria-hidden
-                className={`block w-full rounded-t-[3px] transition-[height] duration-200 motion-reduce:transition-none ${isPinned ? "bg-primary" : "bg-foreground/55 group-hover:bg-foreground/75 group-focus:bg-foreground/75"}`}
+                className={`block w-full rounded-t-[3px] transition-[height] duration-200 motion-reduce:transition-none ${isPinned ? "bg-primary" : "bg-primary/45 group-hover:bg-primary/70 group-focus:bg-primary/70"}`}
                 style={{ height: bucket.count === 0 ? 0 : `max(2px, ${(bucket.count / largest) * 100}%)` }}
               />
             </button>
