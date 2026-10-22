@@ -2,7 +2,7 @@
 
 Two things live here:
 
-- **The Motion plugin**: a content script that keeps `shell.css` active app-wide and marks chat rows appended live (`timeline-entrance.ts`), giving bb's own interface eased, subtle motion: button presses, menus and popovers growing out of their trigger, dialogs settling in, page changes, new chat rows, checkmarks, the scroll-to-latest button.
+- **The Motion plugin**: a content script that keeps `shell.css` active app-wide, marks chat rows appended live (`timeline-entrance.ts`), and slides the icon rail's current-item fill between items (`rail-indicator.ts`), giving bb's own interface eased, subtle motion: button presses, menus and popovers growing out of their trigger, dialogs settling in, page changes, new chat rows, the rail's highlight, checkmarks, the scroll-to-latest button.
 - **`bb-motion`** (`lib/`): the motion system the other plugins in this repo share. Tokens, prefixed keyframes and classes in `lib/motion.css`; class constants and React helpers in `lib/*.ts(x)`, re-exported from `lib/index.ts`.
 
 ## Rules

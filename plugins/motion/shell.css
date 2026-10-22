@@ -123,6 +123,28 @@
   animation: bbm-rise-in var(--bbm-duration-base) var(--bbm-ease-out) backwards;
 }
 
+/* ---------- Rail's current item ----------
+ * rail-indicator.ts slides one fill between the rail's items; while it runs,
+ * the current button drops bb's own fill so the two don't stack. Moves within
+ * the rail (scrolling, resizing) and first appearances snap into place. */
+[data-testid="app-nav-rail"][data-bbm-rail-glide] nav button[aria-current="page"] {
+  background-color: transparent;
+}
+[data-bbm-rail-indicator] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--state-active);
+  transition:
+    transform var(--bbm-duration-base) var(--bbm-ease-out),
+    opacity var(--bbm-duration-fast) var(--bbm-ease-out);
+}
+[data-bbm-rail-indicator][data-bbm-snap] {
+  transition-property: opacity;
+}
+
 /* ---------- Switch thumb ----------
  * Retimes bb's own `transition-transform` (which moves the thumb with the
  * `translate` property). Reduced-motion users keep bb's stock timing. */
@@ -166,5 +188,8 @@ button[aria-label="Scroll to latest event"]:active:not(.invisible) {
   /* bb's translate-y-2 isn't token-driven. */
   button[aria-label="Scroll to latest event"] {
     transition-property: opacity, visibility;
+  }
+  [data-bbm-rail-indicator] {
+    transition-property: opacity;
   }
 }

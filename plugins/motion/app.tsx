@@ -1,6 +1,7 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import "./lib/motion.css";
 import "./shell.css";
+import { watchRailIndicator } from "./rail-indicator";
 import { watchTimelineEntrances } from "./timeline-entrance";
 
 // bb keeps a plugin's stylesheet active for as long as one of its content
@@ -9,6 +10,13 @@ import { watchTimelineEntrances } from "./timeline-entrance";
 export default definePluginApp((app) => {
   app.contentScripts.register({
     id: "motion-shell",
-    mount: () => watchTimelineEntrances(),
+    mount: () => {
+      const stopEntrances = watchTimelineEntrances();
+      const stopIndicator = watchRailIndicator();
+      return () => {
+        stopEntrances();
+        stopIndicator();
+      };
+    },
   });
 });
