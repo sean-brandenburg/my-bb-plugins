@@ -23,7 +23,7 @@ import { useNerdFont } from "./ui/nerd-font";
 const NO_ROWS: FileNavModel = { rows: [], cutToHunk: false, element: () => null };
 
 /** A file with no diff to step through still tells the keyboard it has loaded, so the cursor moves past it. */
-function NoRows({ path }: { path: string }) {
+export function NoRows({ path }: { path: string }) {
   usePublishNavModel(path, NO_ROWS);
   return null;
 }

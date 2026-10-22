@@ -1,20 +1,21 @@
 // The changes view: a file tree beside every changed file rendered as a structural (difftastic) or text (Pierre)
 // diff, with viewed marks, line comments, ⌘-click symbol peeks and, when the data source has them, review findings,
-// an agent-written tour and hunk explanations. It renders whatever a `DiffSource` serves, so any plugin can embed it.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+// hunk explanations and an agent-written narrative that walks the same lines step by step with the same keys. It
+// renders whatever a `DiffSource` serves, so any plugin can embed it.
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { DiffComment, DiffFile, SemanticChange, SymbolLookup } from "../types";
+import type { DiffComment, SemanticChange, SymbolLookup } from "../types";
 import { readPreference, requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences, writePreference } from "./state";
 import { DEFAULT_LABELS, DiffSourceContext, type DiffSource, type DiffViewLabels } from "./source";
 import { DeltaStrip, useDelta } from "./delta-strip";
 import { FileSection } from "./file-section";
 import { WHOLE_FILE, type ComposerAnchor, type PatchAnnotationProps } from "./patch-annotations";
 import { riskByPath } from "./risk";
-import { STICKY_HEADER_PX, cursorLineY, revealBox } from "./scroll";
+import { STICKY_HEADER_PX, cursorLineY } from "./scroll";
 import { ScrollMarkers, useScrollMarkers } from "./scroll-markers";
-import { SummaryBar } from "./summary-bar";
+import { SummaryBar, type DiffViewMode } from "./summary-bar";
 import { useDiffResult } from "./use-diff-result";
 import { useFileMarks } from "./use-file-marks";
 import { useReviewKeys } from "./use-review-keys";
@@ -26,21 +27,25 @@ import { FileTreeSidebar } from "./file-tree/file-tree-sidebar";
 import { distinctFindings, filterFindings, findingAnchorId, findingsOutsideDiff, inlineFindingsByPath, type ListedFinding, type PlacedFinding } from "./findings/findings";
 import { OUTSIDE_FINDINGS, OutsideFindings } from "./findings/outside-findings";
 import { useReviews } from "./findings/use-reviews";
-import { TourPanel } from "./tour/tour-panel";
 import { semanticsByPath as tourSemanticsByPath } from "./tour/tour-report";
 import { useTour } from "./tour/use-tour";
-import { NarrativeView } from "./narrative/narrative-view";
+import { NARRATIVE_OUTLINE, NarrativeView, type NarrativeWriting } from "./narrative/narrative-view";
+import { NARRATIVE_KEY_HELP, NARRATIVE_KEYMAP, type NarrativeCommand } from "./narrative/narrative-keymap";
+import { excerptAnnotations } from "./narrative/excerpts";
+import { searchSteps, type StepAddress } from "./narrative/chapters";
+import { useNarrativeReader } from "./narrative/use-narrative-reader";
 import { useNarrativeStory } from "./narrative/use-narrative-story";
-import type { NarrativeRef } from "../narrative";
-import { cursorAt, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
+import { cursorAt, cursorPosition, firstPosition, lastPosition, type Cursor, type NavFile } from "./keys/nav";
+import { KEY_HELP, REVIEW_KEYMAP, type ReviewCommand } from "./keys/keymap";
 import { KeysOverlay, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
 import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
 import { ReviewKeysContext, createReviewKeys, useReviewKeysState } from "./keys/review-keys-context";
+import { useCursorReveal } from "./keys/use-cursor-reveal";
 import { errorMessage } from "./format";
 import { cn } from "./utils";
 import { enter } from "./ui/motion";
-import { focusRow, focusWhenShown } from "./ui/vim-keys";
+import { focusRow, focusWhenShown, type Keymap } from "./ui/vim-keys";
 import { SkeletonLines } from "./ui/skeleton";
 
 export type { DiffSource, DiffViewLabels } from "./source";
@@ -76,17 +81,19 @@ const NO_SEMANTICS: SemanticChange[] = [];
 const NO_RANGES: Array<[number, number]> = [];
 /** How long a focus request (the "Review changes with the keyboard" command) stays good for a view that is still mounting. */
 const FOCUS_REQUEST_TTL_MS = 5_000;
-/** Approximate height of one diff line, for turning a page scroll into cursor rows. */
+/** Approximate height of one diff line, for turning a page scroll into cursor rows, and a `j` over prose into a scroll. */
 const LINE_PX = 20;
+/** How many lines `j` reads on by when there is no code line to move onto. */
+const PROSE_LINES = 3;
 /** How long after a wheel or touch event a scroll still counts as the reader's. */
 const SCROLL_INTENT_MS = 250;
 
 /** How long focus waits for the new-comment box, which Pierre mounts a beat late. */
 const COMPOSER_MOUNT_MS = 500;
-/** How long focus waits for the rows of a file list just shown. */
+/** How long focus waits for the rows of a file list (or outline) just shown. */
 const FILE_TREE_MOUNT_MS = 200;
 
-/** The file list shows from the `@3xl` container width (48rem) up. */
+/** The file list and the narrative outline show from the `@3xl` container width (48rem) up. */
 const FILE_TREE_MIN_REM = 48;
 
 /** The vim-style mode and half-typed keys, shown while the view has the keyboard. */
@@ -128,7 +135,12 @@ function ActiveFileTreeSidebar({ active, ...props }: { active: ActivePath } & Om
   return <FileTreeSidebar activePath={activePath} {...props} />;
 }
 
-/** The whole changes view. Narrow containers (a side panel) drop the file tree; wide ones show it beside the diff. */
+const samePlace = (a: Cursor | null, b: Cursor | null) => a === b || (a !== null && b !== null && a.path === b.path && a.side === b.side && a.line === b.line);
+
+/**
+ * The whole changes view: the files, or the narrative that walks through them, with one keyboard cursor shared by
+ * both. Narrow containers (a side panel) drop the file tree and the outline; wide ones show them beside the diff.
+ */
 export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, labels: labelOverrides, renderSubmitBar, deltaActions, toolbar }: DiffViewProps) {
   const { diff, error } = useDiffResult(source, instanceKey);
   const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelOverrides }), [labelOverrides]);
@@ -137,9 +149,12 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const { explanations, explainHunk } = useExplanations(source, refreshSignal);
   const { tour, busy: tourBusy, generate: generateTour } = useTour(source, refreshSignal);
   const narrativeAvailable = source.tour?.story !== undefined;
-  const [chosenMode, setChosenMode] = useState<"files" | "narrative">(() => (readPreference("viewMode") === "narrative" ? "narrative" : "files"));
-  const mode = narrativeAvailable ? chosenMode : "files";
-  const setMode = (next: "files" | "narrative") => {
+  const [chosenMode, setChosenMode] = useState<DiffViewMode>(() => (readPreference("viewMode") === "narrative" ? "narrative" : "files"));
+  const mode: DiffViewMode = narrativeAvailable ? chosenMode : "files";
+  // Read by closures that outlive a render: a reveal queued for after a mode switch, the key scope's keymap.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const setMode = (next: DiffViewMode) => {
     setChosenMode(next);
     writePreference("viewMode", next);
   };
@@ -149,14 +164,18 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const preferences = useDiffPreferences();
   const { findingFilter } = preferences;
   const { viewed, collapsed, markViewed, toggleCollapsed, expand, setCollapsedPaths } = useFileMarks(source, diff);
+  const currentPaths = useMemo(() => new Set(diff?.files.map((file) => file.path) ?? []), [diff]);
+  const reader = useNarrativeReader({ story: narrative.story, instanceKey, currentPaths, viewed });
   const [keys] = useState(createReviewKeys);
-  const [overlay, setOverlay] = useState<{ kind: "help" } | { kind: "files" } | { kind: "symbols"; names: string[]; pick: (name: string) => void } | null>(null);
+  const [overlay, setOverlay] = useState<{ kind: "help" } | { kind: "files" } | { kind: "steps" } | { kind: "symbols"; names: string[]; pick: (name: string) => void } | null>(null);
   const [lastSearch, setLastSearch] = useState<string | null>(null);
   const [active] = useState(createActivePath);
   const [composer, setComposer] = useState<({ path: string } & ComposerAnchor) | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
+  const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
+  const excerptRefs = useRef(new Map<string, HTMLElement>());
   const navigate = useBbNavigate();
 
   const openDefinition = (lookup: SymbolLookup, definition: SymbolLookup["definitions"][number]) => {
@@ -221,6 +240,18 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     if (anchor.line === null) parkCursor(path);
     else keys.set({ cursor: { path, side: anchor.side, line: anchor.line, want: anchor.side }, visual: null });
   };
+
+  // One reveal for both modes: it finds the scroller showing the diff at call time, so a reveal queued across a mode
+  // switch lands in the view that mounts.
+  const { reveal, onScreen } = useCursorReveal(
+    keys,
+    () => (modeRef.current === "narrative" ? narrativeScrollRef.current : mainRef.current),
+    (path) => (modeRef.current === "narrative" ? excerptRefs.current.get(path) : sectionRefs.current.get(path)) ?? null,
+    () => modeRef.current === "files",
+  );
+  const revealRef = useRef(reveal);
+  revealRef.current = reveal;
+
   // The files view mounts on the render after the switch, so what the narrative asked of it runs once it has.
   const afterFilesMount = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -235,32 +266,34 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     setMode("files");
     rootRef.current?.focus({ preventScroll: true });
   };
-  const openNarrativeRef = (ref: NarrativeRef) =>
+  /** Back to the files view with the cursor where it stands, centred; a cursor on a header lands on that file. */
+  const leaveToFiles = () =>
     inFiles(() => {
-      const path = diff?.files.find((file) => file.path === ref.path || file.previousPath === ref.path)?.path ?? ref.path;
-      if (ref.startLine === null) {
-        jumpTo(path);
-        return;
-      }
-      const side = ref.side === "old" ? "LEFT" : "RIGHT";
-      expand(path);
-      const cursor = { path, side, line: Math.min(ref.startLine, ref.endLine ?? ref.startLine), want: side } as const;
-      keys.set({ cursor, visual: null, focused: null });
-      reveal(cursor, "center");
+      const cursor = keys.get().cursor;
+      if (cursor === null) return;
+      if (!currentPaths.has(cursor.path)) return;
+      active.set(cursor.path);
+      expand(cursor.path);
+      revealRef.current(cursor, "center");
     });
-  const commentOnNarrativeRef = (ref: NarrativeRef) =>
-    inFiles(() => {
-      const path = diff?.files.find((file) => file.path === ref.path || file.previousPath === ref.path)?.path ?? ref.path;
-      expand(path);
-      if (ref.startLine === null) {
-        startComment(path, WHOLE_FILE);
-        return;
-      }
-      const side = ref.side === "old" ? "LEFT" : "RIGHT";
-      const start = Math.min(ref.startLine, ref.endLine ?? ref.startLine);
-      const end = Math.max(ref.startLine, ref.endLine ?? ref.startLine);
-      startComment(path, { line: end, side, startLine: start === end ? null : start, startSide: start === end ? null : side });
-    });
+  /** The files view on `path`: at the cursor when it is on that file's lines, else at the file's header. */
+  const openInFiles = (path: string) => {
+    if (!currentPaths.has(path)) {
+      notify(`${path} is not in the current diff`);
+      return;
+    }
+    const cursor = keys.get().cursor;
+    if (cursor !== null && cursor.path === path && cursor.line !== null) leaveToFiles();
+    else inFiles(() => jumpTo(path));
+  };
+  const enterNarrative = () => {
+    if (!narrativeAvailable) {
+      notify("This view has no narrative review");
+      return;
+    }
+    setMode("narrative");
+    rootRef.current?.focus({ preventScroll: true });
+  };
 
   const navFiles = (): NavFile[] => (diff?.files ?? []).map((file) => ({ path: file.path, collapsed: collapsed.has(file.path), rows: keys.models.get(file.path)?.rows ?? null }));
   const navFilesRef = useRef(navFiles);
@@ -271,7 +304,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const initialCursor = useRef<{ instanceKey: string; placed: Cursor | null; done: boolean } | null>(null);
   const placeInitialCursor = () => {
     const state = initialCursor.current;
-    if (state === null || state.done) return;
+    if (state === null || state.done || modeRef.current !== "files") return;
     // The reader got there first.
     if (state.placed !== null && keys.get().cursor !== state.placed) {
       state.done = true;
@@ -286,8 +319,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     if (next === null) return;
     state.done = file !== undefined && file.rows !== null;
     // Setting the cursor re-renders the view, which runs this again; an unchanged spot must not set it again.
-    const same = state.placed !== null && state.placed.path === next.path && state.placed.side === next.side && state.placed.line === next.line;
-    if (same) return;
+    if (samePlace(state.placed, next)) return;
     state.placed = next;
     keys.set({ cursor: next, visual: null, focused: null });
   };
@@ -304,58 +336,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       unsubscribe();
     };
   }, [keys]);
-  const elementFor = (cursor: Cursor): Element | null => {
-    if (cursor.line === null) return sectionRefs.current.get(cursor.path) ?? null;
-    const model = keys.models.get(cursor.path);
-    const row = model === undefined ? -1 : rowIndexOf(model.rows, cursor.side, cursor.line);
-    return row === -1 ? null : model!.element(row, cursor.side);
-  };
-  // A cursor sent to a line that is not laid out yet (a file still mounting or loading) is scrolled to once it is.
-  const pendingReveal = useRef<{ cursor: Cursor; block?: "center" | "start" | "end"; tries: number } | null>(null);
-  const reveal = (cursor: Cursor, block?: "center" | "start" | "end") => {
-    const main = mainRef.current;
-    if (main === null) return;
-    if (cursor.line === null) {
-      // A stuck header reports where it sticks, not where it sits; the section's top is where it sits.
-      const section = sectionRefs.current.get(cursor.path);
-      pendingReveal.current = null;
-      if (section !== undefined) revealBox(main, { top: section.getBoundingClientRect().top, height: STICKY_HEADER_PX }, block);
-      return;
-    }
-    const element = elementFor(cursor);
-    if (element === null) {
-      pendingReveal.current = { cursor, block, tries: 0 };
-      sectionRefs.current.get(cursor.path)?.scrollIntoView({ block: "start" });
-      return;
-    }
-    pendingReveal.current = null;
-    const box = element.getBoundingClientRect();
-    revealBox(main, { top: box.top, height: box.height }, block);
-  };
-  const revealRef = useRef(reveal);
-  revealRef.current = reveal;
-  useEffect(() => {
-    let timer = 0;
-    const retry = () => {
-      const pending = pendingReveal.current;
-      if (pending === null || keys.get().cursor !== pending.cursor) return;
-      if (elementFor(pending.cursor) !== null) revealRef.current(pending.cursor, pending.block);
-      // Pierre fills its shadow DOM a beat after it mounts.
-      else if (++pending.tries < 20) timer = window.setTimeout(retry, 100);
-    };
-    const unsubscribe = keys.onModel((path) => {
-      if (pendingReveal.current?.cursor.path !== path) return;
-      window.clearTimeout(timer);
-      timer = window.setTimeout(retry, 0);
-    });
-    return () => {
-      unsubscribe();
-      window.clearTimeout(timer);
-    };
-    // elementFor reads only refs and the stable store.
-  }, [keys]);
 
-  /** The line at the middle of the screen, where the cursor rests. */
+  /** The line at the middle of the screen, where the files view's cursor rests. */
   const seat = (): Cursor | null => {
     const main = mainRef.current;
     if (main === null || diff === null || diff.files.length === 0) return null;
@@ -382,21 +364,13 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     }
     return lastPosition(files, want);
   };
-  const onScreen = (cursor: Cursor): boolean | null => {
-    const main = mainRef.current;
-    const element = elementFor(cursor);
-    if (main === null || element === null) return null;
-    const view = main.getBoundingClientRect();
-    const box = element.getBoundingClientRect();
-    return box.bottom > view.top + (cursor.line === null ? 0 : STICKY_HEADER_PX) && box.top < view.bottom;
-  };
   const findingAnchors = useMemo(
     () => [...findingsByPath].flatMap(([path, list]) => list.map((entry): FindingAnchor => ({ id: findingAnchorId(entry), path, side: "RIGHT", line: entry.line, item: entry.item }))),
     [findingsByPath],
   );
   const notify = (message: string) => toast.message(message, { duration: 1800 });
   const fileTreeFits = () => (rootRef.current?.clientWidth ?? 0) >= FILE_TREE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-  const returnFromFileTree = () => rootRef.current?.focus({ preventScroll: true });
+  const returnToDiff = () => rootRef.current?.focus({ preventScroll: true });
   const makeFindingCard = async ({ reviewId, finding }: ListedFinding): Promise<string | null> => {
     try {
       const card = await source.reviews!.makeCard!(reviewId, finding.id);
@@ -410,119 +384,389 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
   const stopFocusingTree = useRef(() => {});
   useEffect(() => () => stopFocusingTree.current(), []);
-  const runCommand: Parameters<typeof useReviewKeys>[3] = (command, count) => {
+  /** Moves the keyboard into a list beside the diff (the file tree or the outline), on `preferred` or its first row. */
+  const focusList = (selector: string, preferred: string | null) => {
+    stopFocusingTree.current();
+    // A list that was hidden renders after this key; wait for its rows.
+    stopFocusingTree.current = focusWhenShown(
+      () => {
+        const list = rootRef.current?.querySelector<HTMLElement>(selector) ?? null;
+        return (preferred === null ? null : (list?.querySelector<HTMLElement>(preferred) ?? null)) ?? list?.querySelector<HTMLElement>("[data-nav-row]") ?? null;
+      },
+      { timeoutMs: FILE_TREE_MOUNT_MS, focus: focusRow },
+    );
+  };
+
+  /** What the keys can read and do in the files view. */
+  const filesEnv = (): ReviewEnv => ({
+    keys,
+    files: navFiles(),
+    threads: comments.threads,
+    findings: findingAnchors,
+    viewed,
+    target: source.canPostToGithub === true ? { value: comments.target, set: comments.setTarget } : null,
+    seat,
+    onScreen,
+    reveal,
+    scrollPage: (fraction) => {
+      const main = mainRef.current;
+      if (main === null) return 0;
+      main.scrollBy({ top: fraction * main.clientHeight, behavior: "auto" });
+      return Math.round((fraction * main.clientHeight) / LINE_PX);
+    },
+    startComment: (path, range) => {
+      expand(path);
+      startComment(path, range);
+    },
+    focusComposer: () => {
+      const root = rootRef.current;
+      const focused = keys.get().focused;
+      const box =
+        root?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ??
+        (focused?.kind !== "thread" ? null : root?.querySelector<HTMLTextAreaElement>(`[data-thread-id="${CSS.escape(focused.id)}"] textarea`)) ??
+        null;
+      if (box === null) return false;
+      // An empty box moves to the cursor; one holding a draft is finished first, so the draft is never lost.
+      if (box.closest('[data-comment-form="new"]') !== null && box.value.trim() === "") return false;
+      box.focus();
+      box.scrollIntoView({ block: "nearest" });
+      return true;
+    },
+    closeEmptyComposer: () => {
+      const box = rootRef.current?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ?? null;
+      if (composer === null || (box !== null && box.value.trim() !== "")) return false;
+      setComposer(null);
+      return true;
+    },
+    setCollapsed: setCollapsedPaths,
+    markViewed,
+    deleteComment: (id) => {
+      void comments.deleteComment(id);
+      notify("Comment deleted");
+    },
+    canPostToGithub: source.canPostToGithub ?? false,
+    moveComment: (id, target) => void comments.moveComment(id, target),
+    openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+    openThread: onOpenThread,
+    toggleFinding,
+    explain: explainHunk,
+    toggleLayout: () => setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" }),
+    toggleFileTree: () => {
+      const open = !preferences.fileTreeOpen;
+      setDiffPreferences({ fileTreeOpen: open });
+      if (open && !fileTreeFits()) notify("The file list needs a wider view");
+    },
+    focusFileTree: () => {
+      if (!fileTreeFits()) return false;
+      if (!preferences.fileTreeOpen) setDiffPreferences({ fileTreeOpen: true });
+      const path = keys.get().cursor?.path ?? null;
+      focusList("[data-file-tree]", path === null ? null : `[data-file-tree-path="${CSS.escape(path)}"]`);
+      return true;
+    },
+    findingFilter: allFindings.length === 0 ? null : { value: findingFilter, set: (filter) => setDiffPreferences({ findingFilter: filter }) },
+    filteredFindings: outsideFindings.filtered.length === 0 ? null : { open: filteredOpen, set: setFilteredOpen },
+    focusOutsideFindings: () => {
+      const first = rootRef.current?.querySelector<HTMLElement>(`${OUTSIDE_FINDINGS} [data-nav-row]`) ?? null;
+      if (first !== null) focusRow(first);
+      return first !== null;
+    },
+    refresh: () => requestReload(instanceKey),
+    focusSendBar: () => {
+      // The bar's first action, past any checkbox or toggle that only sets an option for it, unless the host marks a
+      // control to start on (an option picker whose Enter sends).
+      const button =
+        rootRef.current?.querySelector<HTMLElement>(
+          '[data-diff-submit-bar] [data-send-bar-focus], [data-diff-submit-bar] button:not(:disabled):not([role="checkbox"]):not([role="switch"]):not([role="radio"]):not([role="tab"]):not([aria-pressed])',
+        ) ?? null;
+      button?.focus();
+      return button !== null;
+    },
+    leaveSendBar: () => {
+      if (document.activeElement?.closest("[data-diff-submit-bar]") == null) return false;
+      returnToDiff();
+      return true;
+    },
+    openOverlay: (kind) => setOverlay({ kind }),
+    search: lastSearch === null || diff === null ? null : { query: lastSearch, matches: new Set(rankFiles(diff.files, lastSearch).map((file) => file.path)) },
+    jump: jumpTo,
+    pickSymbol: (names, pick) => setOverlay({ kind: "symbols", names, pick }),
+    notify,
+  });
+  const runFilesCommand = (command: ReviewCommand, count: number) => {
     if (command.kind === "narrative") {
-      if (narrativeAvailable) setMode("narrative");
-      else notify("This view has no narrative review");
+      enterNarrative();
       return;
     }
-    const env: ReviewEnv = {
-      keys,
-      files: navFiles(),
-      threads: comments.threads,
-      findings: findingAnchors,
-      viewed,
-      target: source.canPostToGithub === true ? { value: comments.target, set: comments.setTarget } : null,
-      seat,
-      onScreen,
-      reveal,
-      scrollPage: (fraction) => {
-        const main = mainRef.current;
-        if (main === null) return 0;
-        main.scrollBy({ top: fraction * main.clientHeight, behavior: "auto" });
-        return Math.round((fraction * main.clientHeight) / LINE_PX);
-      },
-      startComment: (path, range) => {
-        expand(path);
-        startComment(path, range);
-      },
-      focusComposer: () => {
-        const root = rootRef.current;
-        const focused = keys.get().focused;
-        const box =
-          root?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ??
-          (focused?.kind !== "thread" ? null : root?.querySelector<HTMLTextAreaElement>(`[data-thread-id="${CSS.escape(focused.id)}"] textarea`)) ??
-          null;
-        if (box === null) return false;
-        // An empty box moves to the cursor; one holding a draft is finished first, so the draft is never lost.
-        if (box.closest('[data-comment-form="new"]') !== null && box.value.trim() === "") return false;
-        box.focus();
-        box.scrollIntoView({ block: "nearest" });
-        return true;
-      },
-      closeEmptyComposer: () => {
-        const box = rootRef.current?.querySelector<HTMLTextAreaElement>('[data-comment-form="new"] textarea') ?? null;
-        if (composer === null || (box !== null && box.value.trim() !== "")) return false;
-        setComposer(null);
-        return true;
-      },
-      setCollapsed: setCollapsedPaths,
-      markViewed,
-      deleteComment: (id) => {
-        void comments.deleteComment(id);
-        notify("Comment deleted");
-      },
-      canPostToGithub: source.canPostToGithub ?? false,
-      moveComment: (id, target) => void comments.moveComment(id, target),
-      openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
-      openThread: onOpenThread,
-      toggleFinding,
-      explain: explainHunk,
-      toggleLayout: () => setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" }),
-      toggleFileTree: () => {
-        const open = !preferences.fileTreeOpen;
-        setDiffPreferences({ fileTreeOpen: open });
-        if (open && !fileTreeFits()) notify("The file list needs a wider view");
-      },
-      focusFileTree: () => {
-        if (!fileTreeFits()) return false;
-        if (!preferences.fileTreeOpen) setDiffPreferences({ fileTreeOpen: true });
-        const path = keys.get().cursor?.path ?? null;
-        stopFocusingTree.current();
-        // A list that was hidden renders after this key; wait for its rows.
-        stopFocusingTree.current = focusWhenShown(
-          () => {
-            const tree = rootRef.current?.querySelector<HTMLElement>("[data-file-tree]") ?? null;
-            return (path === null ? null : (tree?.querySelector<HTMLElement>(`[data-file-tree-path="${CSS.escape(path)}"]`) ?? null)) ?? tree?.querySelector<HTMLElement>("[data-nav-row]") ?? null;
-          },
-          { timeoutMs: FILE_TREE_MOUNT_MS, focus: focusRow },
-        );
-        return true;
-      },
-      findingFilter: allFindings.length === 0 ? null : { value: findingFilter, set: (filter) => setDiffPreferences({ findingFilter: filter }) },
-      filteredFindings: outsideFindings.filtered.length === 0 ? null : { open: filteredOpen, set: setFilteredOpen },
-      focusOutsideFindings: () => {
-        const first = rootRef.current?.querySelector<HTMLElement>(`${OUTSIDE_FINDINGS} [data-nav-row]`) ?? null;
-        if (first !== null) focusRow(first);
-        return first !== null;
-      },
-      refresh: () => requestReload(instanceKey),
-      focusSendBar: () => {
-        // The bar's first action, past any checkbox or toggle that only sets an option for it, unless the host marks a
-        // control to start on (an option picker whose Enter sends).
-        const button =
-          rootRef.current?.querySelector<HTMLElement>(
-            '[data-diff-submit-bar] [data-send-bar-focus], [data-diff-submit-bar] button:not(:disabled):not([role="checkbox"]):not([role="switch"]):not([role="radio"]):not([role="tab"]):not([aria-pressed])',
-          ) ?? null;
-        button?.focus();
-        return button !== null;
-      },
-      leaveSendBar: () => {
-        if (document.activeElement?.closest("[data-diff-submit-bar]") == null) return false;
-        rootRef.current?.focus({ preventScroll: true });
-        return true;
-      },
-      openOverlay: (kind) => setOverlay({ kind }),
-      search: lastSearch === null || diff === null ? null : { query: lastSearch, matches: new Set(rankFiles(diff.files, lastSearch).map((file) => file.path)) },
-      jump: jumpTo,
-      pickSymbol: (names, pick) => setOverlay({ kind: "symbols", names, pick }),
-      notify,
-    };
-    runReviewCommand(command, count, env);
+    runReviewCommand(command, count, filesEnv());
   };
-  useReviewKeys(rootRef, keys, overlay === null && mode === "files", runCommand);
-  const runCommandRef = useRef(runCommand);
-  runCommandRef.current = runCommand;
+
+  // ---- The narrative: the same cursor over a step's excerpts.
+
+  /** The step's excerpts as the cursor sees them, in the step's order. */
+  const narrativeFiles = (): NavFile[] => reader.excerpts.map((excerpt) => ({ path: excerpt.path, collapsed: reader.collapsed.has(excerpt.path), rows: keys.models.get(excerpt.path)?.rows ?? null }));
+  const narrativeFilesRef = useRef(narrativeFiles);
+  narrativeFilesRef.current = narrativeFiles;
+  /** The first (or, going up, last) excerpt header or line in view; null when the page shows no code on screen. */
+  const visibleCursor = (direction: 1 | -1): Cursor | null => {
+    const scroller = narrativeScrollRef.current;
+    const files = narrativeFiles();
+    if (scroller === null || files.length === 0) return null;
+    const view = scroller.getBoundingClientRect();
+    const want = keys.get().cursor?.want ?? "RIGHT";
+    const other = want === "LEFT" ? "RIGHT" : "LEFT";
+    const shown = (box: DOMRect | undefined) => box !== undefined && box.bottom > view.top && box.top < view.bottom;
+    let found: Cursor | null = null;
+    for (const [fileIndex, file] of files.entries()) {
+      if (shown(excerptRefs.current.get(file.path)?.getBoundingClientRect())) {
+        found = cursorAt(files, { fileIndex, row: -1 }, want);
+        if (direction === 1) return found;
+      }
+      const model = file.collapsed ? undefined : keys.models.get(file.path);
+      if (model === undefined) continue;
+      for (let row = 0; row < model.rows.length; row++) {
+        if (!shown((model.element(row, want) ?? model.element(row, other))?.getBoundingClientRect())) continue;
+        found = cursorAt(files, { fileIndex, row }, want);
+        if (direction === 1) return found;
+      }
+    }
+    return found;
+  };
+  /** Whether the cursor can act on a path's lines here: only the current narrative's lines are today's lines. */
+  const canTouch = (path: string): boolean => {
+    if (!reader.describesCurrentDiff) {
+      notify(reader.chapter?.kind === "revision" ? "Revision steps point into the delta; comment from the current narrative's steps or the files view" : "These lines are from an earlier head; comment from the current narrative's steps or the files view");
+      return false;
+    }
+    if (!currentPaths.has(path)) {
+      notify(`${path} is not in the current diff`);
+      return false;
+    }
+    return true;
+  };
+  const narrativeEnv = (): ReviewEnv => ({
+    ...filesEnv(),
+    files: narrativeFiles(),
+    seat: () => visibleCursor(1) ?? firstPosition(narrativeFiles(), keys.get().cursor?.want ?? "RIGHT"),
+    // The step's prose reads top to bottom; the cursor scrolls only when it would leave the screen.
+    reveal: (cursor, block) => reveal(cursor, block ?? "nearest"),
+    scrollPage: (fraction) => {
+      const scroller = narrativeScrollRef.current;
+      if (scroller === null) return 0;
+      scroller.scrollBy({ top: fraction * scroller.clientHeight, behavior: "auto" });
+      return Math.round((fraction * scroller.clientHeight) / LINE_PX);
+    },
+    startComment: (path, range) => {
+      if (canTouch(path)) startComment(path, range);
+    },
+    markViewed: (path, isViewed) => {
+      if (currentPaths.has(path)) markViewed(path, isViewed);
+      else notify(`${path} is not in the current diff`);
+    },
+    setCollapsed: reader.setCollapsed,
+    toggleFileTree: () => {
+      const open = !reader.outline;
+      reader.setOutline(open);
+      if (open && !fileTreeFits()) notify("The outline needs a wider view");
+    },
+    focusFileTree: () => {
+      if (!fileTreeFits()) return false;
+      if (!reader.outline) reader.setOutline(true);
+      focusList(NARRATIVE_OUTLINE, '[data-nav-row][aria-current="step"]');
+      return true;
+    },
+    focusOutsideFindings: () => false,
+    search: null,
+    jump: (path) => {
+      excerptRefs.current.get(path)?.scrollIntoView({ block: "start" });
+      parkCursor(path);
+    },
+  });
+  // Which end of a page the reader arrives at by key, placed once the page's excerpts have published their rows.
+  const arrive = useRef<"start" | "end" | null>(null);
+  const placeOnArrival = () => {
+    const where = arrive.current;
+    if (where === null || modeRef.current !== "narrative") return;
+    const files = narrativeFilesRef.current();
+    const scroller = narrativeScrollRef.current;
+    const want = keys.get().cursor?.want ?? "RIGHT";
+    if (files.length === 0) {
+      // A step of prose alone: nothing to put a cursor on.
+      arrive.current = null;
+      if (where === "end") scroller?.scrollTo({ top: scroller.scrollHeight });
+      return;
+    }
+    if (where === "start") {
+      const first = files[0]!;
+      const row = first.rows?.findIndex((entry) => entry.expander !== true) ?? -1;
+      const next = cursorAt(files, { fileIndex: 0, row }, want);
+      // The header serves until the rows arrive; the page stays scrolled to its top, so the prose is read first.
+      if (first.rows !== null) arrive.current = null;
+      if (!samePlace(keys.get().cursor, next)) keys.set({ cursor: next, visual: null, focused: null });
+      return;
+    }
+    if (files.some((file) => !file.collapsed && file.rows === null)) return;
+    const last = lastPosition(files, want);
+    arrive.current = null;
+    if (last === null) return;
+    keys.set({ cursor: last, visual: null, focused: null });
+    scroller?.scrollTo({ top: scroller.scrollHeight });
+    revealRef.current(last, "nearest");
+  };
+  const placeOnArrivalRef = useRef(placeOnArrival);
+  placeOnArrivalRef.current = placeOnArrival;
+  useEffect(() => {
+    arrive.current = reader.arrival.where;
+    placeOnArrivalRef.current();
+  }, [reader.arrival]);
+  useEffect(() => {
+    placeOnArrivalRef.current();
+  });
+  useEffect(() => {
+    const unsubscribe = keys.onModel(() => placeOnArrivalRef.current());
+    return () => {
+      unsubscribe();
+    };
+  }, [keys]);
+  // Entering the narrative keeps a cursor that is on the step's code (back from the files view, say) and otherwise
+  // starts the page afresh.
+  useEffect(() => {
+    if (mode !== "narrative") return;
+    const cursor = keys.get().cursor;
+    const paths = new Set(narrativeFilesRef.current().map((file) => file.path));
+    if (cursor === null || !paths.has(cursor.path)) {
+      arrive.current = "start";
+      placeOnArrivalRef.current();
+      return;
+    }
+    arrive.current = null;
+    const frame = requestAnimationFrame(() => revealRef.current(cursor, "nearest"));
+    return () => cancelAnimationFrame(frame);
+  }, [mode, keys]);
+
+  /** Turns to another page, arriving at its start (scrolled to the top) or its end. */
+  const turnTo = (next: StepAddress | null, where: "start" | "end" = "start"): boolean => {
+    if (!reader.go(next, where)) return false;
+    if (where === "start") narrativeScrollRef.current?.scrollTo({ top: 0 });
+    return true;
+  };
+  const startGenerate = () => {
+    if (tourBusy) return;
+    if (narrative.story?.running != null) notify("A narrative is already being written");
+    else void generateTour().then(narrative.reload);
+  };
+  const runNarrativeCommand = (command: NarrativeCommand, count: number) => {
+    const scroller = narrativeScrollRef.current;
+    const state = keys.get();
+    const files = narrativeFiles();
+    switch (command.kind) {
+      case "step":
+        if (!turnTo(reader.movePage(command.direction * count))) notify(command.direction === 1 ? "This is the last step" : "This is the first step");
+        return;
+      case "chapter":
+        if (!turnTo(reader.moveChapter(command.direction))) notify(command.direction === 1 ? "This is the last chapter" : "This is the first chapter");
+        return;
+      case "affected": {
+        const id = reader.step?.affects[0];
+        if (id === undefined) notify("This step names no step of the new narrative");
+        else if (!turnTo(reader.affected(id))) notify("That step is not in the current narrative");
+        return;
+      }
+      case "openInFiles": {
+        const path = state.cursor !== null && files.some((file) => file.path === state.cursor!.path) ? state.cursor.path : (reader.excerpts[0]?.path ?? null);
+        if (path === null) notify("This step shows no code");
+        else if (reader.describesCurrentDiff) openInFiles(path);
+        else notify(reader.chapter?.kind === "revision" ? "Revision steps point into the delta; open lines from the current narrative's steps" : "These lines are from an earlier head; open them from the current narrative's steps");
+        return;
+      }
+      case "narratedViewed":
+        if (reader.narratedUnviewed.length === 0) notify("No file has had all of its steps read yet");
+        else {
+          for (const path of reader.narratedUnviewed) markViewed(path, true);
+          notify(`Marked ${reader.narratedUnviewed.length} file${reader.narratedUnviewed.length === 1 ? "" : "s"} viewed`);
+        }
+        return;
+      case "generate":
+        startGenerate();
+        return;
+      case "narrative":
+        leaveToFiles();
+        return;
+      case "findFile":
+        if (reader.chapters.length === 0) notify("No narrative to search");
+        else setOverlay({ kind: "steps" });
+        return;
+      case "searchNext": {
+        if (reader.lastSearch === null) {
+          notify("Search steps with / first");
+          return;
+        }
+        const hit = reader.searchHit(command.direction, count);
+        if (hit === null) notify(`No step matches “${reader.lastSearch}”`);
+        else turnTo(hit);
+        return;
+      }
+      case "fileTree":
+        narrativeEnv().toggleFileTree();
+        return;
+      case "side":
+        // Past the old side, or from an excerpt header, the next step left is the outline.
+        if (command.side === "LEFT" && state.cursor !== null && (state.cursor.line === null || state.cursor.side === "LEFT" || state.cursor.want === "LEFT")) {
+          if (!narrativeEnv().focusFileTree()) notify("The outline needs a wider view");
+          return;
+        }
+        runReviewCommand(command, count, narrativeEnv());
+        return;
+      case "top":
+      case "bottom": {
+        const edge = command.kind === "top" ? firstPosition(files, state.cursor?.want ?? "RIGHT") : lastPosition(files, state.cursor?.want ?? "RIGHT");
+        scroller?.scrollTo({ top: command.kind === "top" ? 0 : scroller.scrollHeight });
+        if (edge === null) return;
+        keys.set({ cursor: edge, visual: null, focused: null });
+        if (command.kind === "bottom") reveal(edge, "nearest");
+        return;
+      }
+      case "page": {
+        if (scroller === null) return;
+        scroller.scrollBy({ top: command.fraction * count * scroller.clientHeight, behavior: "auto" });
+        // The cursor follows onto the code now in view, when it scrolled away.
+        if (state.cursor !== null && cursorPosition(files, state.cursor) !== null && onScreen(state.cursor) === true) return;
+        const next = visibleCursor(command.fraction > 0 ? 1 : -1);
+        if (next !== null) keys.set({ cursor: next, visual: null, focused: null });
+        return;
+      }
+      case "line": {
+        // On a code line in view, j and k are the review's; with nothing left to move onto they read the page on,
+        // and past its end they turn to the next step (or back to the end of the one before).
+        const inCode = state.cursor !== null && cursorPosition(files, state.cursor) !== null && onScreen(state.cursor) === true;
+        if (inCode) {
+          runReviewCommand(command, count, narrativeEnv());
+          const after = keys.get();
+          if (!samePlace(state.cursor, after.cursor) || state.focused !== after.focused) return;
+        }
+        if (scroller === null) return;
+        const top = scroller.scrollTop;
+        scroller.scrollBy({ top: command.direction * count * PROSE_LINES * LINE_PX, behavior: "auto" });
+        if (scroller.scrollTop !== top) {
+          if (inCode) return;
+          const next = visibleCursor(command.direction);
+          if (next !== null) keys.set({ cursor: next, visual: null, focused: null });
+          return;
+        }
+        if (!turnTo(reader.movePage(command.direction), command.direction === 1 ? "start" : "end")) notify(command.direction === 1 ? "This is the end of the narrative" : "This is the start of the narrative");
+        return;
+      }
+      default:
+        runReviewCommand(command, count, narrativeEnv());
+    }
+  };
+
+  const pickKeymap = useCallback((): Keymap<NarrativeCommand> => (modeRef.current === "narrative" ? NARRATIVE_KEYMAP : REVIEW_KEYMAP), []);
+  useReviewKeys(rootRef, keys, overlay === null, pickKeymap, (command, count) => {
+    if (mode === "narrative") runNarrativeCommand(command, count);
+    else runFilesCommand(command as ReviewCommand, count);
+  });
+  const runFilesCommandRef = useRef(runFilesCommand);
+  runFilesCommandRef.current = runFilesCommand;
   // Scrolling by hand (wheel, trackpad, touch, the scrollbar) drags the cursor along, so it stays on the middle line.
   // The diff's own scrolls, which put the cursor there, carry no such intent and are left alone.
   const lastScrollIntent = useRef(0);
@@ -537,11 +781,11 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     if (keys.get().cursor === null) return;
     if (!draggingScrollbar.current && performance.now() - lastScrollIntent.current > SCROLL_INTENT_MS) return;
     cancelAnimationFrame(followFrame.current);
-    followFrame.current = requestAnimationFrame(() => runCommandRef.current({ kind: "follow" }, 1));
+    followFrame.current = requestAnimationFrame(() => runFilesCommandRef.current({ kind: "follow" }, 1));
   };
   const closeOverlay = () => {
     setOverlay(null);
-    rootRef.current?.focus({ preventScroll: true });
+    returnToDiff();
   };
   const { focusRequestedAt } = useDiffInstance(instanceKey);
   useEffect(() => {
@@ -555,7 +799,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       }),
     [active],
   );
-  const markers = useScrollMarkers(mainRef, [diff, comments.threads, collapsed]);
+  const markers = useScrollMarkers(mainRef, [diff, comments.threads, collapsed, mode]);
   // The sidebar tracks whichever file header is at (or just above) the top of the scroller, like GitHub's file tree.
   const trackActive = () => {
     const main = mainRef.current;
@@ -571,19 +815,25 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     active.set(current ?? diff.files[0]?.path ?? null);
   };
 
-  const annotationsFor = (file: DiffFile): PatchAnnotationProps => {
-    const fileComposer = composer !== null && composer.path === file.path ? composer : null;
+  const annotationsFor = (path: string): PatchAnnotationProps => {
+    const fileComposer = composer !== null && composer.path === path ? composer : null;
     return {
-      path: file.path,
-      threads: forPath(file.path),
+      path,
+      threads: forPath(path),
       composer: fileComposer,
-      onStartComment: (anchor) => startComment(file.path, anchor),
+      onStartComment: (anchor) => startComment(path, anchor),
       onCancelComposer: () => setComposer(null),
-      onSubmitComposer: (body, target) => (fileComposer === null ? Promise.resolve() : comments.addComment(file.path, fileComposer, body, target)),
-      findings: findingsByPath.get(file.path) ?? NO_PLACED_FINDINGS,
+      onSubmitComposer: (body, target) => (fileComposer === null ? Promise.resolve() : comments.addComment(path, fileComposer, body, target)),
+      findings: findingsByPath.get(path) ?? NO_PLACED_FINDINGS,
       onToggleFinding: toggleFinding,
       onEditFinding: editFinding,
     };
+  };
+  /** An excerpt's annotations: the file's, cut to the lines it shows; none while the step's lines are not today's. */
+  const excerptAnnotationsFor = (path: string, patch: string): PatchAnnotationProps | null => {
+    if (!reader.describesCurrentDiff || !currentPaths.has(path)) return null;
+    const full = annotationsFor(path);
+    return { ...full, ...excerptAnnotations(patch, full.threads, full.findings, full.composer), onStartComment: (anchor) => narrativeEnv().startComment(path, anchor) };
   };
   const commentActions: DiffCommentActions = {
     canPostToGithub: source.canPostToGithub ?? false,
@@ -595,8 +845,15 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     onOpenThread,
   };
   const sourceContext = useMemo(() => ({ source, labels }), [source, labels]);
-  const currentPaths = useMemo(() => new Set(diff?.files.map((file) => file.path) ?? []), [diff]);
   const { localPending, githubDrafts } = comments;
+  const stale = narrative.story?.stale ?? tour?.stale ?? false;
+  const writing: NarrativeWriting = {
+    running: narrative.story?.running ?? null,
+    starting: tourBusy,
+    label: reader.chapters.length === 0 ? "Write narrative" : stale ? "Write update" : "Rewrite",
+    generate: startGenerate,
+    openThread: onOpenThread,
+  };
 
   return (
     <DiffSourceContext.Provider value={sourceContext}>
@@ -618,140 +875,166 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 findingTotal={allFindings.length}
                 findingShown={shownFindingCount}
                 findingFilter={findingFilter}
-                onNextComment={() => runCommand({ kind: "thread", direction: 1 }, 1)}
+                onNextComment={() => (mode === "narrative" ? runNarrativeCommand : runFilesCommand)({ kind: "thread", direction: 1 }, 1)}
                 onShowKeys={() => setOverlay({ kind: "help" })}
                 commentTarget={source.canPostToGithub === true ? { target: comments.target, onChange: comments.setTarget } : null}
+                mode={narrativeAvailable ? { value: mode, stale, onChange: (next) => (next === mode ? undefined : next === "narrative" ? enterNarrative() : leaveToFiles()) } : null}
+                progress={mode === "narrative" ? { position: reader.position, total: reader.total } : null}
               />
             ) : null}
 
-            {mode === "narrative" ? (
-              <NarrativeView
-                rootRef={rootRef}
-                active={overlay === null}
-                instanceKey={instanceKey}
-                story={narrative.story}
-                error={narrative.error}
-                generating={tourBusy}
-                onGenerate={() => void generateTour().then(narrative.reload)}
-                onOpenThread={onOpenThread}
-                currentPaths={currentPaths}
-                viewed={viewed}
-                onMarkViewed={(path) => markViewed(path, true)}
-                onOpenRef={openNarrativeRef}
-                onCommentRef={commentOnNarrativeRef}
-                onFiles={() => {
-                  setMode("files");
-                  rootRef.current?.focus({ preventScroll: true });
-                }}
-                notify={notify}
-              />
-            ) : (
-            <div className="flex min-h-0 flex-1">
-              <ActiveFileTreeSidebar
-                active={active}
-                diff={diff}
-                viewed={viewed}
-                commentCount={(path) => forPath(path).filter(threadIsOpen).length}
-                findingCount={(path) => findingsByPath.get(path)?.length ?? 0}
-                risk={(path) => risk.get(path) ?? null}
-                changedSince={(path) => changedRangesByPath.has(path)}
-                onSelect={(path) => {
-                  jumpTo(path);
-                  returnFromFileTree();
-                }}
-                onLeave={returnFromFileTree}
-              />
-              <div className="relative flex min-h-0 min-w-0 flex-1">
-                <main
-                  ref={mainRef}
-                  onScroll={onMainScroll}
-                  onWheel={markScrollIntent}
-                  onTouchMove={markScrollIntent}
-                  onPointerDown={(event) => {
-                    // A press on the scroller itself, not its content, is on the scrollbar.
-                    if (event.target !== event.currentTarget) return;
-                    draggingScrollbar.current = true;
-                    window.addEventListener("pointerup", () => (draggingScrollbar.current = false), { once: true });
+            <div className="relative flex min-h-0 flex-1">
+              {mode === "narrative" ? (
+                <NarrativeView
+                  reader={reader}
+                  scrollRef={narrativeScrollRef}
+                  sectionRef={(path, node) => {
+                    if (node === null) excerptRefs.current.delete(path);
+                    else excerptRefs.current.set(path, node);
                   }}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-                  {source.tour !== undefined && diff !== null && diff.files.length > 0 ? (
-                    <TourPanel tour={tour} busy={tourBusy} onGenerate={() => void generateTour()} onJump={jumpTo} onOpenThread={onOpenThread} files={diff.files} onStepThrough={narrativeAvailable ? () => setMode("narrative") : null} />
-                  ) : null}
-                  {delta !== null && delta.files.length > 0 ? (
-                    <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
-                  ) : null}
-                  {diff !== null && diff.files.length > 0 && (outsideFindings.preExisting.length > 0 || outsideFindings.filtered.length > 0) ? (
-                    <OutsideFindings
-                      preExisting={outsideFindings.preExisting}
-                      filtered={outsideFindings.filtered}
-                      filteredOpen={filteredOpen}
-                      onFilteredOpen={setFilteredOpen}
-                      onMakeCard={source.reviews?.makeCard === undefined ? null : makeFindingCard}
-                      onLeave={() => rootRef.current?.focus({ preventScroll: true })}
-                    />
-                  ) : null}
-                  {diff === null && error === null ? <SkeletonLines widths={DIFF_SKELETON} label="Loading changes" className="p-4" /> : null}
-                  {diff !== null && diff.files.length === 0 ? (
-                    <p className={cn("p-4 text-sm text-muted-foreground", enter.fade)}>
-                      {diff.hiddenVendored === null ? "No changes." : `Only vendored files changed (${diff.hiddenVendored.files} hidden by the "Hide vendored files" setting).`}
-                    </p>
-                  ) : null}
-                  {diff?.files.map((file, index) => (
-                    <FileSection
-                      key={file.path}
-                      file={file}
-                      index={index}
-                      sectionRef={(node) => {
-                        if (node === null) sectionRefs.current.delete(file.path);
-                        else sectionRefs.current.set(file.path, node);
-                      }}
-                      scrollRoot={mainRef}
-                      collapsed={collapsed.has(file.path)}
-                      viewed={viewed.has(file.path)}
-                      onToggleCollapsed={() => toggleCollapsed(file.path)}
-                      onMarkViewed={(isViewed) => markViewed(file.path, isViewed)}
-                      onCommentOnFile={() => startComment(file.path, WHOLE_FILE)}
-                      annotations={annotationsFor(file)}
-                      onOpenFile={openDefinition}
-                      explanations={explanations.filter((entry) => entry.path === file.path)}
-                      onExplain={explainHunk === null ? null : (side, startLine, endLine) => explainHunk(file.path, side, startLine, endLine)}
-                      semantics={semanticsByPath.get(file.path) ?? NO_SEMANTICS}
-                      changedRanges={changedRangesByPath.get(file.path) ?? NO_RANGES}
-                    />
-                  ))}
-                </main>
-                <ScrollMarkers markers={markers} mainRef={mainRef} />
-                <ModeLabel />
-                {overlay?.kind === "help" ? <KeysOverlay onClose={closeOverlay} /> : null}
-                {overlay?.kind === "files" && diff !== null ? (
-                  <Picker
-                    label="Search file names"
-                    placeholder="Search file names…"
-                    initialQuery={lastSearch ?? ""}
-                    rank={(query) => fileItems(diff.files, query)}
-                    onPick={(path, query) => {
-                      closeOverlay();
-                      setLastSearch(query.trim() === "" ? null : query);
+                  loaded={narrative.story !== null}
+                  error={narrative.error}
+                  stale={stale}
+                  writing={writing}
+                  viewed={viewed}
+                  annotationsFor={excerptAnnotationsFor}
+                  onMarkViewed={markViewed}
+                  onCommentOnFile={(path) => narrativeEnv().startComment(path, WHOLE_FILE)}
+                  onOpenExcerpt={(path) => {
+                    if (reader.describesCurrentDiff) openInFiles(path);
+                    else notify(reader.chapter?.kind === "revision" ? "Revision steps point into the delta; open lines from the current narrative's steps" : "These lines are from an earlier head; open them from the current narrative's steps");
+                  }}
+                  onOpenPath={(path) => openInFiles(path)}
+                  onNarratedViewed={() => runNarrativeCommand({ kind: "narratedViewed" }, 1)}
+                  onLeaveOutline={returnToDiff}
+                />
+              ) : (
+                <>
+                  <ActiveFileTreeSidebar
+                    active={active}
+                    diff={diff}
+                    viewed={viewed}
+                    commentCount={(path) => forPath(path).filter(threadIsOpen).length}
+                    findingCount={(path) => findingsByPath.get(path)?.length ?? 0}
+                    risk={(path) => risk.get(path) ?? null}
+                    changedSince={(path) => changedRangesByPath.has(path)}
+                    onSelect={(path) => {
                       jumpTo(path);
+                      returnToDiff();
                     }}
-                    onClose={closeOverlay}
+                    onLeave={returnToDiff}
                   />
-                ) : null}
-                {overlay?.kind === "symbols" ? (
-                  <Picker
-                    label="Peek at a symbol"
-                    placeholder="Peek at a symbol on this line…"
-                    rank={(query) => overlay.names.filter((name) => name.toLowerCase().includes(query.toLowerCase())).map((name) => ({ id: name, label: name }))}
-                    onPick={(name) => {
-                      closeOverlay();
-                      overlay.pick(name);
-                    }}
-                    onClose={closeOverlay}
-                  />
-                ) : null}
-              </div>
+                  <div className="relative flex min-h-0 min-w-0 flex-1">
+                    <main
+                      ref={mainRef}
+                      onScroll={onMainScroll}
+                      onWheel={markScrollIntent}
+                      onTouchMove={markScrollIntent}
+                      onPointerDown={(event) => {
+                        // A press on the scroller itself, not its content, is on the scrollbar.
+                        if (event.target !== event.currentTarget) return;
+                        draggingScrollbar.current = true;
+                        window.addEventListener("pointerup", () => (draggingScrollbar.current = false), { once: true });
+                      }}
+                      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
+                    >
+                      {delta !== null && delta.files.length > 0 ? (
+                        <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
+                      ) : null}
+                      {diff !== null && diff.files.length > 0 && (outsideFindings.preExisting.length > 0 || outsideFindings.filtered.length > 0) ? (
+                        <OutsideFindings
+                          preExisting={outsideFindings.preExisting}
+                          filtered={outsideFindings.filtered}
+                          filteredOpen={filteredOpen}
+                          onFilteredOpen={setFilteredOpen}
+                          onMakeCard={source.reviews?.makeCard === undefined ? null : makeFindingCard}
+                          onLeave={returnToDiff}
+                        />
+                      ) : null}
+                      {diff === null && error === null ? <SkeletonLines widths={DIFF_SKELETON} label="Loading changes" className="p-4" /> : null}
+                      {diff !== null && diff.files.length === 0 ? (
+                        <p className={cn("p-4 text-sm text-muted-foreground", enter.fade)}>
+                          {diff.hiddenVendored === null ? "No changes." : `Only vendored files changed (${diff.hiddenVendored.files} hidden by the "Hide vendored files" setting).`}
+                        </p>
+                      ) : null}
+                      {diff?.files.map((file, index) => (
+                        <FileSection
+                          key={file.path}
+                          file={file}
+                          index={index}
+                          sectionRef={(node) => {
+                            if (node === null) sectionRefs.current.delete(file.path);
+                            else sectionRefs.current.set(file.path, node);
+                          }}
+                          scrollRoot={mainRef}
+                          collapsed={collapsed.has(file.path)}
+                          viewed={viewed.has(file.path)}
+                          onToggleCollapsed={() => toggleCollapsed(file.path)}
+                          onMarkViewed={(isViewed) => markViewed(file.path, isViewed)}
+                          onCommentOnFile={() => startComment(file.path, WHOLE_FILE)}
+                          annotations={annotationsFor(file.path)}
+                          onOpenFile={openDefinition}
+                          explanations={explanations.filter((entry) => entry.path === file.path)}
+                          onExplain={explainHunk === null ? null : (side, startLine, endLine) => explainHunk(file.path, side, startLine, endLine)}
+                          semantics={semanticsByPath.get(file.path) ?? NO_SEMANTICS}
+                          changedRanges={changedRangesByPath.get(file.path) ?? NO_RANGES}
+                        />
+                      ))}
+                    </main>
+                    <ScrollMarkers markers={markers} mainRef={mainRef} />
+                  </div>
+                </>
+              )}
+              <ModeLabel />
+              {overlay?.kind === "help" ? <KeysOverlay onClose={closeOverlay} sections={mode === "narrative" ? NARRATIVE_KEY_HELP : KEY_HELP} /> : null}
+              {overlay?.kind === "files" && diff !== null ? (
+                <Picker
+                  label="Search file names"
+                  placeholder="Search file names…"
+                  initialQuery={lastSearch ?? ""}
+                  rank={(query) => fileItems(diff.files, query)}
+                  onPick={(path, query) => {
+                    closeOverlay();
+                    setLastSearch(query.trim() === "" ? null : query);
+                    jumpTo(path);
+                  }}
+                  onClose={closeOverlay}
+                />
+              ) : null}
+              {overlay?.kind === "steps" ? (
+                <Picker
+                  label="Search steps"
+                  placeholder="Search step titles and text…"
+                  initialQuery={reader.lastSearch ?? ""}
+                  rank={(query) =>
+                    searchSteps(reader.chapters, query).map((hit) => ({
+                      id: `${hit.chapter}:${hit.step}`,
+                      label: reader.chapters[hit.chapter]!.steps[hit.step]!.title,
+                      detail: <span className="shrink-0 text-muted-foreground">{reader.chapters[hit.chapter]!.kind === "revision" ? "revision" : reader.chapters[hit.chapter]!.current ? "current" : "earlier"}</span>,
+                    }))
+                  }
+                  onPick={(id, query) => {
+                    closeOverlay();
+                    reader.setLastSearch(query.trim() === "" ? null : query);
+                    const [chapterIndex, stepIndex] = id.split(":").map(Number);
+                    turnTo({ chapter: chapterIndex!, step: stepIndex! });
+                  }}
+                  onClose={closeOverlay}
+                />
+              ) : null}
+              {overlay?.kind === "symbols" ? (
+                <Picker
+                  label="Peek at a symbol"
+                  placeholder="Peek at a symbol on this line…"
+                  rank={(query) => overlay.names.filter((name) => name.toLowerCase().includes(query.toLowerCase())).map((name) => ({ id: name, label: name }))}
+                  onPick={(name) => {
+                    closeOverlay();
+                    overlay.pick(name);
+                  }}
+                  onClose={closeOverlay}
+                />
+              ) : null}
             </div>
-            )}
           </div>
         </ReviewKeysContext.Provider>
       </DiffCommentsContext.Provider>

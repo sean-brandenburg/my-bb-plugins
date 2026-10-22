@@ -352,8 +352,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   takes vim keys: j/k move, gg/G jump to the ends, Ctrl-D/Ctrl-U move half a
   list, Enter picks, / or i filters (Escape leaves the filter box), and
   Escape closes it.
-- **Narrative review**: "Write narrative" at the top of the changes view
-  spawns one agent thread. It follows the bundled `narrative-review` skill and
+- **Narrative review**: "Write narrative" in the changes view's Narrative
+  mode (or `U` there) spawns one agent thread. It follows the bundled `narrative-review` skill and
   ends with a ```json kanban-narrative block. The block holds:
   - a summary;
   - every file in reading order, tagged key / supporting / mechanical, with a
@@ -365,13 +365,17 @@ its PR is reviewed and its review findings and comments are handed to agents.
     appear in several.
 
   Before finishing, the agent runs `bb kanban narrative-check` on its draft,
-  which lists any line its steps skip. The strip above the diff shows the
-  summary and reading order. "Step through" (or `S`) opens the narrative view:
-  - one step at a time, the explanation over just its lines;
-  - an outline beside it in wide views;
-  - `h`/`l` to step and `]]`/`[[` for chapters;
-  - `gf` or `i` to open or comment on an excerpt in the files view;
-  - `v` to mark files viewed once every step that touches them has been read.
+  which lists any line its steps skip. The **Files | Narrative** switch in
+  the changes view's summary bar (or `S`) opens the narrative view:
+  - one step at a time, the explanation over just its lines, drawn by the
+    same diff renderer as the files view, so the cursor, comments, findings
+    and viewed marks take the same keys there; `j` reads on through a step
+    and past its end into the next;
+  - each chapter opens on its summary, reading order and watch-outs;
+  - an outline beside it in wide views (`t`; `h` moves into it);
+  - `]s`/`[s` to step and `]]`/`[[` for chapters;
+  - `gf` to open the cursor's line in the files view;
+  - `gv` to mark files viewed once every step that touches them has been read.
 
   Lines no step covers show up in a final "Not narrated" step, so stepping
   through always shows every line. The board keeps the diff each narrative was

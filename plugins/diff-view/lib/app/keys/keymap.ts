@@ -190,7 +190,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
       { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },
-      { keys: ["S"], action: "Step through the narrative review (S or Esc there comes back)" },
+      { keys: ["S"], action: "Switch to the narrative review, where the same keys work over each step's code (S there comes back)" },
       { keys: ["R"], action: "Refresh the diff" },
       { keys: ["Esc"], action: "Close a symbol peek, or leave line selection" },
       { keys: ["?"], action: "This sheet" },

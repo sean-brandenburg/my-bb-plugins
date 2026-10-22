@@ -21,6 +21,8 @@ import { checkedLineRange, locationLabel, longLineLabel, shortLineLabel } from "
 import { changedLines, excerptPatch, narrativeCoverage, refsForUncovered, uncoveredText } from "./lib/narrative";
 import { UNCOVERED_STEP_ID, affectedAddress, buildChapters, initialAddress, moveChapter, movePage, narratedFiles } from "./lib/app/narrative/chapters";
 import { NARRATIVE_KEY_HELP, NARRATIVE_KEYMAP } from "./lib/app/narrative/narrative-keymap";
+import { excerptAnnotations, stepExcerpts } from "./lib/app/narrative/excerpts";
+import type { DiffThread } from "./lib/app/comments/threads";
 import type { NarrativeRevision, NarrativeStep, NarrativeStory } from "./lib/types";
 import { splitUnifiedDiff } from "./lib/server";
 import type { DiffComment, DiffFile, Finding, GithubComment, Review, StructuralDiff } from "./lib/types";
@@ -1058,6 +1060,40 @@ describe("narrative chapters", () => {
 
   it("has no keys that shadow each other, and its ? sheet lists only keys it binds", () => {
     expect(keymapConflicts(NARRATIVE_KEYMAP)).toEqual([]);
-    expect(unboundHelpKeys(NARRATIVE_KEY_HELP, NARRATIVE_KEYMAP, ["Tab"])).toEqual([]);
+    expect(unboundHelpKeys(NARRATIVE_KEY_HELP, [NARRATIVE_KEYMAP, FILE_TREE_KEYMAP], ["Tab", "⌘↩"])).toEqual([]);
+  });
+
+  it("keeps every review key, so the cursor and comments work on a step's lines as on the files", () => {
+    for (const [key, command] of Object.entries(REVIEW_KEYMAP)) expect(NARRATIVE_KEYMAP[key]).toEqual(command);
+    expect(NARRATIVE_KEYMAP["]s"]).toEqual({ kind: "step", direction: 1 });
+    expect(NARRATIVE_KEYMAP["]]"]).toEqual({ kind: "chapter", direction: 1 });
+    expect(NARRATIVE_KEYMAP["<Esc>"]).toEqual({ kind: "escape" });
+  });
+});
+
+describe("step excerpts", () => {
+  const patch = ["@@ -1,4 +1,4 @@", " a", "-b", "+B", " c", " d", "@@ -10,2 +10,3 @@", " x", "+y", " z"].join("\n");
+  const thread = (id: string, side: "LEFT" | "RIGHT", line: number | null): DiffThread => ({ id, path: "x.ts", line, side, startLine: null, startSide: null, entries: [], onGithub: false, outdated: false, resolved: null, orphaned: false });
+  const finding = (line: number | null) => ({ line, item: { reviewId: "r", finding: { id: `f${line}` } as never, selected: true, overridden: false, edited: false, isNew: false, carriedFrom: null, touched: false } });
+
+  it("cuts a step's refs to one excerpt per file, with the lines they point at", () => {
+    const [excerpt] = stepExcerpts([{ path: "x.ts", side: "old", startLine: 2, endLine: 2 }, { path: "x.ts", side: "new", startLine: 2, endLine: 2 }], [{ path: "x.ts", previousPath: null, patch }]);
+    expect(excerpt!.path).toBe("x.ts");
+    expect(excerpt!.patch).toBe(["@@ -1,4 +1,4 @@", " a", "-b", "+B", " c", " d"].join("\n"));
+  });
+
+  it("hands the renderer only annotations on lines the excerpt shows, keeping file-level threads", () => {
+    const excerpt = ["@@ -1,4 +1,4 @@", " a", "-b", "+B", " c", " d"].join("\n");
+    const cut = excerptAnnotations(
+      excerpt,
+      [thread("shown-new", "RIGHT", 2), thread("shown-old", "LEFT", 2), thread("elsewhere", "RIGHT", 11), thread("file", "RIGHT", null)],
+      [finding(2), finding(11), finding(null)],
+      { line: 11, side: "RIGHT", startLine: null, startSide: null },
+    );
+    expect(cut.threads.map((entry) => entry.id)).toEqual(["shown-new", "shown-old", "file"]);
+    expect(cut.findings.map((entry) => entry.line)).toEqual([2]);
+    expect(cut.composer).toBeNull();
+    expect(excerptAnnotations(excerpt, [], [], { line: 2, side: "RIGHT", startLine: null, startSide: null }).composer).toEqual({ line: 2, side: "RIGHT", startLine: null, startSide: null });
+    expect(excerptAnnotations(excerpt, [], [], { line: null, side: "RIGHT", startLine: null, startSide: null }).composer).toEqual({ line: null, side: "RIGHT", startLine: null, startSide: null });
   });
 });

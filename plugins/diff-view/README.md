@@ -76,13 +76,8 @@ plugins embed.
   `gF` folds or unfolds the filtered findings, `gp` moves the keyboard into
   the pre-existing and filtered list above the diff (`j`/`k` move, Enter
   opens one or makes a card, Escape returns),
-  `K` asks for an explanation of the hunk, `S` steps through the narrative
-  review where the host has one (its own keys: `h`/`l` steps, `]]`/`[[`
-  chapters, `j`/`k` and Ctrl-D/U scroll, `]f`/`[f` excerpts, `gf` opens
-  one in the files view, `i` comments on it, `ga` follows a revision step to
-  the step it led to, `v` marks fully narrated files viewed, `t` the outline,
-  `/` and `n`/`N` search steps, `U` writes or updates the narrative, `S` or
-  Escape returns),
+  `K` asks for an explanation of the hunk, `S` switches to the narrative
+  review where the host has one (see below),
   `gd` peeks at a symbol on the line (Escape closes it), `gl` switches line-diff files between
   split and unified, `R` refreshes, and
   `?` lists every key.
@@ -92,6 +87,31 @@ plugins embed.
   header, and Escape returns to the diff. `?`, `/` and `t` keep working there;
   the help, search, refresh, layout and file-list keys work before a diff has
   loaded.
+
+- **Narrative review** (hosts whose source serves a story, such as kanban): a
+  **Files | Narrative** switch at the left of the summary bar, or `S`, swaps
+  the file list for the agent's walk through the change. Each page is one
+  step: its explanation over just the lines it covers, as excerpts of the
+  diff drawn by the same renderer as the files view, so the cursor, comments
+  (`i`, `V`, `O`, `a`, `e`, `dd`, `M`), review findings (`x`, `]d`, `c`),
+  viewed marks (`v`), the layout key and the send bar work on them exactly
+  as there; `j` and `k` read the step's prose on when there is no code line
+  to move onto, and past the step's end turn to the next step (or back to
+  the end of the one before). The summary bar shows the step reached. Each
+  chapter opens on a summary page with the agent's reading order (click a
+  file to open it in the files view), its watch-outs and its steps; the
+  outline beside the steps (wide views, `t`) ticks the steps read, and `h`
+  past the old side moves into it (`j`/`k`, Enter, Escape). Keys of its own:
+  `]s`/`[s` steps (a count repeats), `]]`/`[[` chapters, `]f`/`[f`
+  excerpts, `gf` opens the files view at the cursor's line (an excerpt's
+  header too), `ga` follows a revision step to the step it led to, `gv`
+  marks viewed the files every one of whose steps has been read, `/` and
+  `n`/`N` search steps, `U` writes a narrative (or an update once the code
+  moved, which the switch flags with a dot), `S` returns to the files with
+  the cursor where it was. Steps of an earlier narrative or a revision show
+  their lines without comments, since those are not today's lines; comment
+  from the current narrative's steps or the files view. Excerpts are line
+  diffs, so `gd` and `zr` do nothing there.
 
 Settings: hide vendored files (default on) and the `difft` path. Comments and
 viewed marks live in this plugin's database and are deleted with their thread.
@@ -112,7 +132,7 @@ dependency:
   slices, viewed marks, comments) and any optional groups (GitHub comments and
   drafts, review findings, the delta since the last look, a tour, hunk
   explanations); each optional group turns on its part of the UI. A tour
-  group with `story()` adds the narrative review view (`S`).
+  group with `story()` adds the narrative review and its switch (`S`).
 - `bb-diff-view/narrative`: changed-line coverage of a narrative's steps and
   the excerpt patch for a step's lines, shared by servers that check an
   agent's narrative and the view that renders it.

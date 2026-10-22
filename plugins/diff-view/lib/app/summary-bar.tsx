@@ -53,7 +53,36 @@ function CommentTargetSwitch({ target, onChange }: { target: DiffCommentTarget; 
   );
 }
 
-/** The strip above a non-empty diff: totals (what it is against in their tooltip), keyboard help, where comments go, comment and finding controls, and viewed progress. */
+export type DiffViewMode = "files" | "narrative";
+
+/** Files or the narrative review: the two ways of reading the same change, with the same keys. */
+function ModeSwitch({ mode, stale, onChange }: { mode: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void }) {
+  const option = (value: DiffViewMode, label: string, title: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={mode === value}
+      title={title}
+      className={cn("relative rounded px-1.5 py-0.5", PRESS, mode === value ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+      onClick={() => onChange(value)}
+    >
+      {label}
+      {value === "narrative" && stale ? <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-amber-500" aria-hidden="true" /> : null}
+    </button>
+  );
+  return (
+    <span role="radiogroup" aria-label="How to read the change" className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5 text-[11px]">
+      {option("files", "Files", "Every changed file in one scroll (S switches)")}
+      {option("narrative", "Narrative", stale ? "The agent's step-by-step walk through the change; the code moved since it was written (S switches)" : "The agent's step-by-step walk through the change, the same keys on each step's lines (S switches)")}
+    </span>
+  );
+}
+
+/**
+ * The strip above a non-empty diff: the files / narrative switch where the source has a narrative, totals (what the
+ * diff is against in their tooltip), keyboard help, where comments go, comment and finding controls, and progress:
+ * files viewed, and in the narrative the step reached.
+ */
 export function SummaryBar({
   diff,
   viewed,
@@ -64,6 +93,8 @@ export function SummaryBar({
   onNextComment,
   onShowKeys,
   commentTarget,
+  mode,
+  progress,
 }: {
   diff: DiffResult;
   viewed: ReadonlySet<string>;
@@ -75,10 +106,15 @@ export function SummaryBar({
   onShowKeys: () => void;
   /** Null unless comments can go to GitHub. */
   commentTarget: { target: DiffCommentTarget; onChange: (target: DiffCommentTarget) => void } | null;
+  /** Null when the source has no narrative review to switch to. */
+  mode: { value: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void } | null;
+  /** The narrative's page reached, while it is showing. */
+  progress: { position: number; total: number } | null;
 }) {
   const viewedCount = diff.files.filter((entry) => viewed.has(entry.path)).length;
   return (
     <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground", enter.fade)}>
+      {mode !== null ? <ModeSwitch mode={mode.value} stale={mode.stale} onChange={mode.onChange} /> : null}
       <DiffStats diff={diff} />
       <button type="button" className={cn("rounded px-1 text-muted-foreground/70 hover:bg-state-hover hover:text-foreground", PRESS)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={onShowKeys}>
         ⌨
@@ -104,6 +140,15 @@ export function SummaryBar({
         </button>
       ) : null}
       <span className="ml-auto inline-flex items-center gap-2 tabular-nums">
+        {progress !== null && progress.total > 0 ? (
+          <span className="inline-flex items-center gap-2" title="Pages of the narrative: each chapter's summary, then its steps">
+            page {progress.position} of {progress.total}
+            <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+              <span className={cn("block h-full origin-left bg-primary/70", TRANSFORM_TRANSITION)} style={{ transform: `scaleX(${progress.position / progress.total})` }} />
+            </span>
+            <span aria-hidden="true">·</span>
+          </span>
+        ) : null}
         {viewedCount} of {diff.files.length} viewed
         <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted" aria-hidden="true">
           <span className={cn("block h-full origin-left bg-emerald-500", TRANSFORM_TRANSITION)} style={{ transform: `scaleX(${viewedCount / diff.files.length})` }} />

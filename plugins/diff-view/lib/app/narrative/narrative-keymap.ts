@@ -1,90 +1,80 @@
 import type { KeyHelpSection, Keymap } from "../ui/vim-keys-core";
+import { KEY_HELP, REVIEW_KEYMAP, type ReviewCommand } from "../keys/keymap";
 
-/** What a key asks the narrative view to do. */
-export type NarrativeCommand =
+/** What the narrative view does beyond the review keys, which it shares with the files view. */
+export type NarrativeOnlyCommand =
   | { kind: "step"; direction: 1 | -1 }
   | { kind: "chapter"; direction: 1 | -1 }
-  | { kind: "first" }
-  | { kind: "last" }
-  | { kind: "scroll"; lines: number }
-  | { kind: "page"; fraction: number }
-  | { kind: "excerpt"; direction: 1 | -1 }
-  | { kind: "openExcerpt" }
-  | { kind: "comment" }
+  /** Open the files view at the cursor's line (or the excerpt's first line). */
+  | { kind: "openInFiles" }
+  /** In a revision step: go to the current narrative's step the change shows up in. */
   | { kind: "affected" }
-  | { kind: "viewed" }
-  | { kind: "outline" }
-  | { kind: "search" }
-  | { kind: "searchNext"; direction: 1 | -1 }
-  | { kind: "generate" }
-  | { kind: "files" }
-  | { kind: "help" };
+  /** Mark viewed the files every one of whose steps has been read. */
+  | { kind: "narratedViewed" }
+  | { kind: "generate" };
 
+export type NarrativeCommand = ReviewCommand | NarrativeOnlyCommand;
+
+/**
+ * The review keys, so the cursor, comments and findings work over a step's excerpts exactly as over the files, plus
+ * the step keys. `/`, `n`, `N` search steps here, `t` and `h` reach the outline, and `S` returns to the files.
+ */
 export const NARRATIVE_KEYMAP: Keymap<NarrativeCommand> = {
-  l: { kind: "step", direction: 1 },
-  "<Right>": { kind: "step", direction: 1 },
-  h: { kind: "step", direction: -1 },
-  "<Left>": { kind: "step", direction: -1 },
+  ...REVIEW_KEYMAP,
+  "]s": { kind: "step", direction: 1 },
+  "[s": { kind: "step", direction: -1 },
   "]]": { kind: "chapter", direction: 1 },
   "[[": { kind: "chapter", direction: -1 },
-  gg: { kind: "first" },
-  G: { kind: "last" },
-  j: { kind: "scroll", lines: 3 },
-  "<Down>": { kind: "scroll", lines: 3 },
-  k: { kind: "scroll", lines: -3 },
-  "<Up>": { kind: "scroll", lines: -3 },
-  "<C-d>": { kind: "page", fraction: 0.5 },
-  "<C-u>": { kind: "page", fraction: -0.5 },
-  "<C-f>": { kind: "page", fraction: 1 },
-  "<C-b>": { kind: "page", fraction: -1 },
-  "]f": { kind: "excerpt", direction: 1 },
-  "[f": { kind: "excerpt", direction: -1 },
-  gf: { kind: "openExcerpt" },
-  i: { kind: "comment" },
+  gf: { kind: "openInFiles" },
   ga: { kind: "affected" },
-  v: { kind: "viewed" },
-  t: { kind: "outline" },
-  "/": { kind: "search" },
-  n: { kind: "searchNext", direction: 1 },
-  N: { kind: "searchNext", direction: -1 },
+  gv: { kind: "narratedViewed" },
   U: { kind: "generate" },
-  S: { kind: "files" },
-  "<Esc>": { kind: "files" },
-  "?": { kind: "help" },
 };
+
+/** The sheet's shared sections with a line reworded, by the keys it lists. */
+function reworded(section: KeyHelpSection, actions: Record<string, string>): KeyHelpSection {
+  return { ...section, keys: section.keys.map((entry) => ({ ...entry, action: actions[entry.keys.join(" ")] ?? entry.action })) };
+}
+
+const SHARED_HELP = KEY_HELP.filter((section) => section.title !== "File list").map((section) =>
+  reworded(section, {
+    "j k": "Next / previous line; past the step's code it reads on through the step, and past the step's end into the next (a count repeats: 5j)",
+    "h l": "Old / new side; h past the old side (or on an excerpt header) goes to the outline",
+    "]f [f": "Next / previous excerpt",
+    "gg G": "First / last line of the step",
+    "Ctrl-d Ctrl-u": "Half a page down / up (Ctrl-f / Ctrl-b a whole page)",
+    "/": "Search steps by title and text and jump to one",
+    "n N": "Next / previous step matching the search",
+    v: "Mark the excerpt's file viewed or not",
+    zr: "Not in excerpts: they are line diffs",
+    gd: "Not in excerpts: they are line diffs",
+    S: "Back to the files view, cursor where it was (S there comes back)",
+  }),
+);
 
 export const NARRATIVE_KEY_HELP: readonly KeyHelpSection[] = [
   {
     title: "Step",
     keys: [
-      { keys: ["l", "h"], action: "Next / previous step, across chapters (a count repeats: 3l)" },
+      { keys: ["]s", "[s"], action: "Next / previous step, across chapters (a count repeats: 3]s)" },
       { keys: ["]]", "[["], action: "Next / previous chapter: an earlier narrative, what changed since, the current one" },
-      { keys: ["gg", "G"], action: "First / last step" },
-      { keys: ["j", "k"], action: "Scroll the step" },
-      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
-      { keys: ["Ctrl-f", "Ctrl-b"], action: "A whole page down / up" },
-      { keys: ["/"], action: "Search steps by title and text" },
-      { keys: ["n", "N"], action: "Next / previous step matching the search" },
-      { keys: ["t"], action: "Show or hide the outline" },
-    ],
-  },
-  {
-    title: "Code",
-    keys: [
-      { keys: ["]f", "[f"], action: "Next / previous excerpt in the step" },
-      { keys: ["gf"], action: "Open the excerpt in the files view, cursor on its first line" },
-      { keys: ["i"], action: "Comment on the excerpt's lines (opens the files view)" },
+      { keys: ["gf"], action: "Open the files view at the cursor's line" },
       { keys: ["ga"], action: "In a revision step: go to the current narrative's step it shows up in" },
-      { keys: ["v"], action: "Mark viewed the files every one of whose steps you have read" },
+      { keys: ["gv"], action: "Mark viewed the files every one of whose steps you have read" },
+      { keys: ["U"], action: "Write a narrative, or an update that explains what changed since the last one" },
+      { keys: ["Tab"], action: "Move between the step's links and excerpt headers; Enter follows one" },
     ],
   },
+  ...SHARED_HELP,
   {
-    title: "Narrative",
+    title: "Outline",
     keys: [
-      { keys: ["U"], action: "Write a narrative, or an update that explains what changed since the last one" },
-      { keys: ["S", "Esc"], action: "Back to the files view (S there comes back)" },
-      { keys: ["Tab"], action: "Move between the step's links and excerpt headers; Enter follows one" },
-      { keys: ["?"], action: "This sheet" },
+      { keys: ["t"], action: "Show or hide the outline" },
+      { keys: ["j", "k"], action: "Next / previous step or chapter" },
+      { keys: ["gg", "G"], action: "First / last row" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a list down / up" },
+      { keys: ["Enter", "o", "l"], action: "Open the step" },
+      { keys: ["Esc"], action: "Back to the step" },
     ],
   },
 ];

@@ -1,5 +1,5 @@
 import { narrativeCoverage, refsForUncovered, type NarrativeCoverage, type NarrativePatchFile } from "../../narrative";
-import type { NarrativeStep, NarrativeStory } from "../../types";
+import type { Narrative, NarrativeStep, NarrativeStory } from "../../types";
 import { shortSha } from "../format";
 
 /** The id of the step the view adds for lines the agent's steps skipped. */
@@ -18,6 +18,8 @@ export interface NarrativeChapter {
   title: string;
   summary: string;
   notes: string[];
+  /** The narrative's files in the order the agent suggests reading them; empty for a revision. */
+  readingOrder: NonNullable<Narrative["report"]>["readingOrder"];
   /** The patches the steps' refs point into: the diff at that head, or the delta between two heads. */
   files: NarrativePatchFile[];
   steps: NarrativeStep[];
@@ -73,6 +75,7 @@ export function buildChapters(story: NarrativeStory): NarrativeChapter[] {
           ...(revision.delta === null ? ["The board could not measure the delta between these heads, so these steps show no code."] : []),
           ...(revision.delta?.note == null ? [] : [revision.delta.note]),
         ],
+        readingOrder: [],
         files,
         steps,
         coverage,
@@ -87,6 +90,7 @@ export function buildChapters(story: NarrativeStory): NarrativeChapter[] {
       title: `${index === last ? "Narrative" : "Earlier narrative"} at ${headLabel(revision.head, revision.dirty)}`,
       summary: report.summary,
       notes: report.watchOut,
+      readingOrder: report.readingOrder,
       files: revision.files,
       steps,
       coverage,
