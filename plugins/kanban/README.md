@@ -372,8 +372,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
     and viewed marks take the same keys there; `j` reads on through a step
     and past its end into the next;
   - each chapter opens on its summary, reading order and watch-outs;
-  - an outline beside it in wide views (`t`; `h` moves into it);
-  - `]s`/`[s` to step and `]]`/`[[` for chapters;
+  - an outline beside it in wide views (`t`; ← past the old side moves into it);
+  - `h`/`l` to step and `]]`/`[[` for chapters (the arrows keep the sides);
   - `gf` to open the cursor's line in the files view;
   - `gv` to mark files viewed once every step that touches them has been read.
 

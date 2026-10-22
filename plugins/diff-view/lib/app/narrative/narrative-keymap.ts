@@ -17,12 +17,14 @@ export type NarrativeCommand = ReviewCommand | NarrativeOnlyCommand;
 
 /**
  * The review keys, so the cursor, comments and findings work over a step's excerpts exactly as over the files, plus
- * the step keys. `/`, `n`, `N` search steps here, `t` and `h` reach the outline, and `S` returns to the files.
+ * the step keys. `h` and `l` turn pages: excerpts are unified unless asked otherwise, so sides mean little here and
+ * the arrows keep them (← past the old side reaches the outline, as `h` does in the files view). `/`, `n`, `N`
+ * search steps, `t` shows the outline, and `S` returns to the files.
  */
 export const NARRATIVE_KEYMAP: Keymap<NarrativeCommand> = {
   ...REVIEW_KEYMAP,
-  "]s": { kind: "step", direction: 1 },
-  "[s": { kind: "step", direction: -1 },
+  l: { kind: "step", direction: 1 },
+  h: { kind: "step", direction: -1 },
   "]]": { kind: "chapter", direction: 1 },
   "[[": { kind: "chapter", direction: -1 },
   gf: { kind: "openInFiles" },
@@ -31,15 +33,20 @@ export const NARRATIVE_KEYMAP: Keymap<NarrativeCommand> = {
   U: { kind: "generate" },
 };
 
+/** The files view's `h`/`l` line, listed under the arrows, which keep the sides here. */
+function arrowsForSides(section: KeyHelpSection): KeyHelpSection {
+  return { ...section, keys: section.keys.map((entry) => (entry.keys.join(" ") === "h l" ? { ...entry, keys: ["←", "→"] } : entry)) };
+}
+
 /** The sheet's shared sections with a line reworded, by the keys it lists. */
 function reworded(section: KeyHelpSection, actions: Record<string, string>): KeyHelpSection {
   return { ...section, keys: section.keys.map((entry) => ({ ...entry, action: actions[entry.keys.join(" ")] ?? entry.action })) };
 }
 
 const SHARED_HELP = KEY_HELP.filter((section) => section.title !== "File list").map((section) =>
-  reworded(section, {
+  reworded(arrowsForSides(section), {
     "j k": "Next / previous line; past the step's code it reads on through the step, and past the step's end into the next (a count repeats: 5j)",
-    "h l": "Old / new side; h past the old side (or on an excerpt header) goes to the outline",
+    "← →": "Old / new side, in excerpts shown split; ← past the old side (or on an excerpt header) goes to the outline",
     "]f [f": "Next / previous excerpt",
     "gg G": "First / last line of the step",
     "Ctrl-d Ctrl-u": "Half a page down / up (Ctrl-f / Ctrl-b a whole page)",
@@ -56,7 +63,7 @@ export const NARRATIVE_KEY_HELP: readonly KeyHelpSection[] = [
   {
     title: "Step",
     keys: [
-      { keys: ["]s", "[s"], action: "Next / previous step, across chapters (a count repeats: 3]s)" },
+      { keys: ["l", "h"], action: "Next / previous step, across chapters (a count repeats: 3l)" },
       { keys: ["]]", "[["], action: "Next / previous chapter: an earlier narrative, what changed since, the current one" },
       { keys: ["gf"], action: "Open the files view at the cursor's line" },
       { keys: ["ga"], action: "In a revision step: go to the current narrative's step it shows up in" },

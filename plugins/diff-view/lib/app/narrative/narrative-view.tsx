@@ -242,7 +242,7 @@ function ChapterIntro({ chapter, stale, writing, onGo, onOpenPath }: { chapter: 
           ))}
         </ol>
       </section>
-      {chapter.steps.length > 0 ? <p className="text-xs text-muted-foreground">]s starts the first step; j reads on into it.</p> : null}
+      {chapter.steps.length > 0 ? <p className="text-xs text-muted-foreground">l starts the first step; j reads on into it.</p> : null}
     </>
   );
 }
@@ -284,7 +284,7 @@ function PageFooter({ chapters, address, onGo }: { chapters: NarrativeChapter[];
   return (
     <div className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground">
       {previous !== undefined ? (
-        <button type="button" className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} title="[s" onClick={() => onGo(previous)}>
+        <button type="button" className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} title="Previous page (h)" onClick={() => onGo(previous)}>
           <Icon name="ChevronLeft" className="size-3 shrink-0" />
           <span className="truncate">{label(previous)}</span>
         </button>
@@ -293,7 +293,7 @@ function PageFooter({ chapters, address, onGo }: { chapters: NarrativeChapter[];
         {here + 1} / {all.length}
       </span>
       {next !== undefined ? (
-        <button type="button" className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} title="]s" onClick={() => onGo(next)}>
+        <button type="button" className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} title="Next page (l)" onClick={() => onGo(next)}>
           <span className="truncate">{label(next)}</span>
           <Icon name="ChevronRight" className="size-3 shrink-0" />
         </button>

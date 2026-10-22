@@ -100,9 +100,11 @@ plugins embed.
   the end of the one before). The summary bar shows the step reached. Each
   chapter opens on a summary page with the agent's reading order (click a
   file to open it in the files view), its watch-outs and its steps; the
-  outline beside the steps (wide views, `t`) ticks the steps read, and `h`
+  outline beside the steps (wide views, `t`) ticks the steps read, and ←
   past the old side moves into it (`j`/`k`, Enter, Escape). Keys of its own:
-  `]s`/`[s` steps (a count repeats), `]]`/`[[` chapters, `]f`/`[f`
+  `h`/`l` previous / next page (a count repeats; excerpts are unified unless
+  `gl` says otherwise, so the arrow keys keep the old / new side, and ←
+  past the old side goes to the outline), `]]`/`[[` chapters, `]f`/`[f`
   excerpts, `gf` opens the files view at the cursor's line (an excerpt's
   header too), `ga` follows a revision step to the step it led to, `gv`
   marks viewed the files every one of whose steps has been read, `/` and
