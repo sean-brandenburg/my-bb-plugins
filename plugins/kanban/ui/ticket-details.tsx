@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { dueStatus, localDay, threadStatusText } from "./format";
+import { dueStatus, localDay } from "./format";
 import { type Rpc, type ProjectOption, useBoard, useTicketHasDiff, useProjects, useThreadIndex, useOpenThread, useNow } from "./data";
 import { collapseRightPanel, pageUi, TICKET_TAB } from "./page-state";
 import { focusBoard, requestCardFocus, useCardKeys } from "./card-keys";
