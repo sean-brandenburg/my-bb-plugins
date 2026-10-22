@@ -2922,6 +2922,33 @@ describe("diff view and diff comments", () => {
     expect(posted).toHaveLength(1);
   });
 
+  it("submits a review with no drafts when it carries a comment or a verdict, as GitHub's Submit review does", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })], authored: [searchItem("acme-co/widgets", 8, { user: { login: "sean" } })] }),
+    );
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const tickets = (await board()).tickets;
+    const theirs = tickets.find((ticket) => ticket.pr?.number === 7)!;
+    const mine = tickets.find((ticket) => ticket.pr?.number === 8)!;
+
+    // Nothing to say and nothing to post: no review.
+    await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, address: false })).rejects.toThrow(/No pending comments/u);
+    await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewBody: "  ", address: false })).rejects.toThrow(/No pending comments/u);
+    // A verdict alone still can't go on your own PR.
+    await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: mine.id, postToGithub: true, reviewEvent: "APPROVE", address: false })).rejects.toThrow(/your own pull request/u);
+    expect(posted).toHaveLength(0);
+
+    const commented = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: mine.id, postToGithub: true, reviewBody: "Context for reviewers", address: false })) as { posted: number };
+    expect(commented.posted).toBe(0);
+    expect(posted).toEqual([{ event: "COMMENT", body: "Context for reviewers" }]);
+
+    const approved = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", reviewBody: "LGTM", address: false })) as { movedToDone: boolean };
+    expect(posted[1]).toEqual({ event: "APPROVE", body: "LGTM" });
+    expect(approved.movedToDone).toBe(true);
+  });
+
   it("leaves the card where it is when a review posts as a comment or change request, or when the approval fails", async () => {
     vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })] }));
     await load({ autoStartThreads: false });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPickerKeys, type KeyHelpSection, keymapConflicts, unboundHelpKeys } from "bb-vim-keys";
-import { CARD_KEYMAP, KEY_HELP, KEYMAP, SEND_BAR_KEYS } from "./board-nav";
+import { CARD_KEYMAP, KEY_HELP, KEYMAP, REVIEW_POPOVER_KEYS, SEND_BAR_KEYS } from "./board-nav";
 
 // The same shapes as ProjectSelect's (a filter box behind / and i) and TagPicker's (a filter box alone).
 const projectPicker = createPickerKeys({ length: () => 0, highlight: () => null, setHighlight: () => {}, pick: () => {}, openFilter: () => {} });
@@ -17,6 +17,7 @@ describe("keymaps", () => {
     expect(keymapConflicts(KEYMAP)).toEqual([]);
     expect(keymapConflicts(CARD_KEYMAP)).toEqual([]);
     expect(keymapConflicts(SEND_BAR_KEYS)).toEqual([]);
+    expect(keymapConflicts(REVIEW_POPOVER_KEYS)).toEqual([]);
     for (const picker of [projectPicker, tagPicker]) {
       expect(keymapConflicts(picker.keymaps.list)).toEqual([]);
       expect(keymapConflicts(picker.keymaps.filter)).toEqual([]);

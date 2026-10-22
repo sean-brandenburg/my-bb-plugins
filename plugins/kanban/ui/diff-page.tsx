@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { PRESS, enter, usePopOnChange } from "bb-motion";
+import { POPOVER_MOTION, PRESS, enter, usePopOnChange } from "bb-motion";
 import { useKeyHandler } from "bb-vim-keys/react";
 import { DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
@@ -12,9 +12,9 @@ import { BOARD_CHANGED, THREAD_SUBJECT_PREFIX } from "../shared/events";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { SEND_BAR_KEYS } from "./board-nav";
+import { REVIEW_POPOVER_KEYS, SEND_BAR_KEYS, type ReviewPopoverCommand } from "./board-nav";
 import { useBoard, usePushPreference } from "./data";
-import { PushToggle, COMPACT, SegmentedTabs } from "./primitives";
+import { PushToggle, COMPACT } from "./primitives";
 import { toastError } from "./actions";
 import { HandoffStrip } from "./brief-panel";
 import { DiffPageHeading } from "./diff-heading";
@@ -113,32 +113,185 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boo
   );
 }
 
-const REVIEW_EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string }> = [
-  { value: "COMMENT", label: "Comment" },
-  { value: "APPROVE", label: "Approve" },
-  { value: "REQUEST_CHANGES", label: "Request changes" },
+const REVIEW_EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string; description: string }> = [
+  { value: "COMMENT", label: "Comment", description: "Submit general feedback without explicit approval." },
+  { value: "APPROVE", label: "Approve", description: "Submit feedback and approve merging these changes." },
+  { value: "REQUEST_CHANGES", label: "Request changes", description: "Submit feedback that must be addressed before merging." },
 ];
 
+const OWN_PR = "GitHub doesn't let you approve or request changes on your own pull request";
+
 /**
- * Sends local comments to an apply thread and GitHub drafts to the pull request, as a plain comment review or, on
- * someone else's PR, an approval or change request, with a summary over the review as GitHub's "Finish your review"
- * takes.
+ * GitHub's "Finish your review" box under the Submit review button: a comment, how the review concludes, and the
+ * submit. The comment and choice belong to the bar, so closing this keeps them.
  */
-function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmitted }: { subjectId: string; pending: PendingComments; canApprove: boolean; onOpenThread: (threadId: string) => void; onSubmitted: () => void }) {
+function ReviewPopover({
+  comment,
+  onComment,
+  event,
+  onEvent,
+  canApprove,
+  canSubmit,
+  submitting,
+  onSubmit,
+  onClose,
+}: {
+  comment: string;
+  onComment: (comment: string) => void;
+  event: ReviewEvent;
+  onEvent: (event: ReviewEvent) => void;
+  canApprove: boolean;
+  canSubmit: boolean;
+  submitting: boolean;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const enabled = REVIEW_EVENTS.filter((option) => canApprove || option.value === "COMMENT");
+  const onKeys = useKeyHandler<ReviewPopoverCommand>({
+    keymap: REVIEW_POPOVER_KEYS,
+    onTextEscape: () => {
+      onClose();
+      return true;
+    },
+    onCommand: (command, { target }) => {
+      if (command === "close") {
+        onClose();
+        return;
+      }
+      if (command === "comment") {
+        textareaRef.current?.focus();
+        return;
+      }
+      const index = enabled.findIndex((option) => option.value === event);
+      const next = enabled[Math.min(enabled.length - 1, Math.max(0, index + command))]!;
+      if (next.value === event) return;
+      onEvent(next.value);
+      if (target?.getAttribute("role") === "radio") rootRef.current?.querySelector<HTMLElement>(`[role="radio"][data-value="${next.value}"]`)?.focus();
+    },
+  });
+  useEffect(() => {
+    const onPointerDown = (pointer: PointerEvent) => {
+      const target = pointer.target;
+      if (!(target instanceof Element)) return;
+      if (rootRef.current?.contains(target) || target.closest("[data-review-trigger]") !== null) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [onClose]);
+  return (
+    <div
+      ref={rootRef}
+      role="dialog"
+      aria-label="Finish your review"
+      className={cn("absolute right-0 top-full z-20 mt-1.5 flex w-80 flex-col gap-3 rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md", POPOVER_MOTION)}
+      onKeyDown={(keyboard) => {
+        if ((keyboard.metaKey || keyboard.ctrlKey) && keyboard.key === "Enter") {
+          keyboard.preventDefault();
+          if (canSubmit && !submitting) onSubmit();
+          return;
+        }
+        onKeys(keyboard);
+      }}
+    >
+      <textarea
+        ref={textareaRef}
+        autoFocus
+        value={comment}
+        rows={4}
+        readOnly={submitting}
+        onChange={(change) => onComment(change.target.value)}
+        placeholder="Leave a comment"
+        aria-label="Review comment"
+        className="w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring read-only:opacity-50"
+      />
+      <div role="radiogroup" aria-label="Review as" className="flex flex-col gap-0.5">
+        {REVIEW_EVENTS.map((option) => {
+          const disabled = !canApprove && option.value !== "COMMENT";
+          const checked = option.value === event;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              data-value={option.value}
+              disabled={disabled}
+              title={disabled ? OWN_PR : undefined}
+              onClick={() => onEvent(option.value)}
+              className={cn("flex items-start gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50", PRESS)}
+            >
+              <span aria-hidden className={cn("mt-1 flex size-3.5 shrink-0 items-center justify-center rounded-full border", checked ? "border-foreground" : "border-muted-foreground")}>
+                {checked ? <span className="size-2 rounded-full bg-foreground" /> : null}
+              </span>
+              <span className="flex min-w-0 flex-col">
+                <span className="font-medium">{option.label}</span>
+                <span className="text-xs text-muted-foreground">{option.description}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
+        {canSubmit ? null : <span className="mr-auto text-xs text-muted-foreground">Write a comment or leave drafts on the diff</span>}
+        <Button type="button" variant="ghost" className={COMPACT} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="button" className={COMPACT} disabled={!canSubmit || submitting} onClick={onSubmit}>
+          <Icon name={event === "APPROVE" ? "Check" : "GitPullRequest"} className="size-3.5" />
+          Submit review
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Sends local comments to an apply thread, and GitHub drafts to the pull request through a Submit review button that
+ * opens GitHub's "Finish your review" box: a comment and, on someone else's PR, Comment / Approve / Request changes.
+ */
+function KanbanSubmitBar({
+  subjectId,
+  pending,
+  canPostToGithub,
+  canApprove,
+  onOpenThread,
+  onSubmitted,
+}: {
+  subjectId: string;
+  pending: PendingComments;
+  canPostToGithub: boolean;
+  canApprove: boolean;
+  onOpenThread: (threadId: string) => void;
+  onSubmitted: () => void;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const [push, setPush] = usePushPreference();
   const [chosenEvent, setReviewEvent] = useState<ReviewEvent>("COMMENT");
   const reviewEvent = canApprove ? chosenEvent : "COMMENT";
-  const [summary, setSummary] = useState("");
-  const summaryRef = useRef<HTMLTextAreaElement | null>(null);
+  const [comment, setComment] = useState("");
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [submitting, setSubmitting] = useState<"github" | "agent" | null>(null);
   const { local, githubDrafts } = pending;
   const localPop = usePopOnChange(local.length);
   const draftsPop = usePopOnChange(githubDrafts.length);
-  const onKeyDown = useKeyHandler<"summary">({
+  const canSubmitReview = githubDrafts.length > 0 || comment.trim() !== "" || reviewEvent !== "COMMENT";
+  const openReview = () => {
+    setOpen(true);
+    // Already open: the comment box, where a fresh one starts anyway.
+    triggerRef.current?.parentElement?.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')?.focus();
+  };
+  const closeReview = useCallback(() => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }, []);
+  const onBarKeys = useKeyHandler<"review">({
     keymap: SEND_BAR_KEYS,
-    active: () => githubDrafts.length > 0,
-    onCommand: () => summaryRef.current?.focus(),
+    active: () => canPostToGithub,
+    onCommand: openReview,
   });
   const submit = async (destination: "github" | "agent") => {
     setSubmitting(destination);
@@ -147,14 +300,27 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
         ticketId: subjectId,
         postToGithub: destination === "github",
         reviewEvent,
-        reviewBody: destination === "github" ? summary : "",
+        reviewBody: destination === "github" ? comment : "",
         address: destination === "agent",
         push,
       });
-      const posted = reviewEvent === "APPROVE" ? `Approved with ${result.posted} on GitHub${result.movedToDone ? "; the card moved to Done" : ""}` : reviewEvent === "REQUEST_CHANGES" ? `Requested changes with ${result.posted} on GitHub` : `Posted ${result.posted} to GitHub`;
+      const count = result.posted;
+      const posted =
+        reviewEvent === "APPROVE"
+          ? `${count > 0 ? `Approved with ${count}` : "Approved"} on GitHub${result.movedToDone ? "; the card moved to Done" : ""}`
+          : reviewEvent === "REQUEST_CHANGES"
+            ? `${count > 0 ? `Requested changes with ${count}` : "Requested changes"} on GitHub`
+            : count > 0
+              ? `Posted ${count} to GitHub`
+              : "Posted your comment to GitHub";
       toast.success(destination === "github" ? posted : "Address thread started");
-      // A failed post keeps the summary for the retry.
-      if (destination === "github") setSummary("");
+      if (destination === "github") {
+        // A failed submit keeps the box as it was for the retry.
+        setComment("");
+        setReviewEvent("COMMENT");
+        setOpen(false);
+        triggerRef.current?.closest<HTMLElement>("[data-diff-root]")?.focus({ preventScroll: true });
+      }
       if (result.apply !== null) onOpenThread(result.apply.threadId);
     } catch (cause) {
       toastError(cause);
@@ -165,7 +331,7 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
     }
   };
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)} onKeyDown={onKeyDown}>
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)} onKeyDown={onBarKeys}>
       {local.length > 0 ? (
         <>
           <span className="text-sm">
@@ -183,46 +349,47 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
           </span>
         </>
       ) : null}
-      {githubDrafts.length > 0 ? (
-        <span className={cn("flex min-w-0 grow flex-wrap items-center gap-x-3 gap-y-1.5", local.length > 0 && "ml-auto")}>
-          <span className="whitespace-nowrap text-sm">
-            <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
-              {githubDrafts.length}
-            </span>{" "}
-            GitHub draft{githubDrafts.length === 1 ? "" : "s"}
-          </span>
-          <textarea
-            ref={summaryRef}
-            value={summary}
-            rows={1}
-            readOnly={submitting !== null}
-            onChange={(event) => setSummary(event.target.value)}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && submitting === null) void submit("github");
-            }}
-            placeholder="Leave a comment"
-            aria-label="Review summary"
-            title="Posted as the review's summary, above any file-level drafts (⌘↩ posts, Esc back to the diff)"
-            className="min-w-48 grow resize-y rounded-md border border-input bg-transparent px-2.5 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring read-only:opacity-50"
-          />
-          {canApprove ? <SegmentedTabs
-              label="Review as"
-              value={reviewEvent}
-              options={REVIEW_EVENTS}
-              onChange={setReviewEvent}
-              onActivate={() => {
-                if (submitting === null) void submit("github");
-              }}
-              selectedTabProps={{ "data-send-bar-focus": "" }}
-              className="shrink-0"
-              tabClassName="whitespace-nowrap px-2 py-0.5"
-            /> : null}
-          <span title="New threads post as one review; replies post into their threads">
-            <Button type="button" variant="secondary" className={COMPACT} disabled={submitting !== null} onClick={() => void submit("github")}>
-              <Icon name={reviewEvent === "APPROVE" ? "Check" : "GitPullRequest"} className="size-3.5" />
-              {reviewEvent === "APPROVE" ? `Approve with ${githubDrafts.length}` : reviewEvent === "REQUEST_CHANGES" ? `Request changes with ${githubDrafts.length}` : `Post ${githubDrafts.length} to GitHub`}
+      {canPostToGithub ? (
+        <span className={cn("relative flex items-center gap-x-3", local.length > 0 && "ml-auto")}>
+          {githubDrafts.length > 0 ? (
+            <span className="whitespace-nowrap text-sm">
+              <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
+                {githubDrafts.length}
+              </span>{" "}
+              GitHub draft{githubDrafts.length === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          <span title="Finish your review: a comment, how it concludes, then submit (new threads post as one review; replies post into their threads)">
+            <Button
+              ref={triggerRef}
+              type="button"
+              variant="secondary"
+              className={COMPACT}
+              data-send-bar-focus=""
+              data-review-trigger=""
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              disabled={submitting !== null}
+              onClick={() => (open ? closeReview() : openReview())}
+            >
+              <Icon name="GitPullRequest" className="size-3.5" />
+              Submit review
+              {githubDrafts.length > 0 ? <span className="rounded-full bg-foreground/15 px-1.5 text-xs tabular-nums">{githubDrafts.length}</span> : null}
             </Button>
           </span>
+          {open ? (
+            <ReviewPopover
+              comment={comment}
+              onComment={setComment}
+              event={reviewEvent}
+              onEvent={setReviewEvent}
+              canApprove={canApprove}
+              canSubmit={canSubmitReview}
+              submitting={submitting !== null}
+              onSubmit={() => void submit("github")}
+              onClose={closeReview}
+            />
+          ) : null}
         </span>
       ) : null}
     </div>
@@ -300,7 +467,9 @@ export function KanbanDiffView({
           {ticket === null ? null : <HandoffStrip ticket={ticket} rpc={rpc} plan={plan} onOpenThread={onOpenThread} />}
         </>
       }
-      renderSubmitBar={(pending) => <KanbanSubmitBar subjectId={subjectId} pending={pending} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />}
+      renderSubmitBar={(pending) => (
+        <KanbanSubmitBar subjectId={subjectId} pending={pending} canPostToGithub={ticket?.canPostToGithub ?? false} canApprove={ticket?.pr?.role === "other"} onOpenThread={onOpenThread} onSubmitted={refetch} />
+      )}
       // PR cards only: a local card's diff has no head sha, so it never has a delta to re-review.
       deltaActions={ticket !== null && ticket.pr !== null ? <RereviewDeltaButton ticket={ticket} /> : null}
     />

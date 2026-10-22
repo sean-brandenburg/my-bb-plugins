@@ -361,15 +361,18 @@ export function createDiffComments(
     if (postToGithub && postingDrafts.has(ticket.id)) throw new Error("Already posting this card's drafts to GitHub");
     const local = address ? stmts.pendingDiffComments.all(ticket.id).map(rowToDiffComment) : [];
     const drafts = postToGithub ? stmts.githubDraftComments.all(ticket.id).map(rowToDiffComment) : [];
-    if (local.length === 0 && drafts.length === 0) throw new Error("No pending comments to submit");
+    const summary = reviewBody.trim();
+    // As on GitHub, a review needs no inline comments: a comment or a verdict is enough.
+    const reviewAlone = postToGithub && drafts.length === 0 && (summary !== "" || reviewEvent !== "COMMENT");
+    if (local.length === 0 && drafts.length === 0 && !reviewAlone) throw new Error("No pending comments to submit; write a review comment or leave comments on the diff first");
     let posted = 0;
     let postedUrl: string | null = null;
     let movedToDone = false;
-    if (drafts.length > 0) {
+    if (drafts.length > 0 || reviewAlone) {
       postingDrafts.add(ticket.id);
       try {
         if (reviewEvent !== "COMMENT" && ticket.pr?.role === "authored") throw new Error("GitHub doesn't let you approve or request changes on your own pull request");
-        const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent, reviewBody.trim());
+        const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent, summary);
         posted = result.posted;
         postedUrl = result.url;
         movedToDone = result.movedToDone;

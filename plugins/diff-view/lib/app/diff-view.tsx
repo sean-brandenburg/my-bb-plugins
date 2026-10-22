@@ -876,7 +876,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
         <ReviewKeysContext.Provider value={keys}>
           <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none">
             {toolbar}
-            {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? (
+            {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0 || source.canPostToGithub === true) ? (
               <div data-diff-submit-bar="">{renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments })}</div>
             ) : null}
 

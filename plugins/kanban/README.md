@@ -447,17 +447,19 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Replies in threads that are not on GitHub stay local either way. "Make local"
   / "Move to GitHub" switches a comment that has not been sent yet. The bar at the top has two actions:
   **Send N to agent** hands the local comments to a thread running
-  `apply-pr-comments` (with the same and-push option), and
-  **Post N to GitHub** posts the drafts: new threads as one review (inline
-  where a line is given, in the review body otherwise) and replies into their
-  GitHub threads. A summary box beside the drafts is the review's body, as
-  GitHub's "Leave a comment" on "Finish your review": it goes above any
-  file-level drafts, and with only replies to post it goes up as a review of
-  its own. On someone else's PR a **Comment / Approve / Request
-  changes** picker sets how that review concludes; an approval also moves the
-  card to Done, since your review of it is finished. From the diff, `s` lands
-  on the picker: `h`/`l` (or the arrows) choose, `i` types the summary (⌘↩
-  posts from it), Enter posts, Tab reaches the button, Escape returns.
+  `apply-pr-comments` (with the same and-push option), and **Submit review**
+  (with the GitHub draft count on it) opens GitHub's "Finish your review"
+  box: a "Leave a comment" field, then **Comment / Approve / Request
+  changes** (only Comment on your own PR, as on GitHub), then Submit. The
+  review needs no drafts: a comment or a verdict alone goes up as a review of
+  its own. With drafts, new threads post as one review (inline where a line is
+  given, in the review body otherwise, under your comment) and replies post
+  into their GitHub threads. An approval also moves the card to Done, since
+  your review of it is finished. From the diff, `s` lands on the button and
+  Enter or `i` opens the box on the comment; in it `j`/`k` (or the arrows)
+  pick how the review concludes, `i` returns to the comment, ⌘↩ submits, and
+  Escape closes it keeping what you typed (Escape on the button returns to the
+  diff). Clicking outside closes it too.
 - **Comment threads**: the changes view shows the PR's inline GitHub review
   comments under their lines, threaded with their replies, alongside the
   board's own comments. Resolved threads start collapsed; comments whose line

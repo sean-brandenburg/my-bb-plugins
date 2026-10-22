@@ -78,8 +78,12 @@ export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "upho
 export const FINDING_ACTIONS: ReadonlySet<BriefAction> = new Set(["pull-in", "uphold", "close-dispute"]);
 
 /** Keys inside an open card, which take them before the board does. */
-/** In the diff's send bar, `i` starts typing the review's summary; the diff's own `i` (a line comment) stays out of it. */
-export const SEND_BAR_KEYS: Keymap<"summary"> = { i: "summary" };
+/** In the diff's send bar, `i` opens the review box on its comment; the diff's own `i` (a line comment) stays out of it. */
+export const SEND_BAR_KEYS: Keymap<"review"> = { i: "review" };
+
+/** The review box's keys: j/k walk Comment / Approve / Request changes, i goes to the comment, Escape closes. */
+export type ReviewPopoverCommand = 1 | -1 | "comment" | "close";
+export const REVIEW_POPOVER_KEYS: Keymap<ReviewPopoverCommand> = { j: 1, k: -1, "<Down>": 1, "<Up>": -1, i: "comment", "<Esc>": "close" };
 
 export const CARD_KEYMAP: Keymap<CardCommand> = {
   j: { kind: "step", direction: "down" },
