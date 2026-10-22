@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { PRESS, SOFT, STAGGER, cx, enter, speed, stagger } from "bb-motion";
-import { UrlLink } from "@get-bb/plugin-sdk/app";
+import { UrlLink, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import type { PluginRpcResult } from "@get-bb/plugin-sdk";
 import type { FileEntry } from "../../contract";
@@ -9,7 +9,7 @@ import { plainListText } from "../../shared/daily";
 import { errorMessage } from "../../shared/errors";
 import { noteTitle } from "../../shared/obsidian";
 import { LoadingLines } from "../Loading";
-import { useOpenNote } from "../navigation";
+import { PANEL_PATH, calendarSubPath, useOpenNote } from "../navigation";
 import { useVaultChanges, type Vault } from "../vault-client";
 import { CaptureInput, openToday, startRoutine } from "./capture";
 
@@ -38,6 +38,7 @@ function Empty({ children }: { children: ReactNode }) {
 export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly FileEntry[] }) {
   const { rpc, status } = vault;
   const openNote = useOpenNote();
+  const navigate = useBbNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +77,9 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
           </Button>
           <Button size="sm" variant="outline" onClick={() => void startRoutine("wrap")}>
             Wrap up day
+          </Button>
+          <Button size="sm" variant="outline" aria-label="Calendar (gc)" onClick={() => navigate.toPluginPanel(PANEL_PATH, { subPath: calendarSubPath() })}>
+            Calendar
           </Button>
         </div>
         <CaptureInput className="ob-capture-dashboard mt-4" />

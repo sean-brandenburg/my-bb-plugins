@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { NUDGE, cx, enter, speed, useReplay } from "bb-motion";
 import { editField, scrollPane } from "bb-vim-keys";
@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
-import { dateKeyOfDailyPath } from "../shared/daily";
+import { dateKeyOfDailyPath, localDateKey } from "../shared/daily";
+import { CalendarView, openMeetingRules, type CalendarKeys } from "./calendar/CalendarView";
 import { DailyNoteActions, Dashboard, startRoutine } from "./daily";
 import { ATTACHMENT_EXTENSIONS } from "./file-kinds";
-import { decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
+import { calendarDateOf, decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
 import { focusEditor } from "./Editor";
 import { VaultExplorer } from "./Explorer";
 import { backlinksTab, outlineTab } from "./fixed-tabs";
@@ -111,7 +112,9 @@ export function VaultPage({ subPath }: { subPath: string }) {
   const { rpc, status, tree, resolver, notePaths, error, refreshTree } = vault;
   const actions = useVaultActions(vault);
   const previewBase = usePreviewBase(rpc);
-  const currentPath = subPath === "" ? null : decodeNotePath(subPath);
+  const calendarDate = calendarDateOf(subPath, localDateKey(new Date()));
+  const currentPath = subPath === "" || calendarDate !== null ? null : decodeNotePath(subPath);
+  const calendarKeys = useRef<CalendarKeys | null>(null);
   const titleFocusPath = useTitleFocusPath();
   const [, setQuery] = useSearchQuery();
 
@@ -163,7 +166,8 @@ export function VaultPage({ subPath }: { subPath: string }) {
     [currentPath, resolver, openNote, createNote],
   );
 
-  const onDashboard = currentPath === null || folderExists(currentPath);
+  const onCalendar = calendarDate !== null;
+  const onDashboard = !onCalendar && (currentPath === null || folderExists(currentPath));
 
   useSurfaceFocusRequest("page", root, () => root?.focus({ preventScroll: true }));
   useVaultPageCommands(root, () => setMode((current) => (current === "edit" ? "read" : "edit")));
@@ -178,6 +182,12 @@ export function VaultPage({ subPath }: { subPath: string }) {
       }
       return true;
     }
+    if (command.kind === "rules" && !onCalendar) {
+      void openMeetingRules(rpc, openNote);
+      return true;
+    }
+    // The calendar takes its keys first: h and l step days there, so the sidebar is - or t.
+    if (onCalendar) return calendarKeys.current?.(command, count) || global(command);
     // h steps left: across the home's buttons, then out into the file sidebar.
     if (command.kind === "list" && command.motion === "left") {
       if (onDashboard && runListCommand(root, command, { count })) return true;
@@ -292,12 +302,14 @@ export function VaultPage({ subPath }: { subPath: string }) {
         </div>
       )}
       <main ref={setRoot} tabIndex={-1} className="ob-main outline-none">
-        {onDashboard ? (
+        {calendarDate !== null ? (
+          <CalendarView vault={vault} dateKey={calendarDate} keys={calendarKeys} />
+        ) : onDashboard ? (
           <Dashboard vault={vault} recent={recent} />
         ) : (
           <NoteView
             key={currentPath}
-            path={currentPath}
+            path={currentPath!}
             vaultPath={status.vaultPath}
             rpc={rpc}
             resolver={resolver}
@@ -305,7 +317,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
             previewBase={previewBase}
             mode={mode}
             setMode={setMode}
-            headerActions={({ flush }) => <DailyNoteActions path={currentPath} status={status} flush={flush} />}
+            headerActions={({ flush }) => <DailyNoteActions path={currentPath!} status={status} flush={flush} />}
             focusTitle={titleFocusPath === currentPath}
             onOpenLink={openLink}
             onTagClick={(tag) => {

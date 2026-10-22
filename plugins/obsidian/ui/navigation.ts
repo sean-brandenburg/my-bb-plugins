@@ -1,11 +1,28 @@
 // Opening notes on the Vault page and jumping to a line, heading, or block in them.
 import { useCallback, useSyncExternalStore } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { isDateKey } from "../shared/daily";
 import type { NavigationTarget } from "../shared/note-text";
 import { safeDecode } from "../shared/obsidian";
 import { createStore } from "./state";
 
 export const PANEL_PATH = "vault";
+
+/** The calendar view's subPath; a colon can't start a note's name, so it can't collide with one. */
+export const CALENDAR_PREFIX = ":calendar";
+
+export function calendarSubPath(dateKey?: string): string {
+  return dateKey === undefined ? CALENDAR_PREFIX : `${CALENDAR_PREFIX}/${dateKey}`;
+}
+
+/** The day a calendar subPath shows (today when it names none or a bad one); null for anything else. */
+export function calendarDateOf(subPath: string, todayKey: string): string | null {
+  const path = decodeNotePath(subPath);
+  if (path === CALENDAR_PREFIX) return todayKey;
+  if (!path.startsWith(`${CALENDAR_PREFIX}/`)) return null;
+  const date = path.slice(CALENDAR_PREFIX.length + 1);
+  return isDateKey(date) ? date : todayKey;
+}
 
 /** The host percent-encodes subPath when navigating but hands it back still encoded. */
 export function decodeNotePath(subPath: string): string {

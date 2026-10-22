@@ -104,3 +104,15 @@ describe("formatMeeting", () => {
     assert.equal(formatMeeting(toMeeting(event({ allDay: true, canceled: true, attendees: 1 }))), "- all day Widget Weekly Sync (1 person, canceled)");
   });
 });
+
+describe("week helpers", () => {
+  it("find Monday and the week's days across a month boundary", async () => {
+    const { addDays, weekDays, weekStart } = await import("./calendar.ts");
+    assert.equal(weekStart("2026-10-22"), "2026-10-19");
+    assert.equal(weekStart("2026-10-19"), "2026-10-19");
+    assert.equal(weekStart("2026-10-25"), "2026-10-19");
+    assert.equal(addDays("2026-10-31", 1), "2026-11-01");
+    assert.equal(addDays("2026-11-01", -1), "2026-10-31");
+    assert.deepEqual(weekDays("2026-11-01"), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
+  });
+});

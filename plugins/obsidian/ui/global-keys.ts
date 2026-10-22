@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { stepWrapping } from "bb-vim-keys";
 import { openToday } from "./daily";
-import { PANEL_PATH, useOpenNote } from "./navigation";
+import { PANEL_PATH, calendarSubPath, useOpenNote } from "./navigation";
 import { getSearchStops, requestPanelTab, setKeysHelpOpen, setSearchStopIndex } from "./state";
 import { requestSurfaceFocus } from "./vault-keys";
 import type { VaultCommand } from "./vault-nav";
@@ -46,6 +46,10 @@ export function useGlobalCommands(): (command: VaultCommand) => boolean {
           return true;
         case "today":
           void openToday().then(() => requestSurfaceFocus("page"));
+          return true;
+        case "calendar":
+          navigate.toPluginPanel(PANEL_PATH, { subPath: calendarSubPath() });
+          requestSurfaceFocus("page");
           return true;
         case "help":
           setKeysHelpOpen(true);

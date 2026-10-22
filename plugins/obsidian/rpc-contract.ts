@@ -80,7 +80,52 @@ export type Ticket = z.infer<typeof ticketSchema>;
 export const routineModeSchema = z.enum(["start", "log", "wrap"]);
 export type RoutineMode = z.infer<typeof routineModeSchema>;
 
+const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** A calendar event as `shared/calendar.ts` shapes it. */
+export const meetingSchema = z.object({
+  title: z.string(),
+  start: z.string(),
+  end: z.string(),
+  calendar: z.string(),
+  attendees: z.number(),
+  myStatus: z.string().nullable(),
+  organizer: z.string().nullable(),
+  location: z.string().nullable(),
+  meetingUrl: z.string().nullable(),
+  notes: z.string().nullable(),
+  allDay: z.boolean(),
+  declined: z.boolean(),
+  canceled: z.boolean(),
+});
+
+/** A meeting with the note the rules would give it. */
+export const plannedMeetingSchema = meetingSchema.extend({
+  /** The local date it starts on. */
+  date: dateKey,
+  note: z.object({ path: z.string(), rule: z.string(), template: z.string().nullable() }),
+});
+export type PlannedMeeting = z.infer<typeof plannedMeetingSchema>;
+
 export const dailyRpcContract = defineRpcContract({
+  /** Meetings between two local dates, `to` exclusive, every calendar entry included. */
+  meetings: {
+    input: z.object({ from: dateKey, to: dateKey }).strict(),
+    output: z.object({
+      meetings: z.array(plannedMeetingSchema),
+      rules: z.object({ path: z.string(), exists: z.boolean(), errors: z.array(z.string()) }),
+    }),
+  },
+  /** Creates the meeting's note from its rule (or finds the existing one) and links it from the day's daily note. */
+  startMeetingNote: {
+    input: z.object({ meeting: meetingSchema }).strict(),
+    output: z.object({ path: z.string(), created: z.boolean() }),
+  },
+  /** The rules note's path, writing the starter when there is none yet. */
+  ensureMeetingRules: {
+    input: z.null(),
+    output: z.object({ path: z.string(), created: z.boolean() }),
+  },
   capture: {
     input: z.object({ text: z.string().min(1).max(50_000), threadId: z.string().optional() }).strict(),
     output: z.object({ path: z.string() }),

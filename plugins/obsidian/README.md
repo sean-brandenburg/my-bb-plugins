@@ -45,8 +45,13 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
   moves, `dd` deletes, `zM` collapses all, `i` types in the search box.
 - Anywhere: `/` searches the vault (Enter opens the first match), `n`/`N` open
   the next/previous match, `-` jumps to the open note in the file sidebar, `gO`/`gb` to
-  Outline/Backlinks, `gh`/`gt` go home/to today. Escape in the sidebar or a tab
+  Outline/Backlinks, `gh`/`gt` go home/to today, `gc` to the calendar. Escape in the sidebar or a tab
   returns to the note.
+- Calendar: `j`/`k` move through the day's meetings, `h`/`l` step days (so the
+  file sidebar is `-` or `t` here), `H`/`L` weeks, `T` or `gc` back to today;
+  `o`/Enter/`a` open or start the meeting's note, `gx` joins the call, `y`/`Y`
+  copy the call link / a wikilink to the note, `R` re-reads the calendar, `gr`
+  opens the rules.
 
 ## Daily notes
 
@@ -54,6 +59,8 @@ text live in `ui/vault-nav.ts`, the routing between surfaces in
 - **Activity**: every bb thread that finishes a turn is recorded per day (title, project, last reply): `bb obsidian activity`. Turn it off with *Record bb thread activity*.
 - **Routines**: **Start day** / **Wrap up** (Vault home, today's note, command palette, `bb obsidian start|wrap`) start a Claude thread running `/daily-note start|wrap` in a bb project rooted at the vault. That project is created on first use.
 - **Calendar**: `bb obsidian calendar [--date D] [--json]` lists a day's meetings from macOS Calendar, so add your Google account under System Settings → Internet Accounts. The plugin builds a small helper app, *bb Calendar Reader*, in its host data folder the first time; macOS asks once for calendar access for it. *Calendars for meetings* limits which calendars are read.
+- **Calendar view**: `gc` (or the Calendar button on the Vault home) shows a week strip over one day's meetings. `j`/`k` move through them, `h`/`l` step days, `H`/`L` weeks, `T` returns to today. Enter on a meeting opens its note, creating it first from its template when there is none, and links it from that day's daily note's Meetings section. `gx` joins the video call, `R` reads the calendar again.
+- **Meeting note rules**: where a meeting's note lands is decided by a YAML list in a vault note (*Meeting note rules*, default `Templates/Meeting Note Rules.md`; `gr` opens it and writes a worked example the first time). Each rule can match the title, organizer, calendar, location or description with case-insensitive regular expressions, an attendee count (`3+`, `2-5`) and all-day; the first match wins. A rule names the `folder`, the `file` name pattern and the `template`; placeholders such as `{{title}}`, `{{date}}`, `{{time}}`, `{{url}}`, named regex groups and `extract`ed title fragments fill both. Meetings no rule matches use the *Meeting notes folder* and *Meeting note template* settings.
 - **Vault home**: today's inbox, carried-forward items, active `Tickets/` notes, and recently edited notes.
 - **`@` mentions**: attach any vault note, or "Today's daily note", as context in any thread.
 - The bundled `obsidian-vault` skill teaches agents the CLI and the vault conventions.

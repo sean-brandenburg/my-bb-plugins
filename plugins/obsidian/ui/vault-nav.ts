@@ -28,6 +28,12 @@ export type VaultCommand =
   | { kind: "sidebar" }
   | { kind: "home" }
   | { kind: "today" }
+  | { kind: "calendar" }
+  | { kind: "calendarToday" }
+  | { kind: "week"; step: 1 | -1 }
+  | { kind: "refresh" }
+  | { kind: "join" }
+  | { kind: "rules" }
   | { kind: "escape" }
   | { kind: "help" };
 
@@ -49,6 +55,10 @@ export const KEYMAP: Keymap<VaultCommand> = {
   O: { kind: "openInObsidian" },
   S: { kind: "routine", mode: "start" },
   W: { kind: "routine", mode: "wrap" },
+  H: { kind: "week", step: -1 },
+  L: { kind: "week", step: 1 },
+  T: { kind: "calendarToday" },
+  R: { kind: "refresh" },
   "-": { kind: "panel", tab: "files" },
   t: { kind: "sidebar" },
   "<Esc>": { kind: "escape" },
@@ -57,6 +67,9 @@ export const KEYMAP: Keymap<VaultCommand> = {
   gb: { kind: "panel", tab: "backlinks" },
   gh: { kind: "home" },
   gt: { kind: "today" },
+  gc: { kind: "calendar" },
+  gr: { kind: "rules" },
+  gx: { kind: "join" },
   dd: { kind: "delete" },
   zM: { kind: "collapseAll" },
   "<C-d>": { kind: "scroll", motion: "halfDown" },
@@ -103,6 +116,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["t"], action: "Show / hide the file sidebar" },
       { keys: ["gO", "gb"], action: "Outline / backlinks of the open note" },
       { keys: ["gh", "gt"], action: "Vault home / today's daily note" },
+      { keys: ["gc"], action: "The calendar, on today" },
+      { keys: ["gr"], action: "On the page: the meeting note rules (an example is written the first time)" },
       { keys: ["⌘⇧L"], action: "Log to today's daily note" },
       { keys: ["?"], action: "Show these shortcuts" },
     ],
@@ -126,6 +141,21 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["O"], action: "Open in Obsidian" },
       { keys: ["dd"], action: "Delete the note" },
       { keys: ["S", "W"], action: "Start day / wrap up (vault home and today's note)" },
+    ],
+  },
+  {
+    title: "Calendar",
+    keys: [
+      { keys: ["j", "k"], action: "Next / previous meeting" },
+      { keys: ["gg", "G"], action: "First / last meeting" },
+      { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up" },
+      { keys: ["h", "l"], action: "Previous / next day (3l: three days on); the file sidebar is - or t here" },
+      { keys: ["H", "L"], action: "Previous / next week" },
+      { keys: ["T", "gc"], action: "Back to today" },
+      { keys: ["o", "Enter", "a"], action: "Open the meeting's note, starting it from its rule when there is none" },
+      { keys: ["gx"], action: "Join the video call" },
+      { keys: ["y", "Y"], action: "Copy the call link / a wikilink to the note" },
+      { keys: ["R"], action: "Read the calendar again" },
     ],
   },
   {

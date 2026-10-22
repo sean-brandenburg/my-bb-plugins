@@ -11,7 +11,7 @@ export function KeysDialog() {
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl" onAfterCloseAutoFocus={returnFocus}>
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Work anywhere on the Vault page, its file sidebar, and its Outline and Backlinks tabs, outside a text box. The arrow keys work as h, j, k, and l.</DialogDescription>
+          <DialogDescription>Work anywhere on the Vault page (notes, the home, the calendar), its file sidebar, and its Outline and Backlinks tabs, outside a text box. The arrow keys work as h, j, k, and l.</DialogDescription>
         </DialogHeader>
         <KeyHelp sections={KEY_HELP} />
       </DialogContent>

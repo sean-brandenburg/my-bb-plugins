@@ -653,3 +653,161 @@ details.ob-callout > summary {
   padding: 0.125rem 0;
   overflow-wrap: anywhere;
 }
+
+/* The calendar view: a week strip over one day's meetings. */
+.ob-cal {
+  height: 100%;
+  overflow-y: auto;
+}
+.ob-cal-inner {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 48rem;
+  padding: 2.5rem 1.5rem 4rem;
+}
+.ob-cal-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ob-cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+  margin-top: 1rem;
+}
+.ob-cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.ob-cal-day:hover {
+  background: var(--state-hover, var(--accent));
+}
+.ob-cal-day-number {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.ob-cal-day-count {
+  min-height: 1em;
+}
+.ob-cal-day-today .ob-cal-day-number {
+  color: var(--primary);
+}
+.ob-cal-day-active {
+  border-color: var(--border);
+  background: var(--muted);
+}
+.ob-cal-list {
+  margin-top: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.ob-cal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 0.625rem 0.875rem;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  outline: none;
+}
+.ob-cal-row + .ob-cal-row {
+  border-top: 1px solid var(--border);
+}
+.ob-cal-row:hover {
+  background: var(--state-hover, var(--accent));
+}
+/* The j/k cursor: rows are focused from keys, so focus-visible marks it. */
+.ob-cal-row:focus-visible {
+  background: var(--state-hover, var(--accent));
+  box-shadow: inset 0 0 0 1px var(--ring, var(--primary));
+}
+.ob-cal-now {
+  border-left-color: var(--primary);
+}
+.ob-cal-past .ob-cal-time,
+.ob-cal-past .ob-cal-title {
+  color: var(--muted-foreground);
+}
+.ob-cal-dim {
+  opacity: 0.55;
+}
+.ob-cal-time {
+  display: flex;
+  flex-direction: column;
+  width: 3.25rem;
+  flex-shrink: 0;
+  padding-top: 0.0625rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+.ob-cal-time > span:last-child {
+  color: var(--muted-foreground);
+}
+.ob-cal-body {
+  flex: 1;
+  min-width: 0;
+}
+.ob-cal-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ob-cal-badge {
+  padding: 0 0.4rem;
+  border-radius: 9999px;
+  background: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.ob-cal-meta,
+.ob-cal-note {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.ob-cal-note-exists {
+  color: var(--foreground);
+}
+.ob-cal-note-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.375rem;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  vertical-align: 0;
+}
+.ob-cal-note-exists .ob-cal-note-dot {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.ob-cal-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  align-self: center;
+}
+.ob-cal-rules {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}

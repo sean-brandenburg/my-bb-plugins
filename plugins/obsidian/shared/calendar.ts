@@ -104,3 +104,27 @@ export function formatMeeting(meeting: Meeting): string {
   const suffix = details.length === 0 ? "" : ` (${details.join(", ")})`;
   return `- ${time} ${meeting.title}${suffix}${meeting.meetingUrl === null ? "" : ` ${meeting.meetingUrl}`}`;
 }
+
+/** `days` after (or, negative, before) a YYYY-MM-DD date, at noon so DST changes can't skip or repeat a day. */
+export function addDays(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
+
+/** The Monday on or before a date. */
+export function weekStart(dateKey: string): string {
+  const day = new Date(`${dateKey}T12:00:00`).getDay();
+  return addDays(dateKey, -((day + 6) % 7));
+}
+
+/** The seven days of the week holding a date, Monday first. */
+export function weekDays(dateKey: string): string[] {
+  const monday = weekStart(dateKey);
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+}
+
+/** The local date a meeting starts on. */
+export function meetingDateKey(meeting: Pick<Meeting, "start">): string {
+  return localDateKey(new Date(meeting.start));
+}

@@ -13,7 +13,10 @@ Work in your Obsidian vault without leaving bb.
 - A **daily note**: ⌘⇧L or "Save to today's daily note" on any chat message
   logs to today's inbox, and every bb thread that finishes a turn is recorded
   for the day.
-- Today's meetings from macOS Calendar for agents, with `bb obsidian calendar`.
+- A **calendar** of your week's meetings from macOS Calendar. One key starts a
+  note for a meeting, filed where your rules say: interviews in one folder,
+  one-on-ones in another, the rest under Meetings. Agents read the same
+  calendar with `bb obsidian calendar`.
 - **Start day** and **Wrap up**, which run your `/daily-note` routine in a
   thread inside the vault.
 - A **Vault home** with today's inbox, carried-forward items, active tickets,

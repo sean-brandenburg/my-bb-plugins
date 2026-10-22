@@ -15,7 +15,7 @@ The Obsidian Vault plugin connects bb to one Obsidian vault. Run `bb obsidian pa
 | `bb obsidian today` | Print the absolute path of today's daily note, creating it first. Add `--content` to print the note instead. |
 | `bb obsidian search <query>` | Full-text search across the vault. Add `--json` for structured output. |
 | `bb obsidian activity [--date YYYY-MM-DD\|today\|yesterday]` | bb threads worked on that day: project, title, time span, turns, last reply. |
-| `bb obsidian calendar [--date YYYY-MM-DD\|today\|yesterday\|tomorrow]` | That day's meetings from macOS Calendar: time, title, attendee count, the user's response when it isn't "accepted", and the video call link. Skips all-day, declined, and canceled events unless you add `--all`. `--json` adds organizer, location, and a shortened description. It works inside the sandbox. If it fails (no calendar access, Calendar not set up), report its error message as the reason the meetings are missing. |
+| `bb obsidian calendar [--date YYYY-MM-DD\|today\|yesterday\|tomorrow]` | That day's meetings from macOS Calendar: time, title, attendee count, the user's response when it isn't "accepted", and the video call link. Skips all-day, declined, and canceled events unless you add `--all`. `--json` adds organizer, location, a shortened description, and under `note` the vault path the meeting's note has or would get by the user's meeting note rules (`note.path`; check whether it exists before creating it). It works inside the sandbox. If it fails (no calendar access, Calendar not set up), report its error message as the reason the meetings are missing. |
 | `bb obsidian start` / `bb obsidian wrap` | Start a Claude thread running `/daily-note start` or `/daily-note wrap` in the vault. |
 
 ## Logging
@@ -31,7 +31,7 @@ The Obsidian Vault plugin connects bb to one Obsidian vault. Run `bb obsidian pa
 - `DailyNotes/YYYY-MM-DD.md`: one note per day. Sections: Inbox (raw captures), Plan, Meetings, Work Log, Carry to tomorrow. `/daily-note log` and `/daily-note wrap` file the Inbox into the other sections.
 - `Tickets/PROJ-123.md`: one note per Jira ticket, with `jira`, `status`, `summary`, and `url` in its frontmatter. Daily notes link tickets as `[[PROJ-123]]`.
 - `Wiki/`: durable reference material such as setup guides and runbooks.
-- `Meetings/YYYY-MM-DD Title.md`: meeting notes, linked from that day's daily note.
+- `Meetings/YYYY-MM-DD Title.md`: meeting notes, linked from that day's daily note. The user's meeting note rules (`Templates/Meeting Note Rules.md`, a YAML list) can put some meetings elsewhere (interviews, one-on-ones); `bb obsidian calendar --json` reports the resulting path per meeting, so use it rather than assuming `Meetings/`.
 - Use `[[wikilinks]]` for links between notes, and valid Obsidian markdown.
 
 ## Reading
