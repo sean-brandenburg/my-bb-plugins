@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
-import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel, type LoopGates } from "../shared/loop";
+import { ATTENTION_LEVEL_LABEL, attentionLevelSchema, type AttentionLevel } from "../shared/loop";
 import type { PlanFile, ReadingPlan } from "../shared/reading-plan";
 import type { Ticket } from "../shared/board";
 import type { FindingSeverity, Review } from "../shared/review";
@@ -578,26 +578,6 @@ export function HandoffBrief({ ticket, rpc, run, pending, onOpenThread }: { tick
         </Group>
       )}
     </div>
-  );
-}
-
-const GATE_OPTIONS: Array<{ gate: keyof LoopGates; label: string; title: string }> = [
-  { gate: "plan", label: "Plan approval", title: "The card's thread proposes a plan and waits for your approval or edits before building" },
-  { gate: "findings", label: "Findings approval", title: "Each round's findings wait for you to approve or deselect them before the fix prompt goes out" },
-  { gate: "autoAccept", label: "Auto-accept", title: "A change that ends clean at Glance, with nothing serious open, is accepted without stopping at Needs you" },
-];
-
-/** The loop's gates as checkboxes, each a stop for the card's keys; chosen before monitoring turns on, and changeable after. */
-export function GateOptions({ gates, disabled, onChange }: { gates: LoopGates; disabled: boolean; onChange: (gates: LoopGates) => void }) {
-  return (
-    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      {GATE_OPTIONS.map(({ gate, label, title }) => (
-        <label key={gate} className="flex items-center gap-1.5 text-xs" title={title}>
-          <Checkbox checked={gates[gate]} disabled={disabled} onCheckedChange={(checked) => onChange({ ...gates, [gate]: checked === true })} aria-label={`${label}: ${title}`} />
-          {label}
-        </label>
-      ))}
-    </span>
   );
 }
 

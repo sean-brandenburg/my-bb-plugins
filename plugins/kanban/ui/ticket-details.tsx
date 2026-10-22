@@ -4,10 +4,9 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import { useNerdFont } from "bb-nerd-font";
 import type { Board, Column, Ticket } from "../shared/board";
-import { ATTENTION_LEVEL_LABEL, NEEDS_YOU_REASON_LABEL, defaultGates, formatPathRules, parsePathRules, phaseChip, type PathRule } from "../shared/loop";
+import { defaultGates } from "../shared/loop";
 import { doneColumnId } from "../shared/columns";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -19,8 +18,9 @@ import { ExternalLink, ThreadStatusDot, Select, HEADER_ICON_BUTTON, COMPACT, Gro
 import { ProjectSelect } from "./project-select";
 import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
-import { GateOptions, HandoffBrief, LeftOpenMinors, PlanApproval } from "./brief-panel";
-import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph } from "./badges";
+import { HandoffBrief, LeftOpenMinors, PlanApproval } from "./brief-panel";
+import { LoopSection } from "./loop-section";
+import { ChecksMark, JiraStatusGlyph, PrStateGlyph } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
@@ -113,7 +113,7 @@ function TicketDetails({
   const hasDiff = useTicketHasDiff(ticket, thread);
   const rootRef = useRef<HTMLDivElement>(null);
   const monitored = ticket.loop?.monitored === true;
-  // The gates to monitor with, chosen beside the toggle; a monitored card shows its own.
+  // The gates to monitor with, chosen before the switch turns on; a monitored card shows its own.
   const [gateChoice, setGateChoice] = useState(() => defaultGates(ticket.kind));
   useEffect(() => setGateChoice(defaultGates(ticket.kind)), [ticket.id, ticket.kind]);
   const toggleMonitored = () =>
@@ -305,31 +305,6 @@ function TicketDetails({
             </div>
           )}
         </Property>
-        <Property label="Monitor">
-          <div className="flex min-h-7 flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-sm">
-              <Checkbox checked={monitored} disabled={pending} onCheckedChange={toggleMonitored} aria-label="Monitor: the board checks and reviews this card's work itself" />
-              Review loop
-            </label>
-            <LoopChip ticket={ticket} />
-            {monitored ? <LoopStatus ticket={ticket} onOpenThread={onOpenThread} /> : null}
-          </div>
-          <GateOptions
-            gates={monitored ? ticket.loop!.gates : gateChoice}
-            disabled={pending}
-            onChange={(gates) => (monitored ? void run(() => rpc.call("loop_set_gates", { id: ticket.id, gates })) : setGateChoice(gates))}
-          />
-        </Property>
-        {monitored && ticket.projectId !== null ? (
-          <Property label="Checks">
-            <CheckCommandEditor projectId={ticket.projectId} command={projectSettings[ticket.projectId]?.checkCommand ?? null} rpc={rpc} run={run} onLeave={keys.leave} />
-          </Property>
-        ) : null}
-        {monitored && ticket.projectId !== null ? (
-          <Property label="Path rules">
-            <PathRulesEditor projectId={ticket.projectId} rules={projectSettings[ticket.projectId]?.pathRules ?? []} rpc={rpc} run={run} onLeave={keys.leave} />
-          </Property>
-        ) : null}
         {ticket.pr !== null ? (
           <Property label="Author">
             <span>{ticket.pr.author || "unknown"}</span>
@@ -344,6 +319,19 @@ function TicketDetails({
           </>
         ) : null}
       </dl>
+
+      <LoopSection
+        ticket={ticket}
+        gates={monitored ? ticket.loop!.gates : gateChoice}
+        projectSettings={projectSettings}
+        rpc={rpc}
+        run={run}
+        pending={pending}
+        onToggle={toggleMonitored}
+        onGatesChange={(gates) => (monitored ? void run(() => rpc.call("loop_set_gates", { id: ticket.id, gates })) : setGateChoice(gates))}
+        onOpenThread={onOpenThread}
+        onLeave={keys.leave}
+      />
 
       <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
 
@@ -427,106 +415,6 @@ function TicketDetails({
         </Button>
       </footer>
     </div>
-  );
-}
-
-/** One line on where the loop stands, beyond what the chip says. */
-function LoopStatus({ ticket, onOpenThread }: { ticket: Ticket; onOpenThread: (threadId: string) => void }) {
-  const loop = ticket.loop!;
-  const last = loop.checks.at(-1);
-  const chip = phaseChip(loop);
-  const text =
-    loop.phase === "checking"
-      ? `Re-running \`${loop.checkCommand?.command ?? "checks"}\`${loop.checkCommand?.source === "agent" ? " (the agent's choice)" : ""}`
-      : loop.phase === "planning" || loop.phase === "classifying" || loop.phase === "reviewing" || loop.phase === "fixing"
-        ? (chip?.title ?? "")
-        : loop.phase === "paused"
-          ? "Paused: the card's thread is waiting on you; the loop resumes when it reports ready"
-        : loop.phase === "needs-you" && loop.reason !== null && loop.reason !== "clean"
-          ? `Needs you: ${NEEDS_YOU_REASON_LABEL[loop.reason]}${loop.reason === "checks" && last !== undefined ? `, exit code ${last.exitCode}` : ""}`
-          : loop.phase === "needs-you" && loop.openFindings.length > 0
-            ? `Clean at the round cap with ${loop.openFindings.length} minor finding${loop.openFindings.length === 1 ? "" : "s"} open: ${loop.openFindings.map((finding) => `${finding.id} ${finding.title}`).join(", ")}`
-          : loop.phase === "needs-you" && loop.levelOverride !== null
-            ? `${ATTENTION_LEVEL_LABEL[loop.levelOverride.level]}: you set it, ${loop.levelOverride.reason}`
-          : loop.phase === "needs-you" && loop.attention !== null
-            ? `${ATTENTION_LEVEL_LABEL[loop.attention.level]}: ${loop.attention.reasons.join("; ")}`
-            : last !== undefined
-            ? `Last checks ${last.passed ? "passed" : `failed (exit code ${last.exitCode})`} at ${last.commit.slice(0, 7)}`
-            : "Waiting for the card's thread to report ready";
-  const failedThreadId = loop.phase === "needs-you" && loop.reason === "loop-error" ? loop.failedThreadId : null;
-  return (
-    <span className="text-xs text-muted-foreground" title={chip?.title}>
-      {text}
-      {failedThreadId === null ? null : (
-        <>
-          {" · "}
-          <button type="button" className="hover:underline" onClick={() => onOpenThread(failedThreadId)}>
-            open the failed thread
-          </button>
-        </>
-      )}
-    </span>
-  );
-}
-
-/** The project's check command, shared by every monitored card in it; empty leaves the choice to each card's agent. Saves on blur. */
-function CheckCommandEditor({ projectId, command, rpc, run, onLeave }: { projectId: string; command: string | null; rpc: Rpc; run: RunAction; onLeave: (field: HTMLElement) => void }) {
-  const [value, setValue] = useState(command ?? "");
-  useEffect(() => setValue(command ?? ""), [projectId, command]);
-  const save = () => {
-    const next = value.trim() === "" ? null : value.trim();
-    if (next === command) return;
-    void run(() => rpc.call("project_set_check_command", { projectId, checkCommand: next }), next === null ? "Check command cleared" : "Check command saved");
-  };
-  return (
-    <input
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={save}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        onLeave(event.currentTarget);
-      }}
-      aria-label="The project's check command"
-      placeholder="The agent picks one, e.g. pnpm typecheck && pnpm test"
-      title="Re-run by the board at every ready commit of a monitored card in this project"
-      className="h-7 w-full rounded-md border border-input bg-transparent px-2 font-mono text-xs placeholder:font-sans placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    />
-  );
-}
-
-/** The project's path rules, written `<glob> <level>` and comma-separated. Saves on blur; an entry that isn't a rule keeps the old ones. */
-function PathRulesEditor({ projectId, rules, rpc, run, onLeave }: { projectId: string; rules: PathRule[]; rpc: Rpc; run: RunAction; onLeave: (field: HTMLElement) => void }) {
-  const saved = formatPathRules(rules);
-  const [value, setValue] = useState(saved);
-  useEffect(() => setValue(saved), [projectId, saved]);
-  const save = () => {
-    const parsed = parsePathRules(value);
-    if ("invalid" in parsed) {
-      void run(async () => {
-        throw new Error(`"${parsed.invalid}" isn't a path rule; write a glob and glance, read or scrutinize`);
-      });
-      return;
-    }
-    if (formatPathRules(parsed.rules) === saved) return;
-    void run(() => rpc.call("project_set_path_rules", { projectId, pathRules: parsed.rules }), parsed.rules.length === 0 ? "Path rules cleared" : "Path rules saved");
-  };
-  return (
-    <input
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={save}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        onLeave(event.currentTarget);
-      }}
-      aria-label="The project's path rules"
-      placeholder="e.g. src/auth/** scrutinize, .github/** read"
-      title="Changed files matching a glob get at least its attention level, and the review at least the matching depth"
-      className="h-7 w-full rounded-md border border-input bg-transparent px-2 font-mono text-xs placeholder:font-sans placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    />
   );
 }
 

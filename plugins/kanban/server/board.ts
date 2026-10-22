@@ -211,10 +211,8 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
     jira?: JiraIssue | null;
     parentId?: string | null;
     dueDate?: string | null;
-    /** The card's own monitoring flag, which wins over the defaults; absent, its source or tags decide. */
+    /** The card's own monitoring flag, which wins over the defaults; absent, its tags decide. */
     monitored?: boolean;
-    /** The card comes from a source that monitors new cards. */
-    sourceMonitors?: boolean;
   }): Ticket {
     const now = Date.now();
     const id = shortId();
@@ -252,7 +250,7 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
       updated_at: now,
     });
     const tags = normalizeTags(input.tags ?? []);
-    if (input.monitored ?? (input.sourceMonitors === true || tags.some((tag) => monitorTagsCache.has(tag)))) {
+    if (input.monitored ?? tags.some((tag) => monitorTagsCache.has(tag))) {
       // A new card has no thread to tell, so the monitor event's only other action is the columns.
       stmts.setLoopState.run(JSON.stringify(reduce(INITIAL_LOOP_STATE, { type: "monitor", hasThread: false, gates: defaultGates(input.kind) }).state), id);
       ensureLoopColumns().catch((error: unknown) => bb.log.warn(`could not add the review loop's columns: ${errorMessage(error)}`));

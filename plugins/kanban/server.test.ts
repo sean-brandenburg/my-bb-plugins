@@ -2375,7 +2375,7 @@ describe("tags and sources", () => {
 });
 
 describe("source code reviews", () => {
-  const reviewSource = (reviewNewPrs: string | null, extra: Record<string, unknown> = {}) => ({
+  const reviewSource = (reviewNewPrs: string | null) => ({
     id: "pr-reviews",
     name: "Review requests",
     kind: "github-search",
@@ -2384,7 +2384,6 @@ describe("source code reviews", () => {
     doneWhenGone: true,
     enabled: true,
     reviewNewPrs,
-    ...extra,
   });
   const reviewThreads = () => spawned.filter((args) => (args.pluginMetadata as { role?: string } | undefined)?.role === "review");
 
@@ -2424,8 +2423,8 @@ describe("source code reviews", () => {
 
   it("leaves a card the review loop monitors to the loop", async () => {
     vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
-    await load({ autoStartThreads: false });
-    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("standard", { monitorNewCards: true })] });
+    await load({ autoStartThreads: false, monitorTags: "pr-reviews" });
+    await current().harness.behavior.callRpc("sources_set", { sources: [reviewSource("standard")] });
     await current().harness.behavior.callRpc("sync_now", null);
     await current().harness.behavior.callRpc("sync_now", null);
     expect((await board()).tickets[0]!.loop).toMatchObject({ monitored: true });
@@ -2457,7 +2456,7 @@ describe("source code reviews", () => {
 });
 
 describe("source narratives", () => {
-  const narrateSource = (narrateNewPrs: boolean, extra: Record<string, unknown> = {}) => ({
+  const narrateSource = (narrateNewPrs: boolean) => ({
     id: "pr-reviews",
     name: "Review requests",
     kind: "github-search",
@@ -2466,7 +2465,6 @@ describe("source narratives", () => {
     doneWhenGone: true,
     enabled: true,
     narrateNewPrs,
-    ...extra,
   });
   const narrativeThreads = () => spawned.filter((args) => (args.pluginMetadata as { role?: string } | undefined)?.role === "narrative");
   const finishNarrative = async (threadId: string) =>
@@ -2514,8 +2512,8 @@ describe("source narratives", () => {
 
   it("leaves a card the review loop monitors to the loop", async () => {
     vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 1)] }));
-    await load({ autoStartThreads: false });
-    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true, { monitorNewCards: true })] });
+    await load({ autoStartThreads: false, monitorTags: "pr-reviews" });
+    await current().harness.behavior.callRpc("sources_set", { sources: [narrateSource(true)] });
     await current().harness.behavior.callRpc("sync_now", null);
     await current().harness.behavior.callRpc("sync_now", null);
     expect((await board()).tickets[0]!.loop).toMatchObject({ monitored: true });

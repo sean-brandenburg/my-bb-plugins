@@ -154,6 +154,31 @@ export function Textarea({
 export const HEADER_ICON_BUTTON =
   `relative flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground ${PRESS} hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
 
+/** Turns a mode on or off; a button, so the card's keys reach it and Space presses it. */
+export function Switch({ checked, disabled, onChange, "aria-label": ariaLabel }: { checked: boolean; disabled?: boolean; onChange: (next: boolean) => void; "aria-label": string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "border-foreground bg-foreground" : "border-input bg-transparent",
+        PRESS,
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn("size-2.5 rounded-full", checked ? "bg-background" : "bg-muted-foreground", TRANSFORM_TRANSITION)}
+        style={{ transform: `translate3d(${checked ? 13 : 3}px, 0, 0)` }}
+      />
+    </button>
+  );
+}
+
 /** Compact control sizing for the card panel: the panel is narrow, so chrome stays small. */
 export const COMPACT = "h-7 gap-1.5 px-2 text-xs [&_[data-icon-root]]:size-3.5";
 

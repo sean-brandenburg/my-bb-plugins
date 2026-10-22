@@ -126,8 +126,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   threads; columns and the todo list sit on translucent, blurred panels.
 - **Ad hoc cards** from the page, from `bb kanban add`, or from an agent inside
   a thread (the card is linked to that thread).
-- **Monitored cards**: tick Monitor → Review loop in the card panel (or press
-  `m`, or run `bb kanban monitor on`) and the board drives the card itself. Its
+- **Monitored cards**: turn on the switch in the card panel's Review loop
+  section (or press `m`, or run `bb kanban monitor on`) and the board drives
+  the card itself. Its
   thread is told (in its instructions, and with a message when the thread
   already exists) to commit its work, run the project's check command, and
   finish with `bb kanban ready` and the evidence of what it ran, never moving
@@ -169,8 +170,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   monitoring off stops the loop after its current step: a running check or
   review finishes, and its result is kept but drives nothing; a fix round in
   progress ends with its findings left open, so the review's Apply is back.
-  Three gates sit beside the Monitor toggle (`j`/`k` reach them, Space ticks),
-  chosen as monitoring turns on (`bb kanban monitor on --gates
+  Three gates sit under the switch, each with a one-line hint and a tooltip
+  that also opens when `j`/`k` reach it (Space ticks): two that wait for you
+  and one that finishes on its own. They are chosen as monitoring turns on (`bb kanban monitor on --gates
   plan,findings,auto-accept|none`): plan approval (on by default for Jira
   cards) holds the card in `planning` until its thread proposes a plan with
   `bb kanban plan --plan-stdin` and you approve it, edited or not, with `Y`; the
@@ -179,9 +181,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   untick findings and approve the rest with `Y`; the unticked stay open.
   Auto-accept accepts a clean change at Glance, with no serious finding or
   dispute open, without stopping; never at Read or Scrutinize. Open minors
-  are listed on the accepted card with Make a card. A source's "Monitor new
-  cards" box and the Monitor tags setting monitor new cards by default;
-  `bb kanban add --monitor|--no-monitor` and the card's toggle always win.
+  are listed on the accepted card with Make a card. The Monitor tags setting
+  monitors new cards carrying its tags by default; `bb kanban add
+  --monitor|--no-monitor` and the card's switch always win.
   A card stopped at Needs you (or paused by a question) opens with a handoff
   brief at the top of its panel, one collapsible group per section the card's
   `j`/`k` reach: the level and its reasons, led by why the loop stopped when

@@ -49,8 +49,6 @@ const sourceBaseSchema = z.object({
   enabled: z.boolean(),
   /** Project for this source's card threads. GitHub sources try the repo's remote first. */
   projectId: z.string().nullable().default(null),
-  /** Cards this source creates start monitored; a card's own flag wins from then on. */
-  monitorNewCards: z.boolean().default(false),
 });
 
 export const githubSourceSchema = sourceBaseSchema.extend({
@@ -87,7 +85,6 @@ export const DEFAULT_SOURCES: Source[] = [
     doneWhenGone: false,
     enabled: true,
     projectId: null,
-    monitorNewCards: false,
     reviewNewPrs: null,
     narrateNewPrs: false,
   },
@@ -100,7 +97,6 @@ export const DEFAULT_SOURCES: Source[] = [
     doneWhenGone: true,
     enabled: true,
     projectId: null,
-    monitorNewCards: false,
     reviewNewPrs: null,
     narrateNewPrs: false,
   },
