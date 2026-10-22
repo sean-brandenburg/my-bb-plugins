@@ -34,11 +34,12 @@ the change is for and how its parts fit, then cover the details.
    - **Mechanical**: renames, wiring, generated files and lockfiles, grouped into
      one or two short steps at the end.
 3. Write the steps (see the step sections below).
-4. Check coverage: `bb kanban narrative-check --report-stdin < narrative.json`.
+4. Simplify the narration with the `asd-ste100` skill (see Plain English below).
+5. Check coverage: `bb kanban narrative-check --report-stdin < narrative.json`.
    It lists every uncovered range with its lines, and any path that isn't in the
    diff. Fix them and re-run until it passes. Write the file in your scratch
    space, not in the repository.
-5. End your final message with the JSON in the fenced block your prompt names.
+6. End your final message with the JSON in the fenced block your prompt names.
 
 ## Writing a step
 
@@ -46,8 +47,8 @@ the change is for and how its parts fit, then cover the details.
   hunk across several steps when it does several things. Merge tiny related
   edits across files into one step when they make one point: "the three call
   sites switch to the new signature."
-- **`title`**: a short claim, not a file name. Write "Retries back off
-  exponentially, capped at 30s", not "client.go".
+- **`title`**: a short claim, not a file name. Write "The retry delay
+  doubles up to a 30s cap", not "client.go".
 - **`body`**: Markdown, as short as it can be while saying everything a
   reviewer needs: usually 30–120 words plus any diagram. Say what the lines do
   and why they're there, how they connect to earlier steps, and what to check
@@ -59,10 +60,9 @@ the change is for and how its parts fit, then cover the details.
   Then put the details in bullets, one point per bullet, each a single sentence
   with a bold lead-in: `- **Idempotent:** \`ON CONFLICT DO NOTHING\` targets the primary key.`
   Use a numbered list when order matters (a call sequence, a lock order). When
-  the step has something a reviewer should verify, end with a `**Check:**`
+  the step has something a reviewer should check, end with a `**Check:**`
   bullet naming it; a mechanical step needs none. Put identifiers, paths and
-  literals in inline code. Cut filler: no "note that", "it's worth", "in order
-  to", or sentences that only announce the next sentence. The step title is
+  literals in inline code. The step title is
   already the heading, so don't start the body with one; use a `###` only when a
   long body has two distinct parts.
 - **Prefer a diagram to prose** whenever the step describes structure or flow:
@@ -78,6 +78,45 @@ the change is for and how its parts fit, then cover the details.
   lockfiles and generated files.
 - **`id`**: a short slug that is stable for the same idea, e.g. `retry-backoff`. A
   later revision reuses the id when it re-tells the same step.
+
+## Plain English
+
+After you draft the steps, use the `asd-ste100` skill (Simplified Technical
+English) to rewrite the narration. A reviewer decides what is safe from these
+words, so a sentence they can misread costs more than a long one.
+
+- **Mode:** STE-flavored, because the narration is explanatory prose. Apply the
+  structural rules in full. Use active voice and one idea per sentence, at most
+  25 words each. Use no semicolons, phrasal verbs ("back off", "set up"), nouns
+  made from verbs ("perform validation of"), marketing adjectives or stacked
+  hedges. Cut filler such as "note that", "it's worth", "in order
+  to", and sentences that only announce the next sentence.
+- **Fields:** the `summary`, each step's `title` and `body`, every
+  `readingOrder` `note`, every `watchOut` item, and the revision chapter's
+  `summary` and step bodies.
+- **One name per thing:** call each type, function and concept by the same name
+  in every step. Use "check" for what a reviewer must do, not "verify" or
+  "confirm", so the wording matches the `**Check:**` bullet.
+- **Keep:** the Markdown shape this skill asks for, inline code, identifiers and
+  `mermaid` blocks exactly as written. Keep every hedge at its strength: "may
+  race" must not become "races". Keep every fact, and add none.
+- **Rewrite in place:** put the simplified text into the JSON. Don't emit the
+  asd-ste100 rule table.
+- **Lint:** run the asd-ste100 skill's linter over the prose of the same scratch
+  file you give `narrative-check`:
+
+  ```sh
+  jq -r '[.summary, (.watchOut // [])[], (.readingOrder // [])[].note, (.steps[], (.revision.steps // [])[] | .title, .body), (.revision.summary // empty)] | map(. + "\n") | .[]' narrative.json \
+    | python3 <asd-ste100 skill directory>/scripts/ste-lint.py
+  ```
+
+  Fix every hard finding and re-run until it passes. Passive voice and compound
+  tense findings are advisory. Keep a passive when the actor is unknown or
+  irrelevant. Keep a compound tense when the current state is the point ("has
+  failed and stays failed").
+
+If the `asd-ste100` skill isn't available, apply the rules above directly and
+skip the lint.
 
 ## Diagrams
 
