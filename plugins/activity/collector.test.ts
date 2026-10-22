@@ -138,6 +138,11 @@ describe("control names", () => {
     expect(describeControl(by("row"))).toEqual({ key: "li in column", label: "li in column" });
   });
 
+  it("keys a draggable card by its own identity attribute, not its text", () => {
+    html(`<div data-bb-plugin="kanban"><div data-kanban-column-list=""><div id="card" data-ticket-id="tk_2" role="button" draggable="true"><span>Kafka consistency fixes</span><span>PR #12</span></div></div></div>`);
+    expect(describeControl(document.getElementById("card")!)).toEqual({ key: "ticket in kanban column list", label: "ticket in kanban column list" });
+  });
+
   it("blanks file names and paths, and ignores headings that are dates or titles", () => {
     html(`
       <section data-bb-plugin="obsidian"><section>

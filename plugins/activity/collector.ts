@@ -220,9 +220,11 @@ export function describeControl(element: Element): ControlDescription {
     if (!href.startsWith("#")) return { key: "external link", label: "external link" };
   }
   const container = containerOf(element) ?? "page";
-  if (isContentRow(element)) {
+  // A thing with an identity or a marker of its own (a card, a thread) is content whatever its role.
+  const type = typeOf(element);
+  if (type !== null || isContentRow(element)) {
     const role = element.getAttribute("role");
-    const kind = typeOf(element) ?? element.getAttribute("data-nav-row") ?? (role !== null && CONTENT_ROLES.has(role) ? role : tag);
+    const kind = type ?? element.getAttribute("data-nav-row") ?? (role !== null && CONTENT_ROLES.has(role) ? role : tag);
     const key = `${kind} in ${container}`;
     return { key, label: key };
   }
