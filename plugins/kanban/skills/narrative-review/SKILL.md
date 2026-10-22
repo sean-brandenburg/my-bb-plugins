@@ -56,9 +56,10 @@ the change is for and how its parts fit, then cover the details.
   two sentences that say what the step does and how it follows from the earlier
   steps. Then put the details in bullets, one point per bullet, each with a bold
   lead-in: `- **Idempotent:** \`ON CONFLICT DO NOTHING\` targets the primary key, so …`.
-  Use a numbered list when order matters (a call sequence, a lock order). End
-  with a `**Check:**` bullet or short paragraph naming what the reviewer should
-  verify. Put identifiers, paths and literals in inline code. The step title is
+  Use a numbered list when order matters (a call sequence, a lock order). When
+  the step has something a reviewer should verify, end with a `**Check:**`
+  bullet naming it; a mechanical step needs none. Put identifiers, paths and
+  literals in inline code. The step title is
   already the heading, so don't start the body with one; use a `###` only when a
   long body has two distinct parts.
 - **`refs`**: `{ "path", "side": "new"|"old", "startLine", "endLine" }`. Use new-side
