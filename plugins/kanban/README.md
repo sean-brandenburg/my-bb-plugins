@@ -4,6 +4,8 @@ A kanban board for BB where every card is a thread. Cards come from GitHub
 and Jira searches, brain dumps, or by hand; each card's changes page is where
 its PR is reviewed and its review findings and comments are handed to agents.
 
+![Kanban board with To Do, In Progress, In Review and Done columns](../../docs/screenshots/kanban-board.jpg)
+
 - **Kanban** page in the sidebar: columns, drag-and-drop cards. Each card shows
   its title, up to three of your own tags (tags applied by a source are hidden
   on cards), and one quiet footer: a thread dot (words only when it is working,

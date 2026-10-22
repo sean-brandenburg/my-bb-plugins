@@ -24,6 +24,16 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `no-selection-menu` | Hides the Add to chat / Reply in side chat toolbar bb pops up over highlighted text |
 | `activity` | Logs every click, vim key command, and page across bb and the plugins, attributed to the plugin it happened in, with an Activity page and `bb activity` CLI that rank them so unused features can be pruned |
 
+## Screenshots
+
+`kanban`: every card is a thread, with its PR, checks, review findings, and unaddressed comments.
+
+![Kanban board](docs/screenshots/kanban-board.jpg)
+
+`diff-view`: a thread's changes as a split structural diff, here opened full-page from kanban.
+
+![Diff view](docs/screenshots/diff-view.jpg)
+
 ## Usage data
 
 The `activity` plugin logs how bb and these plugins get used: every click, vim key command, other key, and page,

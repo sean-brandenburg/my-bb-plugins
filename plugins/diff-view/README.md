@@ -3,6 +3,8 @@
 A thread's changes beside its chat, and the same view as a library other
 plugins embed.
 
+![Split structural diff with the file tree, summary bar and viewed marks](../../docs/screenshots/diff-view.jpg)
+
 ## In bb
 
 - **Changes button** at the right end of every thread's top bar, muted and
