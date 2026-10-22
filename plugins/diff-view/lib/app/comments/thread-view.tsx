@@ -105,7 +105,12 @@ function ThreadEntryView({
       <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
         {state === "agent" ? <Icon name="diff-view-wrench" className="size-3 shrink-0" /> : <Icon name="MessageSquare" className="size-3 shrink-0" />}
         <span className="font-medium text-foreground">{state === "agent" ? "agent" : "you"}</span>
-        <span className={cn("rounded px-1 text-[10px]", unsent ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : state === "addressed" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted")}>{LOCAL_STATE_LABEL[state]}</span>
+        <span
+          className={cn("rounded px-1 text-[10px]", unsent ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : state === "addressed" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted")}
+          title={state === "draft" && comment.githubCommentId !== null ? "In your pending review on GitHub; only you see it until the review is submitted" : undefined}
+        >
+          {state === "draft" && comment.githubCommentId !== null ? "pending on GitHub" : LOCAL_STATE_LABEL[state]}
+        </span>
         <span>{relativeTime(comment.createdAt, now)}</span>
         <span className="ml-auto flex items-center gap-1">
           {state === "agent" && comment.authorThreadId !== null ? (

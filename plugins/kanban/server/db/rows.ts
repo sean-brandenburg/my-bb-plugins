@@ -210,6 +210,18 @@ export function rowToDiffComment(row: DiffCommentRow): DiffComment {
   };
 }
 
+export interface PendingReviewRow {
+  ticket_id: string;
+  review_id: number | null;
+  node_id: string | null;
+  url: string | null;
+  body: string;
+  /** 1 while the summary was edited here and not yet written to the review on GitHub. */
+  body_dirty: number;
+  pulled_at: number | null;
+  updated_at: number;
+}
+
 export interface DumpRow {
   id: string;
   text: string;

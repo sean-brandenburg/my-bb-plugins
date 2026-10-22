@@ -1,7 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
-import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
+import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, pendingReviewStateSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
 import { PLAN_MAX_LENGTH, attentionLevelSchema, levelOverrideSchema, loopGatesSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
@@ -191,6 +191,16 @@ export const rpcContract = defineRpcContract({
   diff_comments_list: {
     input: z.object({ ticketId: z.string() }).strict(),
     output: z.object({ comments: z.array(diffCommentSchema) }),
+  },
+  /** The user's pending review on the PR as the board knows it: the summary drafted so far, and whether one exists on GitHub. */
+  pending_review_get: {
+    input: z.object({ ticketId: z.string() }).strict(),
+    output: pendingReviewStateSchema,
+  },
+  /** The review box's summary; it reaches the pending review on GitHub once there is one. */
+  pending_review_set_body: {
+    input: z.object({ ticketId: z.string(), body: z.string().max(65_000) }).strict(),
+    output: pendingReviewStateSchema,
   },
   /** The agent-written tour of a card's changes: latest one, plus whether the diff head moved since. */
   narrative_get: {

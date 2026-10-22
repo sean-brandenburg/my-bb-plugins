@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PullRequest } from "../../shared/board";
 import type { ReviewDepth } from "../../shared/review";
-import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
+import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PendingReviewRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
 
 export type KanbanDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
@@ -286,6 +286,18 @@ export function prepareStatements(db: KanbanDatabase) {
     viewedHeads: db.prepare<[string], { head_sha: string; viewed_at: number }>(`SELECT head_sha, MAX(viewed_at) AS viewed_at FROM diff_viewed WHERE ticket_id = ? GROUP BY head_sha ORDER BY viewed_at DESC`),
     viewedPathsNotForHead: db.prepare<[string, string], { path: string; head_sha: string }>(`SELECT path, head_sha FROM diff_viewed WHERE ticket_id = ? AND head_sha != ?`),
     markDiffCommentPosted: db.prepare<[number, string | null, string | null, string]>(`UPDATE diff_comments SET posted_at = ?, posted_url = ?, github_comment_id = ? WHERE id = ?`),
+    /** A draft now sits in the user's pending review on GitHub: it keeps its id and link there, but is not posted yet. */
+    markDiffCommentStaged: db.prepare<[string | null, string | null, string]>(`UPDATE diff_comments SET github_comment_id = ?, posted_url = ? WHERE id = ?`),
+    stagedDiffComments: db.prepare<[string], DiffCommentRow>(
+      `SELECT * FROM diff_comments WHERE ticket_id = ? AND target = 'github' AND author IS NULL AND posted_at IS NULL AND github_comment_id LIKE 'review-comment:%' ORDER BY created_at, rowid`,
+    ),
+    setDiffCommentBody: db.prepare<[string, number, string]>(`UPDATE diff_comments SET body = ?, updated_at = ? WHERE id = ?`),
+    pendingReviewForTicket: db.prepare<[string], PendingReviewRow>(`SELECT * FROM pending_reviews WHERE ticket_id = ?`),
+    upsertPendingReview: db.prepare<[string, number | null, string | null, string | null, string, number, number | null, number]>(
+      `INSERT INTO pending_reviews (ticket_id, review_id, node_id, url, body, body_dirty, pulled_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(ticket_id) DO UPDATE SET review_id = excluded.review_id, node_id = excluded.node_id, url = excluded.url, body = excluded.body, body_dirty = excluded.body_dirty, pulled_at = excluded.pulled_at, updated_at = excluded.updated_at`,
+    ),
+    deletePendingReview: db.prepare<[string]>(`DELETE FROM pending_reviews WHERE ticket_id = ?`),
     assignDiffCommentsApply: db.prepare<[string, string]>(
       `UPDATE diff_comments SET apply_id = ? WHERE id IN (SELECT value FROM json_each(?))`,
     ),

@@ -470,7 +470,21 @@ its PR is reviewed and its review findings and comments are handed to agents.
   its own. With drafts, new threads post as one review (inline where a line is
   given, in the review body otherwise, under your comment) and replies post
   into their GitHub threads. An approval also moves the card to Done, since
-  your review of it is finished. From the diff, `s` lands on the button and
+  your review of it is finished.
+- **One pending review, in both places**: with "Stage GitHub drafts in your
+  pending review on GitHub" on (the default), a GitHub draft saved here goes
+  into your pending review on the PR the moment it is saved (creating the
+  review if you have none), edits and deletions follow, "Make local" takes it
+  back out, and the review box's comment is the review's summary there. Each
+  sync, and whenever the changes page is open, comments pending in that review
+  on GitHub come onto the board as drafts labelled "pending on GitHub" (its
+  summary fills the review box unless you have edited it here since), so a
+  review can be half written in each place. Submit from either: Submit review
+  here finishes the pending review on GitHub with any draft GitHub refused
+  inline carried in its body; finishing it on GitHub shows the drafts here as
+  posted at the next sync. Discarding it on GitHub leaves the words here as
+  plain drafts. GitHub owns a mirrored comment, so a text changed in both
+  places ends up as GitHub has it. From the diff, `s` lands on the button and
   Enter or `i` opens the box on the comment; in it `j`/`k` (or the arrows)
   pick how the review concludes, `i` returns to the comment, ⌘↩ submits, and
   Escape closes it keeping what you typed (Escape on the button returns to the

@@ -92,11 +92,29 @@ function stubGithub(options: {
   heads?: Record<string, { headRef: string; rollup: string | null }>;
   failHeads?: boolean;
   failReadBack?: boolean;
+  /** A pending review already on GitHub when the test starts, as if begun there. */
+  pending?: { login?: string; body?: string; comments: Array<Omit<StubPendingComment, "id" | "side" | "start_line" | "start_side"> & Partial<Pick<StubPendingComment, "side" | "start_line" | "start_side">>> };
 }) {
   const json = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  ghPending = { reviews: [], nextComment: 9000, created: [] };
+  const pendingComment = (comment: Partial<StubPendingComment> & { path: string; body: string }): StubPendingComment => ({
+    id: ghPending.nextComment++, path: comment.path, line: comment.line ?? null, side: comment.side ?? "RIGHT", start_line: comment.start_line ?? null, start_side: comment.start_side ?? null, body: comment.body,
+    ...(comment.in_reply_to_id === undefined ? {} : { in_reply_to_id: comment.in_reply_to_id }),
+  });
+  if (options.pending !== undefined) {
+    ghPending.reviews.push({ id: 600, node_id: "PRR_600", login: options.pending.login ?? "sean", body: options.pending.body ?? "", comments: options.pending.comments.map((comment) => pendingComment(comment)), submitted: null });
+  }
+  const pendingCommentJson = (review: StubPendingReview, comment: StubPendingComment) => ({
+    id: comment.id, node_id: `PRRC_${comment.id}`, pull_request_review_id: review.id, user: { login: review.login }, body: comment.body, path: comment.path, line: comment.line, original_line: comment.line ?? 1, side: comment.side,
+    start_line: comment.start_line, original_start_line: comment.start_line, start_side: comment.start_side,
+    ...(comment.in_reply_to_id === undefined ? {} : { in_reply_to_id: comment.in_reply_to_id }),
+    html_url: `https://github.com/acme-co/widgets/pull/7#discussion_r${comment.id}`, created_at: "2026-10-06T09:00:00Z", updated_at: "2026-10-06T09:00:00Z",
+  });
+  const STATE: Record<string, string> = { APPROVE: "APPROVED", REQUEST_CHANGES: "CHANGES_REQUESTED", COMMENT: "COMMENTED" };
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const path = url.split("?")[0]!;
     if (url.startsWith("https://acme.atlassian.net/")) {
       if (options.jiraFail) return new Response("boom", { status: 500 });
       if (url.includes("/rest/api/3/search/jql")) {
@@ -113,7 +131,24 @@ function stubGithub(options: {
     }
     const method = typeof input === "object" && input !== null && "method" in input ? (input as Request).method : (init?.method ?? "GET");
     if (method === "POST" && url.endsWith("/graphql")) {
-      const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, string | number> };
+      const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, string | number | null> };
+      if (request.query.includes("addPullRequestReviewThread(")) {
+        const review = ghPending.reviews.find((entry) => entry.node_id === request.variables.reviewId && entry.submitted === null);
+        if (review === undefined) return json({ errors: [{ message: "Could not resolve to a node with the global id" }] });
+        const v = request.variables;
+        if (v.line !== null && Number(v.line) > 50) return json({ errors: [{ message: "Line could not be found in the diff" }] });
+        const comment = pendingComment({ path: String(v.path), body: String(v.body), line: v.line === null ? null : Number(v.line), side: v.side === "LEFT" ? "LEFT" : "RIGHT", start_line: v.startLine === null ? null : Number(v.startLine), start_side: v.startLine === null ? null : v.startSide === "LEFT" ? "LEFT" : "RIGHT" });
+        review.comments.push(comment);
+        return json({ data: { addPullRequestReviewThread: { thread: { comments: { nodes: [{ databaseId: comment.id, url: `https://github.com/acme-co/widgets/pull/7#discussion_r${comment.id}` }] } } } } });
+      }
+      if (request.query.includes("addPullRequestReviewThreadReply(")) {
+        const review = ghPending.reviews.find((entry) => entry.node_id === request.variables.reviewId && entry.submitted === null);
+        const rootId = Number(String(request.variables.threadId).replace("PRRT_", ""));
+        if (review === undefined || Number.isNaN(rootId)) return json({ errors: [{ message: "Could not resolve to a node with the global id" }] });
+        const comment = pendingComment({ path: "a.go", body: String(request.variables.body), in_reply_to_id: rootId });
+        review.comments.push(comment);
+        return json({ data: { addPullRequestReviewThreadReply: { comment: { databaseId: comment.id, url: `https://github.com/acme-co/widgets/pull/7#discussion_r${comment.id}` } } } });
+      }
       if (request.query.includes("statusCheckRollup")) {
         if (options.failHeads) return new Response("boom", { status: 502 });
         const data: Record<string, unknown> = {};
@@ -130,11 +165,59 @@ function stubGithub(options: {
       const roots = new Set(options.resolvedThreads ?? []);
       const nodes = (options.comments?.review ?? [])
         .filter((comment) => comment.replyTo === undefined)
-        .map((comment) => ({ isResolved: roots.has(comment.id), comments: { nodes: [{ databaseId: comment.id }] } }));
+        .map((comment) => ({ id: `PRRT_${comment.id}`, isResolved: roots.has(comment.id), comments: { nodes: [{ databaseId: comment.id }] } }));
+      for (const review of ghPending.reviews) {
+        for (const comment of review.comments) {
+          if (comment.in_reply_to_id === undefined) nodes.push({ id: `PRRT_${comment.id}`, isResolved: false, comments: { nodes: [{ databaseId: comment.id }] } });
+        }
+      }
       return json({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } });
     }
+    const pendingCommentRoute = /\/pulls\/comments\/(\d+)$/u.exec(path);
+    if (pendingCommentRoute !== null && (method === "PATCH" || method === "DELETE")) {
+      const id = Number(pendingCommentRoute[1]);
+      const review = ghPending.reviews.find((entry) => entry.comments.some((comment) => comment.id === id));
+      if (review === undefined) return new Response("not found", { status: 404 });
+      if (method === "DELETE") {
+        review.comments = review.comments.filter((comment) => comment.id !== id);
+        return new Response(null, { status: 204 });
+      }
+      review.comments.find((comment) => comment.id === id)!.body = (JSON.parse(String(init?.body)) as { body: string }).body;
+      return json(pendingCommentJson(review, review.comments.find((comment) => comment.id === id)!));
+    }
+    const reviewEvents = /\/pulls\/(\d+)\/reviews\/(\d+)\/events$/u.exec(path);
+    if (reviewEvents !== null && method === "POST") {
+      const review = ghPending.reviews.find((entry) => entry.id === Number(reviewEvents[2]) && entry.submitted === null);
+      if (review === undefined) return new Response("not found", { status: 404 });
+      const body = JSON.parse(String(init?.body)) as { event: string; body?: string };
+      events.push({ reviewId: review.id, ...body });
+      review.submitted = body.event;
+      if (body.body !== undefined) review.body = body.body;
+      return json({ id: review.id, html_url: `https://github.com/acme-co/widgets/pull/7#pullrequestreview-${review.id}` });
+    }
+    const reviewById = /\/pulls\/(\d+)\/reviews\/(\d+)$/u.exec(path);
+    if (reviewById !== null && (method === "PUT" || method === "DELETE")) {
+      const index = ghPending.reviews.findIndex((entry) => entry.id === Number(reviewById[2]));
+      if (index === -1) return new Response("not found", { status: 404 });
+      if (method === "DELETE") {
+        ghPending.reviews.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
+      ghPending.reviews[index]!.body = (JSON.parse(String(init?.body)) as { body: string }).body;
+      return json({ id: ghPending.reviews[index]!.id, body: ghPending.reviews[index]!.body });
+    }
     if (method === "POST" && /\/pulls\/\d+\/reviews$/u.test(url)) {
-      const body = JSON.parse(String(init?.body ?? (await (input as Request).text()))) as { comments?: Array<{ path: string; body: string }>; body?: string };
+      const body = JSON.parse(String(init?.body ?? (await (input as Request).text()))) as { event?: string; comments?: Array<{ path: string; body: string; line?: number; side?: "LEFT" | "RIGHT"; start_line?: number; start_side?: "LEFT" | "RIGHT" }>; body?: string; commit_id?: string };
+      if (body.event === undefined) {
+        // No event: a pending review, kept in the stub's state rather than among the posted reviews.
+        ghPending.created.push(body);
+        const id = 600 + ghPending.reviews.length + ghPending.created.length;
+        ghPending.reviews.push({
+          id, node_id: `PRR_${id}`, login: "sean", body: body.body ?? "", submitted: null,
+          comments: (body.comments ?? []).map((comment) => pendingComment({ path: comment.path, body: comment.body, line: comment.line ?? null, side: comment.side ?? "RIGHT", start_line: comment.start_line ?? null, start_side: comment.start_side ?? null })),
+        });
+        return json({ id, node_id: `PRR_${id}`, html_url: `https://github.com/acme-co/widgets/pull/7#pullrequestreview-${id}` });
+      }
       posted.push(body);
       if (options.rejectInline && (body.comments?.length ?? 0) > 0) return new Response("Unprocessable", { status: 422 });
       return json({ id: 900 + posted.length, html_url: `https://github.com/acme-co/widgets/pull/7#pullrequestreview-${900 + posted.length}` });
@@ -148,6 +231,8 @@ function stubGithub(options: {
     }
     const reviewReadBack = /\/pulls\/\d+\/reviews\/(\d+)\/comments/u.exec(url);
     if (reviewReadBack !== null) {
+      const pendingReview = ghPending.reviews.find((entry) => entry.id === Number(reviewReadBack[1]));
+      if (pendingReview !== undefined) return json(pendingReview.comments.map((comment) => pendingCommentJson(pendingReview, comment)));
       if (options.failReadBack) return new Response("boom", { status: 502 });
       const review = posted[Number(reviewReadBack[1]) - 901];
       return json(
@@ -184,8 +269,11 @@ function stubGithub(options: {
     }
     const reviewComments = /\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)\/comments/u.exec(url);
     if (reviewComments !== null) {
-      return json(
-        (options.comments?.review ?? []).map((comment) => ({
+      // Comments of submitted pending reviews are published now, so they list with the rest.
+      const published = ghPending.reviews.filter((review) => review.submitted !== null).flatMap((review) => review.comments.map((comment) => pendingCommentJson(review, comment)));
+      return json([
+        ...published,
+        ...(options.comments?.review ?? []).map((comment) => ({
           id: comment.id, user: { login: comment.login }, body: comment.body, path: comment.path, line: comment.line, original_line: comment.line ?? 1, side: comment.side ?? "RIGHT",
           ...(comment.replyTo === undefined ? {} : { in_reply_to_id: comment.replyTo }),
           ...(comment.startLine === undefined
@@ -194,17 +282,22 @@ function stubGithub(options: {
           html_url: `https://github.com/${reviewComments[1]}/pull/${reviewComments[2]}#discussion_r${comment.id}`,
           created_at: "2026-10-05T11:00:00Z", updated_at: "2026-10-05T11:00:00Z",
         })),
-      );
+      ]);
     }
     const reviews = /\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)\/reviews/u.exec(url);
     if (reviews !== null) {
-      return json(
-        (options.comments?.reviews ?? []).map((review) => ({
+      return json([
+        ...(options.comments?.reviews ?? []).map((review) => ({
           id: review.id, user: { login: review.login }, body: review.body, state: review.state,
           html_url: `https://github.com/${reviews[1]}/pull/${reviews[2]}#pullrequestreview-${review.id}`,
           ...(review.submitted === false ? {} : { submitted_at: "2026-10-05T12:00:00Z" }),
         })),
-      );
+        ...ghPending.reviews.map((review) => ({
+          id: review.id, node_id: review.node_id, user: { login: review.login }, body: review.body, state: review.submitted === null ? "PENDING" : STATE[review.submitted],
+          html_url: `https://github.com/${reviews[1]}/pull/${reviews[2]}#pullrequestreview-${review.id}`,
+          ...(review.submitted === null ? {} : { submitted_at: "2026-10-06T12:00:00Z" }),
+        })),
+      ]);
     }
     const match = /\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/u.exec(url);
     if (match !== null) {
@@ -232,6 +325,29 @@ const threadOutputs = new Map<string, string>();
 const threadStatuses = new Map<string, ThreadResponse["status"]>();
 let posted: Array<{ comments?: Array<{ path: string; body: string }>; body?: string }> = [];
 let repliesPosted: Array<{ to: number; body: string }> = [];
+/** Submissions of pending reviews (`POST .../reviews/{id}/events`). */
+let events: Array<{ reviewId: number; event: string; body?: string }> = [];
+interface StubPendingComment {
+  id: number;
+  path: string;
+  line: number | null;
+  side: "LEFT" | "RIGHT";
+  start_line: number | null;
+  start_side: "LEFT" | "RIGHT" | null;
+  body: string;
+  in_reply_to_id?: number;
+}
+interface StubPendingReview {
+  id: number;
+  node_id: string;
+  login: string;
+  body: string;
+  comments: StubPendingComment[];
+  /** Set once submitted (from the board or "on GitHub"); its comments then list as published review comments. */
+  submitted: string | null;
+}
+/** The stub's pending reviews, created through the API or seeded by a test; tests change them to act as GitHub. */
+let ghPending: { reviews: StubPendingReview[]; nextComment: number; created: Array<Record<string, unknown>> } = { reviews: [], nextComment: 9000, created: [] };
 let host: Host | null = null;
 
 async function load(settings: Record<string, string | number | boolean> = {}) {
@@ -240,10 +356,12 @@ async function load(settings: Record<string, string | number | boolean> = {}) {
   threadStatuses.clear();
   posted = [];
   repliesPosted = [];
+  events = [];
   host = createFakePluginHost({
     pluginId: "kanban",
     agentSkillIds: ["kanban"],
-    settings: { githubToken: "tok", ...settings },
+    // The direct-post tests predate staging drafts on GitHub and keep exercising that path; staging tests turn it on.
+    settings: { githubToken: "tok", stageOnGithub: false, ...settings },
     sdk: {
       projects: {
         list: async () => [
@@ -3153,6 +3271,147 @@ describe("diff comment threads", () => {
     const after = await list(card.id);
     expect(after.find((comment) => comment.id === draftRoot.id)).toMatchObject({ githubCommentId: "review-comment:8000" });
     expect(after.find((comment) => comment.id === draftReply.id)).toMatchObject({ inReplyTo: "review-comment:8000", githubCommentId: "review-comment:7001" });
+  });
+});
+
+describe("pending review staged on GitHub", () => {
+  const rpc = (method: string, input: unknown) => current().harness.behavior.callRpc(method, input);
+  const list = async (ticketId: string) => ((await rpc("diff_comments_list", { ticketId })) as { comments: DiffComment[] }).comments;
+  const state = (ticketId: string) => rpc("pending_review_get", { ticketId }) as Promise<{ body: string; url: string | null; staged: number }>;
+  /** Mirroring runs after the RPC returns, so assertions about GitHub wait for it. */
+  async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("condition not met in time");
+  }
+  async function theirs(): Promise<Ticket> {
+    await rpc("sync_now", null);
+    return (await board()).tickets.find((ticket) => ticket.pr?.number === 7)!;
+  }
+
+  it("stages GitHub drafts into a pending review on GitHub as they are saved, edited, made local and deleted", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })], comments: { review: [{ id: 501, login: "alice", body: "Is this right?", path: "a.go", line: 3 }] } }));
+    await load({ autoStartThreads: false, stageOnGithub: true });
+    const card = await theirs();
+
+    const draft = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 3, side: "RIGHT", body: "Use a constant", target: "github" })) as DiffComment;
+    expect(draft.githubCommentId).toBeNull();
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === draft.id)?.githubCommentId !== null);
+    // The pending review was created with the PR head, no event, and the draft went in as a thread.
+    expect(ghPending.created[0]).toMatchObject({ commit_id: "9f3b2c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c" });
+    expect(ghPending.created[0]!.event).toBeUndefined();
+    expect(ghPending.reviews[0]!.comments).toEqual([expect.objectContaining({ id: 9000, path: "a.go", line: 3, side: "RIGHT", body: "Use a constant" })]);
+    expect((await list(card.id)).find((comment) => comment.id === draft.id)).toMatchObject({ githubCommentId: "review-comment:9000", postedUrl: expect.stringContaining("discussion_r9000"), postedAt: null, target: "github" });
+    expect(await state(card.id)).toEqual({ body: "", url: expect.stringContaining("pullrequestreview-601"), staged: 1 });
+    expect(posted).toHaveLength(0);
+
+    await rpc("diff_comment_update", { id: draft.id, body: "Use a named constant" });
+    await waitFor(() => ghPending.reviews[0]!.comments[0]!.body === "Use a named constant");
+
+    const reply = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", body: "Yes", inReplyTo: "review-comment:501", target: "github" })) as DiffComment;
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === reply.id)?.githubCommentId !== null);
+    expect(ghPending.reviews[0]!.comments[1]).toMatchObject({ id: 9001, in_reply_to_id: 501, body: "Yes" });
+
+    await rpc("pending_review_set_body", { ticketId: card.id, body: "Summary so far" });
+    await waitFor(() => ghPending.reviews[0]!.body === "Summary so far");
+    expect((await state(card.id)).body).toBe("Summary so far");
+
+    // Made local: out of the pending review, and an ordinary board comment again.
+    await rpc("diff_comment_update", { id: draft.id, target: "local" });
+    await waitFor(() => !ghPending.reviews[0]!.comments.some((comment) => comment.id === 9000));
+    expect((await list(card.id)).find((comment) => comment.id === draft.id)).toMatchObject({ target: "local", githubCommentId: null });
+    await rpc("diff_comment_delete", { id: reply.id });
+    await waitFor(() => ghPending.reviews[0]!.comments.length === 0);
+    // The summary keeps the review alive; clearing it drops the now-empty review.
+    expect(ghPending.reviews).toHaveLength(1);
+    await rpc("pending_review_set_body", { ticketId: card.id, body: "" });
+    await waitFor(() => ghPending.reviews.length === 0);
+    expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
+  });
+
+  it("pulls a pending review begun on GitHub, follows its changes there, and submits it from the board", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })], pending: { body: "Half done", comments: [{ path: "a.go", line: 3, body: "From GitHub" }] } }),
+    );
+    await load({ autoStartThreads: false, stageOnGithub: true });
+    const card = await theirs();
+    const imported = await list(card.id);
+    expect(imported).toEqual([expect.objectContaining({ path: "a.go", line: 3, body: "From GitHub", target: "github", githubCommentId: "review-comment:9000", postedAt: null, author: null })]);
+    expect(await state(card.id)).toEqual({ body: "Half done", url: expect.stringContaining("pullrequestreview-600"), staged: 1 });
+    expect(card.pendingDiffComments).toBe(1);
+
+    // Edited and extended on GitHub: the board follows.
+    ghPending.reviews[0]!.comments[0]!.body = "From GitHub, edited";
+    ghPending.reviews[0]!.comments.push({ id: 9500, path: "a.go", line: 2, side: "LEFT", start_line: null, start_side: null, body: "Second thought" });
+    ghPending.reviews[0]!.body = "Half done, nearly";
+    await rpc("sync_now", null);
+    const followed = await list(card.id);
+    expect(followed.map((comment) => [comment.body, comment.githubCommentId, comment.side])).toEqual([
+      ["Second thought", "review-comment:9500", "LEFT"],
+      ["From GitHub, edited", "review-comment:9000", "RIGHT"],
+    ]);
+    expect((await state(card.id)).body).toBe("Half done, nearly");
+
+    // A summary edited here wins until it reaches GitHub; then GitHub's edits win again.
+    await rpc("pending_review_set_body", { ticketId: card.id, body: "Mine" });
+    await waitFor(() => ghPending.reviews[0]!.body === "Mine");
+    ghPending.reviews[0]!.body = "Theirs";
+    await rpc("sync_now", null);
+    expect((await state(card.id)).body).toBe("Theirs");
+
+    // Removed on GitHub: gone here too.
+    ghPending.reviews[0]!.comments = ghPending.reviews[0]!.comments.filter((comment) => comment.id !== 9500);
+    await rpc("sync_now", null);
+    expect((await list(card.id)).map((comment) => comment.githubCommentId)).toEqual(["review-comment:9000"]);
+
+    // A draft GitHub refuses inline stays here until the submit carries it in the body.
+    const refused = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 99, body: "Off the diff", target: "github" })) as DiffComment;
+    const added = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 3, body: "Added here", target: "github" })) as DiffComment;
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === added.id)?.githubCommentId !== null);
+    expect((await list(card.id)).find((comment) => comment.id === refused.id)?.githubCommentId).toBeNull();
+
+    const result = (await rpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, reviewEvent: "APPROVE", reviewBody: "LGTM", address: false })) as { posted: number; movedToDone: boolean; postedUrl: string | null };
+    expect(events).toEqual([{ reviewId: 600, event: "APPROVE", body: "LGTM\n\n- `a.go:99` — Off the diff" }]);
+    expect(posted).toHaveLength(0);
+    expect(result).toMatchObject({ posted: 3, movedToDone: true, postedUrl: expect.stringContaining("pullrequestreview-600") });
+    const after = await list(card.id);
+    expect(after.every((comment) => comment.postedAt !== null)).toBe(true);
+    expect(after.find((comment) => comment.id === refused.id)?.githubCommentId).toBe("review:600");
+    expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
+    expect((await board()).tickets.find((ticket) => ticket.id === card.id)).toMatchObject({ columnId: "done", pendingDiffComments: 0 });
+  });
+
+  it("marks staged drafts posted when the review is submitted on GitHub, and keeps them as drafts when it is discarded there", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })], pending: { comments: [{ path: "a.go", line: 3, body: "From GitHub" }] } }));
+    await load({ autoStartThreads: false, stageOnGithub: true });
+    const card = await theirs();
+    const mine = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 2, body: "From the board", target: "github" })) as DiffComment;
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === mine.id)?.githubCommentId !== null);
+
+    ghPending.reviews[0]!.submitted = "COMMENT";
+    await rpc("sync_now", null);
+    const submitted = await list(card.id);
+    expect(submitted.map((comment) => [comment.githubCommentId, comment.postedAt !== null])).toEqual([
+      ["review-comment:9001", true],
+      ["review-comment:9000", true],
+    ]);
+    expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
+    // The synced copies now stand in for the drafts, as after a post from the board.
+    const synced = ((await rpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] }).comments;
+    expect(synced.map((comment) => comment.id).sort()).toEqual(["review-comment:9000", "review-comment:9001"]);
+
+    // Discarded on GitHub: the board keeps the words as plain drafts.
+    ghPending.reviews = [];
+    const again = (await rpc("diff_comment_add", { ticketId: card.id, path: "a.go", line: 2, body: "Once more", target: "github" })) as DiffComment;
+    await waitFor(async () => (await list(card.id)).find((comment) => comment.id === again.id)?.githubCommentId !== null);
+    expect(ghPending.reviews).toHaveLength(1);
+    ghPending.reviews = [];
+    await rpc("sync_now", null);
+    expect((await list(card.id)).find((comment) => comment.id === again.id)).toMatchObject({ githubCommentId: null, postedAt: null, target: "github" });
+    expect(await state(card.id)).toEqual({ body: "", url: null, staged: 0 });
   });
 });
 

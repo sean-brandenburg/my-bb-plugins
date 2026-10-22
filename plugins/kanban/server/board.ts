@@ -295,6 +295,7 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
       stmts.deleteCommentsForTicket.run(id);
       stmts.deleteCommentAppliesForTicket.run(id);
       stmts.deleteDiffCommentsForTicket.run(id);
+      stmts.deletePendingReview.run(id);
       stmts.deleteViewedForTicket.run(id);
       stmts.deleteNarrativesForTicket.run(id);
       stmts.deleteExplanationsForTicket.run(id);

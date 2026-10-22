@@ -52,6 +52,10 @@ export type CommentApply = z.infer<typeof commentApplySchema>;
 export const diffCommentTargetSchema = z.enum(["local", "github"]);
 export type DiffCommentTarget = z.infer<typeof diffCommentTargetSchema>;
 
+/** The user's pending review on the PR: the summary drafted so far, its link on GitHub once it exists there, and how many drafts sit in it. */
+export const pendingReviewStateSchema = z.object({ body: z.string(), url: z.string().nullable(), staged: z.number().int() });
+export type PendingReviewState = z.infer<typeof pendingReviewStateSchema>;
+
 /** How posted GitHub drafts conclude the review; approving and requesting changes need a PR by someone else. */
 export const reviewEventSchema = z.enum(["COMMENT", "APPROVE", "REQUEST_CHANGES"]);
 export type ReviewEvent = z.infer<typeof reviewEventSchema>;

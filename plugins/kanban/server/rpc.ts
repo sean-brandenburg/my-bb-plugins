@@ -7,7 +7,7 @@ import type { Services } from "./services";
 /** The board's RPC surface; each handler hands off to the feature that owns it. */
 export function registerRpc(ctx: KanbanContext, services: Services): void {
   const { bb, db, stmts, sync, publish } = ctx;
-  const { board, subjects, threads, projects, changes, viewed, prComments, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads, loop, projectSettings } = services;
+  const { board, subjects, threads, projects, changes, viewed, prComments, pendingReview, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads, loop, projectSettings } = services;
   const { resolveDiffSubject } = subjects;
 
   bb.rpc.register(rpcContract, {
@@ -125,7 +125,16 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     symbol_definitions: async ({ ticketId, symbol }) => changes.symbolDefinitions(await resolveDiffSubject(ticketId), symbol),
     symbol_usages: async ({ ticketId, symbol }) => changes.symbolUsages(await resolveDiffSubject(ticketId), symbol),
     symbol_peek_file: async ({ ticketId, path, startLine, endLine }) => changes.peekFile(await resolveDiffSubject(ticketId), path, startLine, endLine),
-    diff_comments_list: ({ ticketId }) => diffComments.listDiffComments(ticketId),
+    diff_comments_list: async ({ ticketId }) => {
+      const list = await diffComments.listDiffComments(ticketId);
+      // The changes page is open: look for pending-review changes made on GitHub meanwhile.
+      const ticket = await resolveDiffSubject(ticketId);
+      const row = stmts.byId.get(ticket.id);
+      if (row !== undefined && ticket.canPostToGithub) pendingReview.pullSoon(row, prComments.syncPrComments);
+      return list;
+    },
+    pending_review_get: async ({ ticketId }) => pendingReview.stateOf((await resolveDiffSubject(ticketId)).id),
+    pending_review_set_body: async ({ ticketId, body }) => pendingReview.setBody((await resolveDiffSubject(ticketId)).id, body),
     narrative_get: async ({ ticketId }) => tour.latestNarrative(await resolveDiffSubject(ticketId)),
     narrative_generate: async ({ ticketId }) => tour.spawnNarrative(await resolveDiffSubject(ticketId)),
     narrative_story: async ({ ticketId }) => tour.narrativeStory(await resolveDiffSubject(ticketId)),

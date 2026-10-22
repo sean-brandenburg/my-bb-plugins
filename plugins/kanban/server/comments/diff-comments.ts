@@ -6,6 +6,7 @@ import type { Changes } from "../diff/changes";
 import type { DiffSubjects } from "../diff/subjects";
 import { doneColumn, type BoardStore } from "../board";
 import { GithubHttpError, githubPages, githubPost, resolveToken } from "../github";
+import type { PendingReview } from "./pending-review";
 import type { PrComments } from "./pr-comments";
 import { errorMessage, shortId } from "../util";
 import { checkedLineRange, longLineLabel, locationLabel } from "bb-diff-view/line-range";
@@ -37,7 +38,7 @@ export interface DiffThreadRoot extends LineRange {
 /** Comments left on a card's diff: local notes for an agent, or drafts and replies posted to the GitHub PR. */
 export function createDiffComments(
   ctx: KanbanContext,
-  { board, subjects, changes, prComments }: { board: BoardStore; subjects: DiffSubjects; changes: Changes; prComments: PrComments },
+  { board, subjects, changes, prComments, pendingReview }: { board: BoardStore; subjects: DiffSubjects; changes: Changes; prComments: PrComments; pendingReview: PendingReview },
 ) {
   const { bb, settings, stmts, sync, publish } = ctx;
   const { getTicket, getColumns, moveTicket } = board;
@@ -247,6 +248,20 @@ export function createDiffComments(
     return { posted, url, movedToDone };
   }
 
+  /** Submits the user's pending review on GitHub with every draft staged into it; an approval moves the card to Done. */
+  async function submitPendingReview(ticket: Ticket, event: ReviewEvent, summary: string): Promise<{ posted: number; url: string | null; movedToDone: boolean }> {
+    if (ticket.pr === null) throw new Error("Only PR cards can post to GitHub");
+    const drafts = stmts.githubDraftComments.all(ticket.id);
+    const { posted, url } = await pendingReview.submit(ticket, drafts, event, summary);
+    const movedToDone = event === "APPROVE" ? await moveApprovedToDone(ticket) : false;
+    const row = stmts.byId.get(ticket.id);
+    const auth = await resolveToken(settings);
+    if (row !== undefined && auth !== null) {
+      await syncPrComments(row, auth.token).catch((error: unknown) => bb.log.warn(`could not refresh comments for ${ticket.pr?.repo}#${ticket.pr?.number}: ${String(error)}`));
+    }
+    return { posted, url, movedToDone };
+  }
+
   async function reviewCommentsOf(repo: string, number: number, reviewId: number, token: string): Promise<Array<{ id: number; path: string; body: string | null; html_url: string }>> {
     try {
       return await githubPages(`/repos/${repo}/pulls/${number}/reviews/${reviewId}/comments`, token);
@@ -305,6 +320,7 @@ export function createDiffComments(
       updated_at: now,
     });
     publish();
+    if (chosen === "github") pendingReview.stage(ticket.id, id);
     return rowToDiffComment(stmts.diffCommentById.get(id)!);
   }
 
@@ -325,8 +341,20 @@ export function createDiffComments(
     }
     // Moving a comment to another line makes it a one-line comment there.
     const range = line === undefined || row.in_reply_to !== null ? rowRange(row) : checkedLineRange({ line, side: sideOf(row.side) });
+    const moved = range.line !== row.line || range.startLine !== row.start_line;
+    const staged = row.target === "github" && (row.github_comment_id?.startsWith("review-comment:") ?? false);
+    // A staged draft that leaves GitHub, or moves line (which GitHub cannot do), comes out of the pending review first.
+    if (staged && (nextTarget === "local" || moved)) {
+      stmts.markDiffCommentStaged.run(null, null, id);
+      pendingReview.unstage(row.ticket_id, [row.github_comment_id!]);
+    }
     stmts.updateDiffComment.run(body ?? row.body, range.line, range.startLine, range.startSide, nextTarget, Date.now(), id);
     publish();
+    if (nextTarget === "github") {
+      if (staged && !moved) {
+        if (body !== undefined && body !== row.body) pendingReview.restage(row.ticket_id, id);
+      } else pendingReview.stage(row.ticket_id, id);
+    }
     return rowToDiffComment(stmts.diffCommentById.get(id)!);
   }
 
@@ -336,8 +364,14 @@ export function createDiffComments(
     const sent = (comment: DiffCommentRow) => comment.author === null && (comment.apply_id !== null || comment.posted_at !== null);
     if (sent(row)) throw new Error("This comment was already sent; it can no longer be deleted");
     if (stmts.diffCommentRepliesTo.all(row.ticket_id, row.id).some(sent)) throw new Error("Replies in this thread were already sent; delete the unsent ones instead");
+    const staged = [row, ...stmts.diffCommentRepliesTo.all(row.ticket_id, row.id)]
+      .filter((comment) => comment.target === "github" && comment.posted_at === null && (comment.github_comment_id?.startsWith("review-comment:") ?? false))
+      .map((comment) => comment.github_comment_id!);
     const result = stmts.deleteDiffComment.run(id, id);
-    if (result.changes > 0) publish();
+    if (result.changes > 0) {
+      publish();
+      pendingReview.unstage(row.ticket_id, staged);
+    }
     return { deleted: result.changes > 0 };
   }
 
@@ -372,7 +406,9 @@ export function createDiffComments(
       postingDrafts.add(ticket.id);
       try {
         if (reviewEvent !== "COMMENT" && ticket.pr?.role === "authored") throw new Error("GitHub doesn't let you approve or request changes on your own pull request");
-        const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent, summary);
+        // Drafts mirrored into a pending review on GitHub finish there; the rest post as one new review.
+        await pendingReview.settled(ticket.id);
+        const result = pendingReview.hasRemote(ticket.id) ? await submitPendingReview(ticket, reviewEvent, summary) : await postDiffCommentsToGithub(ticket, drafts, reviewEvent, summary);
         posted = result.posted;
         postedUrl = result.url;
         movedToDone = result.movedToDone;

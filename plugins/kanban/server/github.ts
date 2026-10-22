@@ -46,6 +46,8 @@ export interface GithubIssueComment {
   updated_at: string;
 }
 export interface GithubReviewComment extends GithubIssueComment {
+  node_id?: string;
+  pull_request_review_id?: number | null;
   path: string;
   line: number | null;
   original_line: number | null;
@@ -57,6 +59,7 @@ export interface GithubReviewComment extends GithubIssueComment {
 }
 export interface GithubReview {
   id: number;
+  node_id?: string;
   user: GithubUser | null;
   body: string | null;
   state: string;
@@ -154,6 +157,31 @@ export async function githubPost<T>(path: string, token: string, body: unknown, 
   return (await response.json()) as T;
 }
 
+/** A PUT, PATCH or DELETE; a 204 comes back as null. */
+export async function githubRequest<T>(method: "PUT" | "PATCH" | "DELETE", path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<T | null> {
+  const response = await fetch(`${GITHUB_API}${path}`, {
+    method,
+    signal: signal ?? null,
+    headers: { ...githubHeaders(token), "x-github-api-version": API_VERSION, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok) {
+    const text = (await response.text()).slice(0, 300);
+    throw new GithubHttpError(response.status, `GitHub ${response.status} for ${method} ${path}: ${text}`);
+  }
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text === "" ? null : (JSON.parse(text) as T);
+}
+
+/** A GraphQL query or mutation; GraphQL errors throw like HTTP ones do. */
+export async function githubGraphql<T>(query: string, variables: Record<string, unknown>, token: string, signal?: AbortSignal): Promise<T> {
+  const result = await githubPost<{ data?: T; errors?: Array<{ message: string }> }>("/graphql", token, { query, variables }, signal);
+  if (result.errors !== undefined && result.errors.length > 0) throw new Error(result.errors.map((error) => error.message).join("; "));
+  if (result.data === undefined) throw new Error("GitHub GraphQL returned no data");
+  return result.data;
+}
+
 /** Every page of a GitHub list endpoint, capped so a runaway PR cannot stall the sync. */
 export async function githubPages<T>(path: string, token: string, signal?: AbortSignal, maxPages = 10): Promise<T[]> {
   const items: T[] = [];
@@ -165,52 +193,56 @@ export async function githubPages<T>(path: string, token: string, signal?: Abort
   return items;
 }
 
-/** Resolved state per review thread, keyed by the thread's first comment id; REST does not expose it. */
-export async function reviewThreadResolution(repo: string, number: number, token: string, signal?: AbortSignal): Promise<Map<number, boolean>> {
+export interface ReviewThreadInfo {
+  /** The thread's node id, which replies into a pending review address. */
+  id: string;
+  isResolved: boolean;
+}
+
+/** Each review thread (the signed-in user's pending ones included) keyed by its first comment's id; REST exposes neither. */
+export async function reviewThreads(repo: string, number: number, token: string, signal?: AbortSignal): Promise<Map<number, ReviewThreadInfo>> {
   const [owner, name] = repo.split("/");
-  const map = new Map<number, boolean>();
+  const map = new Map<number, ReviewThreadInfo>();
   let after: string | null = null;
   for (let page = 0; page < 10; page += 1) {
-    const result: {
-      data?: {
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: Array<{ isResolved: boolean; comments: { nodes: Array<{ databaseId: number | null }> } }>;
-              pageInfo?: { hasNextPage: boolean; endCursor: string | null };
-            };
-          } | null;
+    const data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: Array<{ id?: string; isResolved: boolean; comments: { nodes: Array<{ databaseId: number | null }> } }>;
+            pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+          };
         } | null;
-      };
-      errors?: Array<{ message: string }>;
-    } = await githubPost(
-      "/graphql",
-      token,
-      {
-        query: `query($owner: String!, $name: String!, $number: Int!, $after: String) {
+      } | null;
+    } = await githubGraphql(
+      `query($owner: String!, $name: String!, $number: Int!, $after: String) {
           repository(owner: $owner, name: $name) {
             pullRequest(number: $number) {
               reviewThreads(first: 100, after: $after) {
-                nodes { isResolved comments(first: 1) { nodes { databaseId } } }
+                nodes { id isResolved comments(first: 1) { nodes { databaseId } } }
                 pageInfo { hasNextPage endCursor }
               }
             }
           }
         }`,
-        variables: { owner, name, number, after },
-      },
+      { owner, name, number, after },
+      token,
       signal,
     );
-    if (result.errors !== undefined && result.errors.length > 0) throw new Error(result.errors.map((error) => error.message).join("; "));
-    const threads = result.data?.repository?.pullRequest?.reviewThreads;
+    const threads = data.repository?.pullRequest?.reviewThreads;
     for (const thread of threads?.nodes ?? []) {
       const rootId = thread.comments.nodes[0]?.databaseId;
-      if (rootId !== null && rootId !== undefined) map.set(rootId, thread.isResolved);
+      if (rootId !== null && rootId !== undefined) map.set(rootId, { id: thread.id ?? "", isResolved: thread.isResolved });
     }
     if (threads?.pageInfo?.hasNextPage !== true || threads.pageInfo.endCursor === null) break;
     after = threads.pageInfo.endCursor;
   }
   return map;
+}
+
+/** Resolved state per review thread, keyed by the thread's first comment id. */
+export async function reviewThreadResolution(repo: string, number: number, token: string, signal?: AbortSignal): Promise<Map<number, boolean>> {
+  return new Map(Array.from(await reviewThreads(repo, number, token, signal), ([rootId, thread]) => [rootId, thread.isResolved]));
 }
 
 /** GitHub's StatusState for a commit's check rollup; EXPECTED is a required status nothing has reported yet. */

@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { REVIEW_POPOVER_KEYS, SEND_BAR_KEYS, type ReviewPopoverCommand } from "./board-nav";
 import { useBoard, usePushPreference } from "./data";
-import { PushToggle, COMPACT } from "./primitives";
+import { PushToggle, COMPACT, ExternalLink } from "./primitives";
 import { toastError } from "./actions";
 import { HandoffStrip } from "./brief-panel";
 import { collapseRightPanel } from "./page-state";
@@ -129,6 +129,7 @@ const OWN_PR = "GitHub doesn't let you approve or request changes on your own pu
 function ReviewPopover({
   comment,
   onComment,
+  reviewUrl,
   event,
   onEvent,
   canApprove,
@@ -139,6 +140,8 @@ function ReviewPopover({
 }: {
   comment: string;
   onComment: (comment: string) => void;
+  /** The pending review on GitHub this box and its drafts are mirrored to, once there is one. */
+  reviewUrl: string | null;
   event: ReviewEvent;
   onEvent: (event: ReviewEvent) => void;
   canApprove: boolean;
@@ -236,7 +239,14 @@ function ReviewPopover({
         })}
       </div>
       <div className="flex items-center justify-end gap-1.5">
-        {canSubmit ? null : <span className="mr-auto text-xs text-muted-foreground">Write a comment or leave drafts on the diff</span>}
+        {reviewUrl !== null ? (
+          <ExternalLink href={reviewUrl} title="Your pending review on GitHub, kept the same as this box and its drafts" className="mr-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline">
+            <Icon name="GitPullRequest" className="size-3" />
+            Pending on GitHub
+          </ExternalLink>
+        ) : canSubmit ? null : (
+          <span className="mr-auto text-xs text-muted-foreground">Write a comment or leave drafts on the diff</span>
+        )}
         <Button type="button" variant="ghost" className={COMPACT} onClick={onClose}>
           Cancel
         </Button>
@@ -272,7 +282,38 @@ function KanbanSubmitBar({
   const [push, setPush] = usePushPreference();
   const [chosenEvent, setReviewEvent] = useState<ReviewEvent>("COMMENT");
   const reviewEvent = canApprove ? chosenEvent : "COMMENT";
-  const [comment, setComment] = useState("");
+  const [comment, setCommentText] = useState("");
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  // Typing wins over a pull from GitHub until the text is saved; the timer batches keystrokes into one save.
+  const typing = useRef(false);
+  const saveTimer = useRef<number | null>(null);
+  const loadSummary = useCallback(() => {
+    if (!canPostToGithub) return;
+    rpc.call("pending_review_get", { ticketId: subjectId }).then(
+      (state) => {
+        setReviewUrl(state.url);
+        if (!typing.current) setCommentText(state.body);
+      },
+      () => undefined,
+    );
+  }, [rpc, subjectId, canPostToGithub]);
+  useEffect(loadSummary, [loadSummary]);
+  useRealtime(BOARD_CHANGED, loadSummary);
+  const setComment = (next: string) => {
+    setCommentText(next);
+    typing.current = true;
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null;
+      rpc.call("pending_review_set_body", { ticketId: subjectId, body: next }).then(
+        (state) => {
+          typing.current = false;
+          setReviewUrl(state.url);
+        },
+        () => undefined,
+      );
+    }, 600);
+  };
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [submitting, setSubmitting] = useState<"github" | "agent" | null>(null);
@@ -317,7 +358,11 @@ function KanbanSubmitBar({
       toast.success(destination === "github" ? posted : "Address thread started");
       if (destination === "github") {
         // A failed submit keeps the box as it was for the retry.
-        setComment("");
+        if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        typing.current = false;
+        setCommentText("");
+        setReviewUrl(null);
         setReviewEvent("COMMENT");
         setOpen(false);
         triggerRef.current?.closest<HTMLElement>("[data-diff-root]")?.focus({ preventScroll: true });
@@ -377,6 +422,7 @@ function KanbanSubmitBar({
             <ReviewPopover
               comment={comment}
               onComment={setComment}
+              reviewUrl={reviewUrl}
               event={reviewEvent}
               onEvent={setReviewEvent}
               canApprove={canApprove}

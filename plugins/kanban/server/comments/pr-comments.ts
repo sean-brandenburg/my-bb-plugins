@@ -146,9 +146,18 @@ export function createPrComments(
       }
       stmts.deleteStaleComments.run(row.id, JSON.stringify(ids));
       stmts.setCommentsSyncedFor.run(row.pr_updated_at, row.id);
+      markSubmittedStaged(row.id, new Set(ids));
       linkPostedDrafts(row.id);
     });
     write();
+  }
+
+  /** Drafts staged in a pending review whose comments GitHub now lists as published: the review was submitted there. */
+  function markSubmittedStaged(ticketId: string, synced: ReadonlySet<string>): void {
+    const now = Date.now();
+    for (const draft of stmts.stagedDiffComments.all(ticketId)) {
+      if (draft.github_comment_id !== null && synced.has(draft.github_comment_id)) stmts.markDiffCommentPosted.run(now, draft.posted_url, draft.github_comment_id, draft.id);
+    }
   }
 
   /**

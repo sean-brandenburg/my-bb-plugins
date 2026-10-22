@@ -239,5 +239,16 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
     `ALTER TABLE tickets ADD COLUMN auto_narrative INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE tickets ADD COLUMN pr_body TEXT`,
     `ALTER TABLE tickets ADD COLUMN pr_checks_url TEXT`,
+    // The user's pending review on the PR, mirrored both ways; review_id is null while only the summary is drafted here.
+    `CREATE TABLE IF NOT EXISTS pending_reviews (
+      ticket_id TEXT PRIMARY KEY,
+      review_id INTEGER,
+      node_id TEXT,
+      url TEXT,
+      body TEXT NOT NULL DEFAULT '',
+      body_dirty INTEGER NOT NULL DEFAULT 0,
+      pulled_at INTEGER,
+      updated_at INTEGER NOT NULL
+    )`,
   ]);
 }

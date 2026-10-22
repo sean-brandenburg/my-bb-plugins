@@ -4,6 +4,7 @@ import { reviewDepthSchema, type ReviewDepth } from "../shared/review";
 import { doneColumn, initialColumn, type BoardStore } from "./board";
 import type { CardThreads } from "./card-threads";
 import type { PrComments } from "./comments/pr-comments";
+import type { PendingReview } from "./comments/pending-review";
 import type { KanbanContext } from "./context";
 import type { TicketRow } from "./db/rows";
 import { fetchPrHeads, github, prStateOf, repoFromRepositoryUrl, resolveToken, searchPulls, type GithubPull } from "./github";
@@ -69,9 +70,10 @@ export function createSourceSync(
     threads,
     projects,
     prComments,
+    pendingReview,
     reviews,
     tour,
-  }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments; reviews: Reviews; tour: Tour },
+  }: { board: BoardStore; threads: CardThreads; projects: Projects; prComments: PrComments; pendingReview: PendingReview; reviews: Reviews; tour: Tour },
 ) {
   const { bb, settings, stmts, sync, publish } = ctx;
   const { getTicket, getColumns, getSources, createTicket, moveTicket } = board;
@@ -316,6 +318,14 @@ export function createSourceSync(
         await syncPrComments(row, token, signal);
       } catch (error) {
         bb.log.warn(`could not sync comments for ${row.pr_repo}#${row.pr_number}: ${String(error)}`);
+      }
+    }
+    // The user's pending review is theirs alone, so nothing about it moves the PR's updated_at: every pass looks.
+    for (const row of stmts.openPrs.all()) {
+      try {
+        await pendingReview.pull(row, token, syncPrComments, signal);
+      } catch (error) {
+        bb.log.warn(`could not pull the pending review for ${row.pr_repo}#${row.pr_number}: ${String(error)}`);
       }
     }
     // Tracked PRs that left every source: merged, closed, or gone from a source that treats that as done.

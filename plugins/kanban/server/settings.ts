@@ -91,6 +91,13 @@ export function defineSettings(bb: BbPluginApi) {
       description: "New cards carrying any of these comma-separated tags start monitored, running the review loop with the default gates. Only new cards; turning a card's monitoring off or on afterwards always wins.",
       default: "",
     },
+    stageOnGithub: {
+      type: "boolean",
+      label: "Stage GitHub drafts in your pending review on GitHub",
+      description:
+        "A draft headed for the PR goes into your pending review on GitHub as soon as it is saved, and comments pending there come onto the board, so a review can be half written in each place and submitted from either. Off, drafts stay on the board until you submit.",
+      default: true,
+    },
     hideReviewThreads: {
       type: "boolean",
       label: "Keep code review threads out of the sidebar",
