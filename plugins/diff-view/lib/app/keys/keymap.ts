@@ -182,7 +182,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["v"], action: "Mark the file viewed (collapses it) or not" },
       { keys: ["zo", "zc"], action: "Expand / collapse the file" },
       { keys: ["zR", "zM"], action: "Expand / collapse every file" },
-      { keys: ["zr"], action: "Show more unchanged lines around the hunk, or the rest of a long new file (structural)" },
+      { keys: ["zr"], action: "Show more unchanged lines around the hunk (structural)" },
       { keys: ["x"], action: "Include or exclude the review finding under the cursor in the apply round" },
       { keys: ["F"], action: "Which review findings show: all, important and up, critical only, or none" },
       { keys: ["gF"], action: "Show or hide the findings the review's verifier filtered out" },

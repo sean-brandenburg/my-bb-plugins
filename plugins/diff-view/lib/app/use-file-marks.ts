@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { DiffResult } from "../types";
 import { errorMessage } from "./format";
-import { isGeneratedFile } from "./generated";
+import { startsCollapsed } from "./generated";
 import type { DiffSource } from "./source";
 
 function toggled(set: ReadonlySet<string>, path: string, present: boolean): ReadonlySet<string> {
@@ -13,8 +13,8 @@ function toggled(set: ReadonlySet<string>, path: string, present: boolean): Read
 }
 
 /**
- * Which files are marked viewed and which are collapsed. Viewed and generated files start collapsed; marking a file
- * viewed collapses it and unmarking expands it, but the user can still open or close any file by hand.
+ * Which files are marked viewed and which are collapsed. Viewed, generated and very large files start collapsed; marking
+ * a file viewed collapses it and unmarking expands it, but the user can still open or close any file by hand.
  */
 export function useFileMarks(source: DiffSource, diff: DiffResult | null) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -26,8 +26,8 @@ export function useFileMarks(source: DiffSource, diff: DiffResult | null) {
     const key = `${headSha ?? "env"}:${diff.files.length}`;
     if (generatedCollapsedFor.current === key) return;
     generatedCollapsedFor.current = key;
-    const generated = diff.files.filter(isGeneratedFile).map((entry) => entry.path);
-    if (generated.length > 0) setCollapsed((current) => new Set([...current, ...generated]));
+    const closed = diff.files.filter(startsCollapsed).map((entry) => entry.path);
+    if (closed.length > 0) setCollapsed((current) => new Set([...current, ...closed]));
   }, [diff, headSha]);
   // Environment diffs have no head sha, so marks are refetched with every diff load; the source decides which survive.
   const viewedKey = headSha ?? diff?.fetchedAt ?? null;

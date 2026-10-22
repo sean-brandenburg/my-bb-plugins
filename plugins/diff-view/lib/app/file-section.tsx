@@ -7,7 +7,7 @@ import { Checkbox } from "./ui/checkbox";
 import { CHEVRON, FAST, OPACITY_TRANSITION, STAGGER, STAGGER_CAP, enter, stagger, useOpenedSinceMount } from "./ui/motion";
 import { cn } from "./utils";
 import { useDiffPreferences } from "./state";
-import { isGeneratedFile } from "./generated";
+import { LARGE_FILE_CHANGED_LINES, isGeneratedFile, isLargeFile } from "./generated";
 import { LazyMount } from "./lazy-mount";
 import type { PatchAnnotationProps } from "./patch-annotations";
 import { FileLevelComments } from "./comments/file-level-comments";
@@ -88,6 +88,10 @@ export function FileSection({
         {isGeneratedFile(file) ? (
           <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground" title={file.vendored ? "Vendored; collapsed by default and shown as a text diff" : "Looks generated; collapsed by default"}>
             {file.vendored ? "vendored" : "generated"}
+          </span>
+        ) : isLargeFile(file) ? (
+          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground" title={`Over ${LARGE_FILE_CHANGED_LINES.toLocaleString()} changed lines; collapsed by default`}>
+            large
           </span>
         ) : null}
         <span className="text-xs tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>

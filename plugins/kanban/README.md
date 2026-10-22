@@ -328,8 +328,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   context around each change, collapsed gaps with ↑/↓ expanders and the
   enclosing function after `@@`, Shiki syntax colouring from bb's code theme,
   difftastic's changed spans tinted on top, and moved blocks in violet with a
-  "moved to/from line N" jump. Whole-file adds and deletes show a preview with
-  a "show more" bar. Line numbers still take comments. Hold ⌘ (Ctrl) and hover
+  "moved to/from line N" jump. Line numbers still take comments. Hold ⌘ (Ctrl) and hover
   any identifier for a card showing where it is defined and its first lines;
   ⌘-click opens an inline peek under that line, like an editor's peek
   definition: definitions and whole-word usages (`git grep` in the card's
@@ -421,7 +420,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   back) and `gF` unfolds the filtered ones.
 - **Review aids**: a per-file "Viewed" checkbox collapses the file and counts
   toward "n of m viewed" at the top (scoped to the PR head, so a push resets
-  it); lockfiles, vendored and generated files collapse by default; the file
+  it); lockfiles, vendored and generated files, and files with over 1,000
+  changed lines, collapse by default (the file header says why); the file
   tree groups by directory with per-directory stats; long lines always wrap,
   and the diff opens split; comment markers sit on a
   track beside the scrollbar; and the whole review runs from the keyboard with

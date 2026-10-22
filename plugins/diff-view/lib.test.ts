@@ -4,7 +4,7 @@ import { fetchChangeTotals, knownChangeTotals } from "./lib/app/change-totals";
 import { buildFileTree } from "./lib/app/file-tree/build-file-tree";
 import { statusMark } from "./lib/app/file-status";
 import { activeReviews, distinctFindings, filterFindings, findingsOutsideDiff, inlineFindingsByPath, nextFindingFilter, parseFindingFilter } from "./lib/app/findings/findings";
-import { isGeneratedFile } from "./lib/app/generated";
+import { isGeneratedFile, isLargeFile, startsCollapsed } from "./lib/app/generated";
 import { riskByPath } from "./lib/app/risk";
 import { enclosingDefinition } from "./lib/app/structural/enclosing-definition";
 import { detectMoves } from "./lib/app/structural/moves";
@@ -451,6 +451,17 @@ describe("isGeneratedFile", () => {
     }
     expect(isGeneratedFile(file("src/app.ts", 1, 0, true))).toBe(true);
     for (const path of ["src/app.ts", "README.md", "src/build.ts"]) expect(isGeneratedFile(file(path)), path).toBe(false);
+  });
+});
+
+describe("startsCollapsed", () => {
+  it("collapses files with over a thousand changed lines, counting both sides", () => {
+    expect(isLargeFile(file("src/app.ts", 1000, 0))).toBe(false);
+    expect(isLargeFile(file("src/app.ts", 1001, 0))).toBe(true);
+    expect(isLargeFile(file("src/app.ts", 600, 401))).toBe(true);
+    expect(startsCollapsed(file("src/app.ts", 600, 401))).toBe(true);
+    expect(startsCollapsed(file("pnpm-lock.yaml", 1, 0))).toBe(true);
+    expect(startsCollapsed(file("src/app.ts", 999, 1))).toBe(false);
   });
 });
 

@@ -12,3 +12,15 @@ const GENERATED_PATH_PATTERNS: RegExp[] = [
 export function isGeneratedFile(file: DiffFile): boolean {
   return file.vendored || GENERATED_PATH_PATTERNS.some((pattern) => pattern.test(file.path));
 }
+
+/** A file with more changed lines than this starts collapsed: it is read on purpose, not scrolled past. */
+export const LARGE_FILE_CHANGED_LINES = 1000;
+
+export function isLargeFile(file: DiffFile): boolean {
+  return file.additions + file.deletions > LARGE_FILE_CHANGED_LINES;
+}
+
+/** Generated output and very large files start collapsed; the user can still open any of them. */
+export function startsCollapsed(file: DiffFile): boolean {
+  return isGeneratedFile(file) || isLargeFile(file);
+}

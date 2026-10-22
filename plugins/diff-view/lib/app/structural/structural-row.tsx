@@ -168,17 +168,3 @@ export const GapRow = memo(function GapRow({ path, from, to, total, first, last,
     </tr>
   );
 });
-
-/** The bar under a long new or deleted file's preview; `at` is the first row it hides. */
-export const PreviewMoreRow = memo(function PreviewMoreRow({ path, at, remaining, deleted, onShowAll }: { path: string; at: StructuralRow; remaining: number; deleted: boolean; onShowAll: () => void }) {
-  const atCursor = useCursorSide(path, at.lhs, at.rhs) !== null;
-  return (
-    <tr data-preview-more="" className="bg-sky-500/10 text-xs text-muted-foreground">
-      <td colSpan={4} className={cn("px-3 py-1.5", atCursor && "ring-1 ring-inset ring-primary/70")} data-cursor={atCursor ? "" : undefined}>
-        <button type="button" className={cn("rounded px-1.5 py-0.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300", PRESS)} onClick={onShowAll}>
-          Show {remaining} more {remaining === 1 ? "line" : "lines"} of this {deleted ? "deleted" : "new"} file
-        </button>
-      </td>
-    </tr>
-  );
-});
