@@ -1,12 +1,13 @@
 import { rpcContract } from "../contract";
 import { initialColumn } from "./board";
 import type { KanbanContext } from "./context";
+import { rowToDump } from "./db/rows";
 import type { Services } from "./services";
 
 /** The board's RPC surface; each handler hands off to the feature that owns it. */
 export function registerRpc(ctx: KanbanContext, services: Services): void {
   const { bb, db, stmts, sync, publish } = ctx;
-  const { board, subjects, threads, projects, changes, viewed, prComments, pendingReview, diffComments, reviews, tour, dumps, integration, subtasks, sourceSync, codeReviewThreads, loop, projectSettings } = services;
+  const { board, subjects, threads, projects, changes, viewed, prComments, pendingReview, diffComments, reviews, tour, dumps, subtasks, sourceSync, codeReviewThreads, loop, projectSettings } = services;
   const { resolveDiffSubject } = subjects;
 
   bb.rpc.register(rpcContract, {
@@ -16,15 +17,14 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       sources: await board.getSources(),
       tags: board.allTags(),
       sync,
-      dumps: dumps.listDumps(false).dumps,
+      dumps: stmts.dumpsOpen.all().map(rowToDump),
       projectSettings: projectSettings.allProjectSettings(),
     }),
     dump_create: ({ text, projectId }) => dumps.createDump(text, projectId),
     dumps_list: ({ includeClosed }) => dumps.listDumps(includeClosed),
     dump_refine: ({ id, answers, notes }) => dumps.refineDump(id, answers, notes),
-    dump_finalize: ({ id, tickets, columnId, startThreads, integrate }) => dumps.finalizeDump(id, tickets, columnId, startThreads, integrate),
+    dump_finalize: ({ id, tickets, columnId, startThreads }) => dumps.finalizeDump(id, tickets, columnId, startThreads),
     dump_discard: ({ id }) => dumps.discardDump(id),
-    integration_run: ({ ticketId }) => integration.run(ticketId),
     ticket_create: async (input) => {
       const columns = await board.getColumns();
       const columnId =

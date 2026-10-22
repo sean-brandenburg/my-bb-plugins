@@ -9,7 +9,6 @@ import { createChanges } from "./diff/changes";
 import { createDiffSubjects } from "./diff/subjects";
 import { createViewedMarks } from "./diff/viewed";
 import { createDumps } from "./dumps";
-import { createIntegration } from "./integration";
 import { createLoop } from "./loop/loop";
 import { createProjectSettings } from "./project-settings";
 import { createProjects } from "./projects";
@@ -36,16 +35,12 @@ export function createServices(ctx: KanbanContext) {
   const diffComments = createDiffComments(ctx, { board, subjects, changes, prComments, pendingReview });
   const reviews = createReviews(ctx, { board, threads, projects, codeReviewThreads });
   const tour = createTour(ctx, { changes, threads, projects, codeReviewThreads });
-  const integration = createIntegration(ctx, { board, threads, projectSettings });
-  board.setIntegrationLookup(integration);
-  board.onTicketChanged(integration.ticketChanged);
-  const dumps = createDumps(ctx, { board, threads, integration });
+  const dumps = createDumps(ctx, { board, threads });
   const subtasks = createSubtasks(ctx, { board, threads, projects });
   const sourceSync = createSourceSync(ctx, { board, threads, projects, prComments, pendingReview, reviews, tour });
   const loop = createLoop(ctx, { board, threads, codeReviewThreads, projectSettings, reviews, diffComments, prComments, changes, viewed, tour });
-  loop.setPhaseListener(integration.ticketChanged);
   const reviewResume = createReviewResume(ctx, { reviews, loop });
-  return { spend, board, projectSettings, loop, reviewResume, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, pendingReview, diffComments, reviews, tour, dumps, integration, subtasks, sourceSync };
+  return { spend, board, projectSettings, loop, reviewResume, subjects, threads, projects, codeReviewThreads, changes, viewed, prComments, pendingReview, diffComments, reviews, tour, dumps, subtasks, sourceSync };
 }
 
 export type Services = ReturnType<typeof createServices>;

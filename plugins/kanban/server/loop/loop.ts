@@ -65,18 +65,10 @@ export function createLoop(
   async function dispatch(ticketId: string, event: LoopEvent): Promise<void> {
     const row = stmts.byId.get(ticketId);
     if (row === undefined) return;
-    const before = parseLoopState(row.loop_state);
-    const { state, actions } = reduce(before, event);
+    const { state, actions } = reduce(parseLoopState(row.loop_state), event);
     stmts.setLoopState.run(JSON.stringify(state), ticketId);
     publish();
-    if (state.phase !== before.phase) onPhaseChange?.(ticketId);
     for (const action of actions) await perform(ticketId, action);
-  }
-
-  /** Set by whoever needs to hear a card's loop phase change (the integration waits on member cards settling). */
-  let onPhaseChange: ((ticketId: string) => void) | null = null;
-  function setPhaseListener(listener: (ticketId: string) => void): void {
-    onPhaseChange = listener;
   }
 
   async function perform(ticketId: string, action: LoopAction): Promise<void> {
@@ -479,7 +471,7 @@ export function createLoop(
     await dispatch(row.ticket_id, { type: "review-completed", reviewId: row.id, findings, notCovered: report.notCovered, pathRules: pathRules(row.ticket_id), pr: getTicket(row.ticket_id).pr !== null });
   }
 
-  return { setMonitored, setGates, proposePlan, approvePlan, approveFindings, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute, setLevel, readingPlan, setPhaseListener };
+  return { setMonitored, setGates, proposePlan, approvePlan, approveFindings, answerFindings, reportReady, recordChecks, handleIdle, threadFailed, questionAsked, reviewFinished, accept, reportLanded, sendBack, rethink, pullIn, decideDispute, setLevel, readingPlan };
 }
 
 export type Loop = ReturnType<typeof createLoop>;

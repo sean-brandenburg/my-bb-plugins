@@ -250,36 +250,5 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
       pulled_at INTEGER,
       updated_at INTEGER NOT NULL
     )`,
-    // A brain dump's integration: the card and thread that merge every ticket's branch into one worktree once they are done.
-    `CREATE TABLE IF NOT EXISTS integrations (
-      id TEXT PRIMARY KEY,
-      dump_id TEXT NOT NULL UNIQUE,
-      ticket_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
-      thread_id TEXT,
-      status TEXT NOT NULL,
-      commit_sha TEXT,
-      check_exit_code INTEGER,
-      error TEXT,
-      started_at INTEGER,
-      completed_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS integrations_ticket ON integrations(ticket_id)`,
-    `CREATE INDEX IF NOT EXISTS integrations_thread ON integrations(thread_id)`,
-    `CREATE TABLE IF NOT EXISTS integration_members (
-      integration_id TEXT NOT NULL,
-      ticket_id TEXT NOT NULL,
-      proposal_id TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      head_sha TEXT,
-      branch TEXT,
-      outcome TEXT NOT NULL,
-      note TEXT NOT NULL DEFAULT '',
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (integration_id, ticket_id)
-    )`,
-    `CREATE INDEX IF NOT EXISTS integration_members_ticket ON integration_members(ticket_id)`,
   ]);
 }

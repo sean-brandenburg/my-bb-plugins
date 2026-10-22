@@ -1,5 +1,4 @@
 import { parseLoopState } from "../shared/loop";
-import { INTEGRATION_MEMBER_NOTE } from "./card-threads";
 import type { KanbanContext } from "./context";
 import type { TicketRow } from "./db/rows";
 import type { Statements } from "./db/statements";
@@ -42,16 +41,9 @@ const ROLE_INSTRUCTIONS = new Map<string, (row: TicketRow) => string>([
     (row) =>
       `This thread works through the subtasks of ${ticketLabel(row)}: list them with \`bb kanban subtasks --ticket ${row.id}\`, move each with \`bb kanban move <column> --ticket <subtask-id>\` as you go, and never move or finish a subtask you did not actually complete.`,
   ],
-  [
-    "integrate",
-    (row) =>
-      `This thread is the integration worktree of ${ticketLabel(row)}: it merges the branches of the cards planned from one brain dump so the whole feature can be tested end to end here, with the user. Record each merge with \`bb kanban integrated --commit <sha> --merged <ids> [--conflicts <ids>] [--exit-code <n>]\`. Never land, push or merge the result anywhere else, never move any card, and never post to GitHub.`,
-  ],
 ]);
 
 function cardInstructions(stmts: Statements, projectSettings: ProjectSettingsStore, row: TicketRow): string {
-  const member = stmts.integrationMemberByTicket.get(row.id);
-  const integrationNote = member === undefined ? "" : ` ${INTEGRATION_MEMBER_NOTE}`;
   const pr =
     row.pr_repo !== null && row.pr_number !== null
       ? ` It tracks GitHub PR ${JSON.stringify(`${row.pr_repo}#${row.pr_number}`)}.`
@@ -68,7 +60,7 @@ function cardInstructions(stmts: Statements, projectSettings: ProjectSettingsSto
   return [
     `This thread is kanban ticket ${JSON.stringify(row.id)} titled ${JSON.stringify(row.title)}, currently in column ${JSON.stringify(row.column_id)}.${pr}${dueNote}${parentNote}${childNote}`,
     workflow,
-  ].join(" ") + integrationNote;
+  ].join(" ");
 }
 
 /** Instructions injected into every thread a card, review, apply, checks, plan or subtask run owns; a monitored card's own thread is held to the review loop's contract. */

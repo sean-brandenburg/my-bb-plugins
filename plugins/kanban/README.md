@@ -105,25 +105,6 @@ its PR is reviewed and its review findings and comments are handed to agents.
   deselect tickets, choose a column, and create the cards (optionally starting
   a thread per card). Planning threads are archived when a dump is finalized
   or discarded.
-  **Merge into one worktree when done** (on by default) adds an integration
-  card, `Integrate: <dictation>`, tagged `integration`, alongside the cards.
-  Each card's thread then runs in a worktree of its own, told to commit on its
-  branch and never push or merge. Once every card is done (in Done, or its
-  review loop stopped at Needs you), the board reads each card's branch head
-  and starts the integration card's thread in a fresh worktree of the project,
-  which merges the branches in dependency order (`git merge --no-ff`), resolves
-  conflicts whose answer is clear from the cards and aborts the rest, runs the
-  project's check command, records the result with `bb kanban integrated`, and
-  then tests the feature end to end as the dictation describes. You carry on
-  in that thread to validate the feature before anything lands; it never
-  pushes, lands or moves cards. The integration card's panel lists each card's
-  standing (in progress, ready at a commit, nothing to merge, unavailable,
-  merged, conflict) and the merge result; **Integrate now** merges what has
-  commits so far, done or not, and **Integrate again** re-reads every head and
-  merges afresh in the same worktree after fixes. The Proposals page shows the
-  same status under the dump, and each member card's panel links to its
-  integration card under Feature. `bb kanban integrate` does the same from a
-  thread.
 - **Subtasks**: any card can hold subtasks (nested as deep as you like). List
   them while creating the card in the New card dialog (Enter adds the next
   one; `#tag` works); they land in the card's column and project before its
@@ -613,8 +594,6 @@ bb kanban monitor on|off [--ticket <id>] [--gates plan,findings,auto-accept|none
 bb kanban plan --plan-stdin
 bb kanban ready --commit <sha> [--evidence-stdin] [--screenshot <path>] [--check-command "<cmd>"]
 bb kanban checks-record --exit-code <n> [--output-stdin]
-bb kanban integrate [--ticket <id>]
-bb kanban integrated --commit <sha> [--merged T1,T2] [--conflicts T3] [--exit-code <n>]
 bb kanban review [--ticket <id>] [--project <id>] [--full]
 bb kanban review-show [--ticket <id>]
 bb kanban apply-review [--ticket <id>] [--no-push]

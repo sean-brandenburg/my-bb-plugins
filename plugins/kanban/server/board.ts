@@ -95,29 +95,6 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
   }
 
   let doneColumnCache: string = COLUMN.done;
-  /** The done column as last read; `getColumns` keeps it current. */
-  function doneColumnId(): string {
-    return doneColumnCache;
-  }
-
-  /** The integration service is built after the board, so it hooks in here to annotate cards. */
-  let integrationLookup: { integrationForTicket(ticketId: string): Ticket["integration"]; integratesInto(ticketId: string): string | null } = {
-    integrationForTicket: () => null,
-    integratesInto: () => null,
-  };
-  function setIntegrationLookup(lookup: typeof integrationLookup): void {
-    integrationLookup = lookup;
-  }
-
-  /** Called with a card's id after it moved, was deleted or was restored, once the change is stored. */
-  const changeListeners: Array<(ticketId: string) => void> = [];
-  function onTicketChanged(listener: (ticketId: string) => void): void {
-    changeListeners.push(listener);
-  }
-  function ticketChanged(ticketId: string): void {
-    for (const listener of changeListeners) listener(ticketId);
-  }
-
   function childCounts(row: TicketRow): Ticket["children"] {
     const children = stmts.childrenOf.all(row.id);
     return {
@@ -134,8 +111,6 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
       defaultCommentTarget: defaultCommentTarget(row),
       children: childCounts(row),
       spend: spend.spendOf(row.id),
-      integration: integrationLookup.integrationForTicket(row.id),
-      integratesInto: integrationLookup.integratesInto(row.id),
     });
   }
 
@@ -220,7 +195,6 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
     });
     move();
     publish();
-    ticketChanged(id);
     return getTicket(id);
   }
 
@@ -330,10 +304,7 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
       stmts.remove.run(id);
       return true;
     })();
-    if (deleted) {
-      publish();
-      ticketChanged(id);
-    }
+    if (deleted) publish();
     return { deleted };
   }
 
@@ -355,10 +326,7 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
       stmts.forgetDeleted.run(id);
       return true;
     })();
-    if (restored) {
-      publish();
-      ticketChanged(id);
-    }
+    if (restored) publish();
     return { restored };
   }
 
@@ -427,9 +395,6 @@ export function createBoardStore(ctx: KanbanContext, { spend }: { spend: Spend }
     getSources,
     setReviewTag,
     setMonitorTags,
-    doneColumnId,
-    setIntegrationLookup,
-    onTicketChanged,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PullRequest } from "../../shared/board";
 import type { ReviewDepth } from "../../shared/review";
-import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, IntegrationMemberRow, IntegrationRow, NarrativeRow, PendingReviewRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
+import type { ChecksRunRow, ClassifyRunRow, CommentApplyRow, DiffCommentRow, DumpRow, HunkExplanationRow, NarrativeRow, PendingReviewRow, PrCommentRow, ReviewRow, TicketRow } from "./rows";
 
 export type KanbanDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
@@ -324,31 +324,6 @@ export function prepareStatements(db: KanbanDatabase) {
     setDumpPlanning: db.prepare<[string, number, string]>(`UPDATE dumps SET status = 'planning', answers_json = ?, error = NULL, updated_at = ? WHERE id = ?`),
     setDumpDone: db.prepare<[string, number, string]>(`UPDATE dumps SET status = 'done', created_ticket_ids = ?, updated_at = ? WHERE id = ?`),
     setDumpDiscarded: db.prepare<[number, string]>(`UPDATE dumps SET status = 'discarded', updated_at = ? WHERE id = ?`),
-    insertIntegration: db.prepare<[{ id: string; dump_id: string; ticket_id: string; project_id: string; created_at: number }]>(
-      `INSERT INTO integrations (id, dump_id, ticket_id, project_id, thread_id, status, created_at, updated_at)
-       VALUES (@id, @dump_id, @ticket_id, @project_id, NULL, 'waiting', @created_at, @created_at)`,
-    ),
-    integrationById: db.prepare<[string], IntegrationRow>(`SELECT * FROM integrations WHERE id = ?`),
-    integrationByDump: db.prepare<[string], IntegrationRow>(`SELECT * FROM integrations WHERE dump_id = ?`),
-    integrationByTicket: db.prepare<[string], IntegrationRow>(`SELECT * FROM integrations WHERE ticket_id = ?`),
-    integrationByThread: db.prepare<[string], IntegrationRow>(`SELECT * FROM integrations WHERE thread_id = ?`),
-    setIntegrationStarted: db.prepare<[string | null, number, number, string]>(
-      `UPDATE integrations SET thread_id = ?, status = 'integrating', commit_sha = NULL, check_exit_code = NULL, error = NULL, started_at = ?, completed_at = NULL, updated_at = ? WHERE id = ?`,
-    ),
-    setIntegrationRecorded: db.prepare<[string, number | null, number, number, string]>(
-      `UPDATE integrations SET status = 'integrated', commit_sha = ?, check_exit_code = ?, error = NULL, completed_at = ?, updated_at = ? WHERE id = ?`,
-    ),
-    setIntegrationFailed: db.prepare<[string, number, string]>(`UPDATE integrations SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`),
-    clearIntegrationThread: db.prepare<[number, string]>(`UPDATE integrations SET thread_id = NULL, updated_at = ? WHERE thread_id = ?`),
-    insertIntegrationMember: db.prepare<[{ integration_id: string; ticket_id: string; proposal_id: string; position: number; updated_at: number }]>(
-      `INSERT INTO integration_members (integration_id, ticket_id, proposal_id, position, head_sha, branch, outcome, note, updated_at)
-       VALUES (@integration_id, @ticket_id, @proposal_id, @position, NULL, NULL, 'pending', '', @updated_at)`,
-    ),
-    integrationMembers: db.prepare<[string], IntegrationMemberRow>(`SELECT * FROM integration_members WHERE integration_id = ? ORDER BY position`),
-    integrationMemberByTicket: db.prepare<[string], IntegrationMemberRow>(`SELECT * FROM integration_members WHERE ticket_id = ?`),
-    setIntegrationMemberOutcome: db.prepare<[{ outcome: string; head_sha: string | null; branch: string | null; note: string; updated_at: number; integration_id: string; ticket_id: string }]>(
-      `UPDATE integration_members SET outcome = @outcome, head_sha = @head_sha, branch = @branch, note = @note, updated_at = @updated_at WHERE integration_id = @integration_id AND ticket_id = @ticket_id`,
-    ),
   };
 }
 

@@ -24,7 +24,6 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
   const { startChildren } = services.subtasks;
   const { runSync } = services.sourceSync;
   const { setMonitored, proposePlan, answerFindings, reportReady, recordChecks, reportLanded } = services.loop;
-  const integration = services.integration;
 
   const COMMIT_SHA = /^[0-9a-f]{7,40}$/iu;
 
@@ -478,46 +477,6 @@ export function registerCli(ctx: KanbanContext, services: Services): void {
               throw new PluginCliError(error.message, { code: "not_accepted" });
             }
             return { exitCode: 0, stdout: `Landed; ticket ${ticket.id} moved to Done` };
-          },
-        }),
-        integrate: cliCommand({
-          summary: "Merge a brain dump's cards into its integration worktree now, done or not (defaults to the current thread's card: the integration card or one of its members)",
-          options: { ...ticketOption, json: { type: "boolean", description: "Emit JSON" } },
-          async run({ options }, ctx) {
-            const ticket = ticketForContext(options.ticket, ctx.threadId);
-            let result;
-            try {
-              result = await integration.run(ticket.id);
-            } catch (error) {
-              throw new PluginCliError(error instanceof Error ? error.message : String(error), { code: "not_integrable" });
-            }
-            return { exitCode: 0, stdout: options.json ? JSON.stringify(result) : `Integrating in @thread:${result.threadId}` };
-          },
-        }),
-        integrated: cliCommand({
-          summary: "Record an integration merge (run by the integration thread itself)",
-          options: {
-            commit: { type: "string", required: true, description: "The merge result's commit sha" },
-            merged: { type: "string", description: "Comma-separated ids of the cards merged (T1,T2 or card ids); defaults to every card with commits that is not in --conflicts" },
-            conflicts: { type: "string", description: "Comma-separated ids of the cards whose merge was aborted on a conflict" },
-            "exit-code": { type: "integer", min: 0, max: 255, description: "The check command's exit code after the merge" },
-            json: { type: "boolean", description: "Emit JSON" },
-          },
-          async run({ options }, ctx) {
-            const row = ctx.threadId === undefined ? undefined : stmts.integrationByThread.get(ctx.threadId);
-            if (row === undefined) throw new PluginCliError("This thread is not an integration thread.", { code: "no_integration_for_thread", hint: "Run this from the thread `bb kanban integrate` started." });
-            if (!COMMIT_SHA.test(options.commit)) throw new PluginCliError(`"${options.commit}" is not a commit sha.`, { code: "bad_commit" });
-            const ids = (value: string | undefined) => (value ?? "").split(",").map((id) => id.trim()).filter((id) => id !== "");
-            const conflicts = ids(options.conflicts);
-            const merged = options.merged === undefined ? stmts.integrationMembers.all(row.id).filter((member) => member.head_sha !== null && member.outcome !== "nothing" && !conflicts.includes(member.proposal_id) && !conflicts.includes(member.ticket_id)).map((member) => member.proposal_id) : ids(options.merged);
-            let result;
-            try {
-              result = integration.record(row, options.commit, merged, conflicts, options["exit-code"] ?? null);
-            } catch (error) {
-              throw new PluginCliError(error instanceof Error ? error.message : String(error), { code: "unknown_member" });
-            }
-            const counts = `${result.members.filter((member) => member.outcome === "merged").length} merged, ${result.members.filter((member) => member.outcome === "conflict").length} in conflict`;
-            return { exitCode: 0, stdout: options.json ? JSON.stringify(result) : `Recorded the integration at ${options.commit.slice(0, 7)}: ${counts}` };
           },
         }),
         "checks-record": cliCommand({
