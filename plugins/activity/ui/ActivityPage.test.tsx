@@ -104,7 +104,7 @@ describe("ActivityPage", () => {
     const slot = await render();
     expect(queries[0]).toEqual({ sinceMs: expect.any(Number), untilMs: null, kind: null, plugin: null, limit: 2000 });
     expect(timelineQueries[0]).toMatchObject({ kind: null, plugin: null, bucketMs: BUCKET, untilMs: null });
-    expect(slot.getByText(/12 events since/)).toBeTruthy();
+    expect(slot.getByText(/12 events/).parentElement?.textContent).toMatch(/12 events since/);
     expect(slot.getByText("33% of clicks")).toBeTruthy();
     expect(slot.getByText("were made from the keyboard")).toBeTruthy();
     expect(slot.getByLabelText("Share of events per plugin").textContent).toContain("kanban 75%");

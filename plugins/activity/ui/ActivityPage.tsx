@@ -521,14 +521,15 @@ export function ActivityPage() {
     <div ref={root} tabIndex={-1} className="flex h-full flex-col gap-4 overflow-y-auto p-4 text-sm outline-none" aria-label="Activity">
       <header className="flex flex-col gap-3">
         <div className="flex items-baseline gap-3">
-          <h2 className="text-base font-semibold">Activity</h2>
           {summary !== null ? (
-            <span className="truncate text-xs tabular-nums text-muted-foreground">
-              {formatCount(summary.total)} events
+            <p className="truncate text-sm tabular-nums text-muted-foreground">
+              <span className="text-base font-semibold text-foreground">{formatCount(summary.total)} events</span>
               {pin !== null ? " in the pinned stretch" : summary.firstAt === null ? "" : ` since ${new Date(summary.firstAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
               {lastAt === null || lastAt === 0 ? "" : `, last ${formatAgo(lastAt, now)}`}
-            </span>
-          ) : null}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Reading the log…</p>
+          )}
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">? for keys</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
