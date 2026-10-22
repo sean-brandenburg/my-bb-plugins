@@ -350,7 +350,7 @@ describe("loop reducer", () => {
 
     it("accepts a local card by asking its thread to land the change, and moves it to Done when it reports landed", () => {
       const { state, actions } = run([...clean, { type: "accept", pr: false }, { type: "landed" }]);
-      expect(actions.at(-2)).toEqual([{ type: "prompt-card", prompt: { kind: "land" } }]);
+      expect(actions.at(-2)).toEqual([{ type: "prompt-card", prompt: { kind: "land", auto: false } }]);
       expect(actions.at(-1)).toEqual([{ type: "move", column: "done" }]);
       expect(state).toMatchObject({ phase: "landed", reason: null });
     });
@@ -490,7 +490,7 @@ describe("loop reducer", () => {
         expect(local.state).toMatchObject({ phase: "accepted", autoAccepted: true, attention: { level: "glance" } });
         expect(local.actions.at(-1)).toEqual([
           { type: "move", column: "in-progress" },
-          { type: "prompt-card", prompt: { kind: "land" } },
+          { type: "prompt-card", prompt: { kind: "land", auto: true } },
         ]);
         expect(clean({ autoAccept: true }, 2, [], true).actions.at(-1)).toEqual([{ type: "move", column: "review" }]);
       });

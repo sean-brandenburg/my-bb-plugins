@@ -82,7 +82,8 @@ export type CardPrompt =
   | { kind: "fix"; round: number; reviewId: string; findingIds: string[]; byUser?: true }
   /** The user's unsent diff comments, which the service reads when it sends them. */
   | { kind: "comments" }
-  | { kind: "land" }
+  /** `auto` when the auto-accept gate accepted the change, not the user. */
+  | { kind: "land"; auto: boolean }
   | { kind: "rethink" };
 
 export type LoopColumn = typeof COLUMN.inProgress | typeof COLUMN.checking | typeof COLUMN.review | typeof COLUMN.done;
@@ -126,7 +127,7 @@ function needsYou(state: LoopState, reason: NeedsYouReason): LoopStep {
 /** A PR card is left for the user to merge, and sync moves it to Done; a local card's thread lands the change. */
 function accepted(state: LoopState, pr: boolean): LoopStep {
   const next = { ...state, phase: "accepted" as const, reason: null };
-  return pr ? stay(next) : { state: next, actions: [{ type: "prompt-card", prompt: { kind: "land" } }] };
+  return pr ? stay(next) : { state: next, actions: [{ type: "prompt-card", prompt: { kind: "land", auto: state.autoAccepted } }] };
 }
 
 /**
@@ -422,7 +423,7 @@ export function reduce(state: LoopState, event: LoopEvent): LoopStep {
       return stay({ ...state, phase: "paused", reason: "question", pausedPhase: state.phase });
     case "accept":
       if (!waiting(state)) return stay(state);
-      return accepted(state, event.pr);
+      return accepted({ ...state, autoAccepted: false }, event.pr);
     case "landed":
       if (state.phase !== "accepted") return stay(state);
       return { state: { ...state, phase: "landed" }, actions: [{ type: "move", column: COLUMN.done }] };

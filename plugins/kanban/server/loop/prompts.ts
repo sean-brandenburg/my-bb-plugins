@@ -72,7 +72,9 @@ export function cardPromptText(prompt: Exclude<CardPrompt, { kind: "fix" | "comm
       ].join("\n");
     case "land":
       return [
-        `The user read the board's handoff brief for "${ticket.title}" and accepted the change. Land it now.`,
+        prompt.auto
+          ? `The board's review loop accepted the change for "${ticket.title}" without stopping: it ended clean at Glance with no serious finding open, and the user had the card auto-accept such a change. Land it now.`
+          : `The user read the board's handoff brief for "${ticket.title}" and accepted the change. Land it now.`,
         "",
         "Land it the way this project finishes its work: read its AGENTS.md or CLAUDE.md (at the repository root, and in the directories you changed) and follow the steps they give for a finished change, such as committing, applying it to the main branch, building and installing it. Push only if those steps say to. If they describe no finishing steps, ask the user how to land it rather than guessing.",
         "",
