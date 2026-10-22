@@ -33,8 +33,10 @@ describe("time buckets", () => {
   it("labels each midnight under hour buckets and at most eight dates under day buckets", () => {
     const hours = bucketStarts(NOW - 23 * HOUR, NOW, HOUR, 0);
     const labels = axisLabels(hours, HOUR, 0);
-    expect(labels.filter((label) => label !== null)).toHaveLength(1);
+    expect(labels.filter((label) => label !== null)).toHaveLength(4);
     expect(labels[hours.findIndex((start) => start === Date.UTC(2026, 9, 22))]).not.toBeNull();
+    expect(labels[hours.findIndex((start) => start === Date.UTC(2026, 9, 22, 6))]).not.toBeNull();
+    expect(axisLabels(bucketStarts(NOW - 6 * DAY, NOW, 6 * HOUR, 0), 6 * HOUR, 0).filter((label) => label !== null)).toHaveLength(6);
     const days = bucketStarts(NOW - 29 * DAY, NOW, DAY, 0);
     expect(axisLabels(days, DAY, 0).filter((label) => label !== null).length).toBeLessThanOrEqual(8);
   });

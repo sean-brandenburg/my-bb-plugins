@@ -47,6 +47,8 @@ describe("findings", () => {
     expect(found[0]!.rest).toContain("“Edit”, “Cancel”");
     expect(found[0]!.action).toEqual({ type: "show", kind: "click", emphasis: "mouse-only" });
     expect(found[1]!.action).toEqual({ type: "pin", start: NOW - HOUR });
+    expect(found[1]!.hint).toBe("pin it");
+    expect(computeFindings(summary([]), [{ start: NOW - HOUR, count: 2 }, { start: NOW, count: 1 }], HOUR, DAY, NOW, NOW - HOUR)[0]!.hint).toBe("unpin it");
     expect(found[2]!.lead).toBe("53% of clicks");
     expect(found[3]!.action).toEqual({ type: "show", kind: "route", emphasis: null });
   });

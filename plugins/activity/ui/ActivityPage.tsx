@@ -405,7 +405,7 @@ export function ActivityPage() {
 
   const groups = useMemo(() => (summary === null ? [] : groupItems(summary, query, emphasis, now)), [summary, query, emphasis, now]);
   const largest = useMemo(() => largestByKind(groups), [groups]);
-  const findings = useMemo(() => (summary === null ? [] : computeFindings(summary, buckets, bucketMs, rangeMs, now)), [summary, buckets, bucketMs, rangeMs, now]);
+  const findings = useMemo(() => (summary === null ? [] : computeFindings(summary, buckets, bucketMs, rangeMs, now, pin?.start ?? null)), [summary, buckets, bucketMs, rangeMs, now, pin]);
   const lastAt = summary === null ? null : summary.items.reduce((latest, item) => Math.max(latest, item.lastAt), 0);
 
   const toggle = useCallback((plugin: string | null) => {
@@ -498,7 +498,7 @@ export function ActivityPage() {
           {summary !== null ? (
             <span className="truncate text-xs tabular-nums text-muted-foreground">
               {formatCount(summary.total)} events
-              {summary.firstAt === null ? "" : ` since ${new Date(summary.firstAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
+              {pin !== null ? " in the pinned stretch" : summary.firstAt === null ? "" : ` since ${new Date(summary.firstAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
               {lastAt === null || lastAt === 0 ? "" : `, last ${formatAgo(lastAt, now)}`}
             </span>
           ) : null}

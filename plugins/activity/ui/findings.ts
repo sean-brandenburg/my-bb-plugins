@@ -44,7 +44,7 @@ const shortName = (label: string) => (label.length <= NAME_MAX ? label : `${labe
  * touched in two weeks, the busiest stretch, how much of the clicking happens from the keyboard, the most-opened
  * page. Only the ones the data supports; at most four.
  */
-export function computeFindings(summary: Summary, buckets: readonly TimelineBucket[], bucketMs: number, rangeMs: number | null, now: number): Finding[] {
+export function computeFindings(summary: Summary, buckets: readonly TimelineBucket[], bucketMs: number, rangeMs: number | null, now: number, pinned: number | null = null): Finding[] {
   const findings: Finding[] = [];
 
   const mouseOnly = summary.items.filter(isMouseOnly);
@@ -81,7 +81,7 @@ export function computeFindings(summary: Summary, buckets: readonly TimelineBuck
       id: "busiest",
       lead: bucketLabel(busiest.start, bucketMs),
       rest: `was the busiest ${bucketUnit(bucketMs)}, with ${formatCount(busiest.count)} events`,
-      hint: "pin it",
+      hint: pinned === busiest.start ? "unpin it" : "pin it",
       action: { type: "pin", start: busiest.start },
     });
   }

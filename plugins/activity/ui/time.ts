@@ -59,11 +59,17 @@ export function bucketUnit(bucketMs: number): string {
 }
 
 /**
- * An axis label for each column or null: the weekday at each local midnight under sub-day buckets, otherwise
- * every k-th date so at most eight labels show.
+ * An axis label for each column or null: under sub-day buckets the weekday at each local midnight, and under
+ * hour buckets the time at every sixth hour too; otherwise every k-th date so at most eight labels show.
  */
 export function axisLabels(starts: readonly number[], bucketMs: number, offsetMs: number): (string | null)[] {
-  if (bucketMs < DAY) return starts.map((start) => ((start + offsetMs) % DAY === 0 ? weekday(start) : null));
+  if (bucketMs < DAY) {
+    return starts.map((start) => {
+      const sinceMidnight = (start + offsetMs) % DAY;
+      if (sinceMidnight === 0) return weekday(start);
+      return bucketMs === HOUR && sinceMidnight % (6 * HOUR) === 0 ? clock(start) : null;
+    });
+  }
   const step = Math.max(1, Math.ceil(starts.length / 8));
   return starts.map((start, index) => (index % step === 0 ? monthDay(start) : null));
 }
