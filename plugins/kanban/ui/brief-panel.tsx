@@ -76,7 +76,7 @@ function ActionButton({ action, label, keyHint, title, disabled, onDecide, findi
 }
 
 function Subhead({ children }: { children: ReactNode }) {
-  return <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</div>;
+  return <div className="text-xs font-medium text-muted-foreground">{children}</div>;
 }
 
 function LevelBody({ section, onOpenThread }: { section: Extract<BriefSection, { kind: "level" }>; onOpenThread: (threadId: string) => void }) {

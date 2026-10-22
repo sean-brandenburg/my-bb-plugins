@@ -97,7 +97,7 @@ export function ColumnView({
         isTarget && draggingId !== null && "border-primary/50 bg-primary/5",
       )}
     >
-      <header className="flex items-center gap-2 px-3 py-2">
+      <header className="flex items-center gap-2 rounded-t-[7px] border-b border-border bg-muted/40 px-3 py-2">
         <span aria-hidden className={cn("size-2 shrink-0 rounded-full", COLUMN_ACCENT[column.id] ?? "bg-muted-foreground/40")} />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{column.name}</h2>
         <span key={countPop.key} onAnimationEnd={countPop.onAnimationEnd} className={cn("rounded-full bg-muted px-1.5 text-[11px] font-medium leading-5 tabular-nums text-muted-foreground", countPop.className)}>
@@ -115,8 +115,8 @@ export function ColumnView({
           <Icon name="Plus" className="size-3.5" />
         </Button>
       </header>
-      {/* pt-0.5 leaves room for a hovered card's lift so the top card isn't clipped. */}
-      <div ref={listRef} data-kanban-column-list="" className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-0.5">
+      {/* pt-2 leaves room for a hovered card's lift so the top card isn't clipped. */}
+      <div ref={listRef} data-kanban-column-list="" className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-2">
         {tickets.map((ticket, index) => (
           <div key={ticket.id} className="flex flex-col gap-2">
             {isTarget && dropTarget.index === index && draggingId !== ticket.id ? (

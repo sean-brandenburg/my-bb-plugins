@@ -61,7 +61,7 @@ function Tip({ text, children }: { text: string; children: ReactElement }) {
 }
 
 function Subhead({ children }: { children: ReactNode }) {
-  return <div className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</div>;
+  return <div className="px-1 pt-1 text-xs font-medium text-muted-foreground">{children}</div>;
 }
 
 function GateRow({ option, checked, disabled, onChange }: { option: GateOption; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {

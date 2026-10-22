@@ -298,9 +298,9 @@ function TodoSection({
   const countPop = usePopOnChange(rows.length);
   return (
     <section aria-label={column.name}>
-      <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {column.name}{" "}
-        <span key={countPop.key} onAnimationEnd={countPop.onAnimationEnd} className={cn("inline-block font-normal tabular-nums", countPop.className)}>
+      <h2 className="mb-1.5 flex items-baseline gap-1.5 text-xs">
+        <span className="font-semibold">{column.name}</span>
+        <span key={countPop.key} onAnimationEnd={countPop.onAnimationEnd} className={cn("inline-block tabular-nums text-muted-foreground", countPop.className)}>
           {rows.length}
         </span>
       </h2>

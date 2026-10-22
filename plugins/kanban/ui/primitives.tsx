@@ -52,7 +52,8 @@ export function Badge({
       className={cn(
         "inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-4",
         className,
-        tone === "neutral" && "bg-muted text-muted-foreground",
+        // Solid enough to stand on a tinted group header, where a muted fill would vanish.
+        tone === "neutral" && "bg-foreground/10 text-muted-foreground",
         tone === "outline" && "border border-border text-muted-foreground",
         tone === "accent" && "bg-primary/10 text-primary",
         tone === "warning" && "bg-amber-500/15 text-amber-700 dark:text-amber-300",
@@ -201,8 +202,9 @@ export function Group({
   const [toggled, setToggled] = useState(false);
   const body = usePresence(open);
   return (
-    <section className="rounded-md border border-border">
-      <div className="flex items-center gap-1 pl-1.5 pr-1.5">
+    <section className="rounded-lg border border-border">
+      {/* The header is tinted so a long card panel reads as a column of named blocks; no overflow clipping, so the keys' cursor ring stays whole. */}
+      <div className={cn("flex items-center gap-1 bg-muted/40 pl-2 pr-1.5", open ? "rounded-t-[7px]" : "rounded-[7px]")}>
         <button
           type="button"
           aria-expanded={open}
@@ -224,7 +226,7 @@ export function Group({
           aria-hidden={body.exiting || undefined}
           inert={body.exiting}
           onAnimationEnd={body.onAnimationEnd}
-          className={cn("flex flex-col gap-2 border-t border-border px-2.5 py-2.5", body.exiting ? exit.fade : toggled && cn(enter.rise, speed.fast))}
+          className={cn("flex flex-col gap-2.5 border-t border-border px-2.5 py-2.5", body.exiting ? exit.fade : toggled && cn(enter.rise, speed.fast))}
         >
           {children}
         </div>
@@ -305,12 +307,12 @@ export function SegmentedTabs<T extends string>({
     <div
       role="tablist"
       aria-label={label}
-      className={cn("relative grid rounded-md border border-border p-0.5", className)}
+      className={cn("relative grid rounded-md border border-border bg-muted/50 p-0.5", className)}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       <span
         aria-hidden
-        className={cn("pointer-events-none absolute inset-y-0.5 left-0.5 rounded bg-state-active", TRANSFORM_TRANSITION)}
+        className={cn("pointer-events-none absolute inset-y-0.5 left-0.5 rounded-[5px] bg-background shadow-sm", TRANSFORM_TRANSITION)}
         style={{ width: `calc((100% - 0.25rem) / ${options.length})`, transform: `translate3d(${index * 100}%, 0, 0)` }}
       />
       {options.map((option) => (

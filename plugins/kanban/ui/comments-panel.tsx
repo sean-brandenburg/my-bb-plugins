@@ -53,9 +53,10 @@ function CommentRow({
         if (exiting && event.target === event.currentTarget) onExited();
         else entrance.onAnimationEnd(event);
       }}
-      className={cn("rounded-md border border-border bg-card p-2.5", (addressed || comment.mine) && "opacity-70", exiting ? exit.sink : entrance.className)}
+      className={cn("rounded-lg border border-border bg-card", (addressed || comment.mine) && "opacity-70", exiting ? exit.sink : entrance.className)}
     >
-      <div className="flex items-start gap-2">
+      {/* Who, where and when sit in a tinted header; the comment itself gets the body. */}
+      <div className="flex items-start gap-2 rounded-t-[7px] border-b border-border bg-muted/40 px-2.5 py-1.5">
         <Checkbox
           checked={comment.selected}
           disabled={addressed}
@@ -63,58 +64,58 @@ function CommentRow({
           aria-label={`${comment.selected ? "Exclude" : "Include"} this comment in the apply round`}
           className="mt-0.5"
         />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{comment.author}</span>
-            {comment.mine ? <Badge>you</Badge> : null}
-            <code className="truncate">{commentWhere(comment)}</code>
-            <span>{relativeTime(Date.parse(comment.createdAt), now)}</span>
-            {addressed ? <Badge tone="success">addressed</Badge> : null}
-            {comment.selectionOverride !== null ? <Badge title="You changed this from the suggested selection">manual</Badge> : null}
-            <span className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                aria-label={addressed ? "Mark as not addressed" : "Mark as addressed"}
-                title={addressed ? "Mark as not addressed" : "Mark as addressed"}
-                className={cn(
-                  "flex size-6 items-center justify-center rounded hover:bg-state-hover",
-                  PRESS,
-                  addressed ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => onAddressed(comment, !addressed)}
-              >
-                {/* The pop lives on a wrapper so remounting it never takes focus from the button. */}
-                <span key={addressedPop.key} onAnimationEnd={addressedPop.onAnimationEnd} className={cn("flex", addressedPop.className)}>
-                  <Icon name="CircleCheck" className="size-3.5" />
-                </span>
-              </button>
-              <ExternalLink href={comment.url} title="Open on GitHub" className={cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}>
-                <Icon name="ExternalLink" className="size-3.5" />
-              </ExternalLink>
-            </span>
-          </div>
-          {comment.body.trim() !== "" ? <Markdown content={comment.body} className="text-sm" /> : <p className="text-xs italic text-muted-foreground">(no text)</p>}
-          {replies.length > 0 ? (
-            <ul className="mt-1 flex flex-col gap-2 border-l-2 border-border pl-3">
-              {replies.map((reply) => (
-                <li key={reply.id} className="flex flex-col gap-0.5">
-                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                    <Checkbox
-                      checked={reply.selected}
-                      disabled={reply.addressedAt !== null}
-                      onCheckedChange={(checked) => onSelect(reply, checked === true)}
-                      aria-label={`${reply.selected ? "Exclude" : "Include"} this reply in the apply round`}
-                    />
-                    <span className="font-medium text-foreground">{reply.author}</span>
-                    {reply.mine ? <Badge>you</Badge> : null}
-                    <span>{relativeTime(Date.parse(reply.createdAt), now)}</span>
-                  </div>
-                  <Markdown content={reply.body} className="text-sm" />
-                </li>
-              ))}
-            </ul>
-          ) : null}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">{comment.author}</span>
+          {comment.mine ? <Badge>you</Badge> : null}
+          <code className="truncate">{commentWhere(comment)}</code>
+          <span>{relativeTime(Date.parse(comment.createdAt), now)}</span>
+          {addressed ? <Badge tone="success">addressed</Badge> : null}
+          {comment.selectionOverride !== null ? <Badge title="You changed this from the suggested selection">manual</Badge> : null}
+          <span className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={addressed ? "Mark as not addressed" : "Mark as addressed"}
+              title={addressed ? "Mark as not addressed" : "Mark as addressed"}
+              className={cn(
+                "flex size-6 items-center justify-center rounded hover:bg-state-hover",
+                PRESS,
+                addressed ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => onAddressed(comment, !addressed)}
+            >
+              {/* The pop lives on a wrapper so remounting it never takes focus from the button. */}
+              <span key={addressedPop.key} onAnimationEnd={addressedPop.onAnimationEnd} className={cn("flex", addressedPop.className)}>
+                <Icon name="CircleCheck" className="size-3.5" />
+              </span>
+            </button>
+            <ExternalLink href={comment.url} title="Open on GitHub" className={cn("flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)}>
+              <Icon name="ExternalLink" className="size-3.5" />
+            </ExternalLink>
+          </span>
         </div>
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
+        {comment.body.trim() !== "" ? <Markdown content={comment.body} className="text-sm" /> : <p className="text-xs italic text-muted-foreground">(no text)</p>}
+        {replies.length > 0 ? (
+          <ul className="mt-1 flex flex-col gap-2 border-l-2 border-border pl-3">
+            {replies.map((reply) => (
+              <li key={reply.id} className="flex flex-col gap-0.5">
+                <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={reply.selected}
+                    disabled={reply.addressedAt !== null}
+                    onCheckedChange={(checked) => onSelect(reply, checked === true)}
+                    aria-label={`${reply.selected ? "Exclude" : "Include"} this reply in the apply round`}
+                  />
+                  <span className="font-medium text-foreground">{reply.author}</span>
+                  {reply.mine ? <Badge>you</Badge> : null}
+                  <span>{relativeTime(Date.parse(reply.createdAt), now)}</span>
+                </div>
+                <Markdown content={reply.body} className="text-sm" />
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </li>
   );

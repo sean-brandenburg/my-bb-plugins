@@ -55,11 +55,33 @@ function SeverityCountBadges({ counts, appliedCount }: { counts: NonNullable<Tic
   );
 }
 
-/** `a.ts:12`, or the first of several with how many more. */
+/** `a.ts:12`, or the first of several with how many more; the file's name alone, since the row has no room for its directory and the tooltip has the full paths. */
 function whereLabel(finding: Finding): string | null {
   const first = finding.locations[0];
   if (first === undefined) return null;
-  return finding.locations.length === 1 ? locationLabel(first) : `${locationLabel(first)} +${finding.locations.length - 1}`;
+  const label = locationLabel({ ...first, file: first.file.split("/").pop() ?? first.file });
+  return finding.locations.length === 1 ? label : `${label} +${finding.locations.length - 1}`;
+}
+
+/** Severity shows twice in a list: the rule down its section and the dot on each row, in the same hue. */
+const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
+const SEVERITY_RULE: Record<FindingSeverity, string> = { critical: "border-red-500/50", important: "border-amber-500/50", minor: "border-slate-400/50" };
+
+/** Rows share one border, so a report reads as a few lists rather than a stack of boxes; dashed for findings outside the apply round. */
+function FindingList({ dashed = false, children }: { dashed?: boolean; children: ReactNode }) {
+  return <ul className={cn("flex flex-col divide-y divide-border rounded-md border border-border bg-card", dashed && "border-dashed")}>{children}</ul>;
+}
+
+function SectionHeading({ label, count, hint, tone }: { label: string; count: number; hint?: string; tone?: FindingSeverity }) {
+  return (
+    <div className="mb-1.5 flex flex-col gap-0.5">
+      <h3 className="flex items-baseline gap-1.5 text-xs">
+        {tone === undefined ? <span className="font-medium">{label}</span> : <Badge tone={SEVERITY_TONE[tone]}>{label}</Badge>}
+        <span className="tabular-nums text-muted-foreground">{count}</span>
+      </h3>
+      {hint === undefined ? null : <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
 }
 
 /**
@@ -102,12 +124,11 @@ function FindingCard({
     <li
       style={stagger(index)}
       className={cn(
-        "rounded-md border border-border bg-card px-2 py-1",
+        "px-2 py-1 first:rounded-t-[5px] last:rounded-b-[5px]",
         enter.rise,
         speed.fast,
         STAGGER,
         OPACITY_TRANSITION,
-        (kind === "pre-existing" || kind === "deferred") && "border-dashed",
         (selected === false || applied || kind === "filtered") && "opacity-60",
       )}
     >
@@ -121,8 +142,9 @@ function FindingCard({
           <span className={cn("min-w-0 flex-1 truncate text-sm", applied && "text-muted-foreground line-through")} title={finding.title}>
             {finding.title}
           </span>
+          {/* A fixed block on the right, so every row's location starts in the same column and the title takes the rest. */}
           {where !== null ? (
-            <code className="hidden min-w-0 max-w-[40%] shrink truncate font-mono text-[11px] text-muted-foreground sm:inline" title={finding.locations.map(locationLabel).join("\n")}>
+            <code className="hidden w-36 shrink-0 truncate text-right font-mono text-[11px] text-muted-foreground sm:inline" title={finding.locations.map(locationLabel).join("\n")}>
               {where}
             </code>
           ) : null}
@@ -148,8 +170,6 @@ function FindingCard({
     </li>
   );
 }
-
-const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
 
 function FindingDetails({ finding, verified, overridden, kind }: { finding: Finding; verified: boolean; overridden: boolean; kind: "introduced" | "deferred" | "pre-existing" | "filtered" }) {
   const instances = finding.locations.length;
@@ -258,14 +278,18 @@ function FoldedFindings({ label, count, title, children }: { label: string; coun
         type="button"
         aria-expanded={open}
         data-bbm-open={open}
-        className="flex items-center gap-1 rounded text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
         title={title}
         onClick={() => setOpen(!open)}
       >
         <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
-        <span className="tabular-nums">{count}</span> {label}
+        <span className="font-medium tabular-nums">{count}</span> {label}
       </button>
-      {open ? <ul className="mt-1.5 flex flex-col gap-2">{children}</ul> : null}
+      {open ? (
+        <div className="mt-1.5">
+          <FindingList dashed>{children}</FindingList>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -335,7 +359,7 @@ function StructuredReview({
       {introduced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : suggested}>
-            <span className="font-medium text-foreground tabular-nums">{tallies.selected}</span> of {tallies.open} open selected
+            <span className="font-semibold text-foreground tabular-nums">{tallies.selected}</span> of <span className="tabular-nums">{tallies.open}</span> open selected
             {tallies.applied > 0 ? <> · <span className="tabular-nums">{tallies.applied}</span> applied</> : null}
           </span>
           {onReset !== null && overriddenCount > 0 ? (
@@ -351,22 +375,15 @@ function StructuredReview({
         </p>
       ) : null}
       {grouped.map(({ severity, findings }, groupIndex) => (
-        <section key={severity} aria-label={SEVERITY_LABEL[severity]}>
-          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {SEVERITY_LABEL[severity]} <span className="font-normal tabular-nums">{findings.length}</span>
-          </h3>
-          <ul className="flex flex-col gap-2">
-            {findings.map((finding, index) => ownCard(finding, grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index))}
-          </ul>
+        <section key={severity} aria-label={SEVERITY_LABEL[severity]} className={cn("border-l-2 pl-3", SEVERITY_RULE[severity])}>
+          <SectionHeading label={SEVERITY_LABEL[severity]} count={findings.length} tone={severity} />
+          <FindingList>{findings.map((finding, index) => ownCard(finding, grouped.slice(0, groupIndex).reduce((sum, group) => sum + group.findings.length, 0) + index))}</FindingList>
         </section>
       ))}
       {deferred.length > 0 ? (
         <section aria-label="Deferred">
-          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Deferred <span className="font-normal tabular-nums">{deferred.length}</span>
-          </h3>
-          <p className="mb-1.5 text-xs text-muted-foreground">Real, but triage judged the fix separate work: make it a card, or tick it to fix it in this change.</p>
-          <ul className="flex flex-col gap-2">{deferred.map((finding, index) => ownCard(finding, listed + index, "deferred", cardAction(finding)))}</ul>
+          <SectionHeading label="Deferred" count={deferred.length} hint="Real, but triage judged the fix separate work: make it a card, or tick it to fix it in this change." />
+          <FindingList dashed>{deferred.map((finding, index) => ownCard(finding, listed + index, "deferred", cardAction(finding)))}</FindingList>
         </section>
       ) : null}
       {dropped.length > 0 ? (
@@ -376,15 +393,12 @@ function StructuredReview({
       ) : null}
       {preExisting.length > 0 ? (
         <section aria-label="Pre-existing">
-          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Pre-existing <span className="font-normal tabular-nums">{preExisting.length}</span>
-          </h3>
-          <p className="mb-1.5 text-xs text-muted-foreground">Already in the code before this change, so never part of an apply round.</p>
-          <ul className="flex flex-col gap-2">
+          <SectionHeading label="Pre-existing" count={preExisting.length} hint="Already in the code before this change, so never part of an apply round." />
+          <FindingList dashed>
             {preExisting.map((finding, index) => (
               <FindingCard key={finding.id} finding={finding} index={introduced.length + index} verified={verified} kind="pre-existing" action={cardAction(finding)} />
             ))}
-          </ul>
+          </FindingList>
         </section>
       ) : null}
       {report.filtered.length > 0 ? (
@@ -396,9 +410,7 @@ function StructuredReview({
       ) : null}
       {report.resolved.length > 0 ? (
         <section aria-label="Resolved since the last review">
-          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Resolved since the last review <span className="font-normal tabular-nums">{report.resolved.length}</span>
-          </h3>
+          <SectionHeading label="Resolved since the last review" count={report.resolved.length} />
           <ul className="flex flex-col gap-1 text-sm">
             {report.resolved.map((entry) => (
               <li key={entry.id} className="flex gap-1.5">
@@ -414,14 +426,13 @@ function StructuredReview({
       ) : null}
       {report.version >= NOT_COVERED_REPORT_VERSION ? (
         <section aria-label="Not covered">
-          <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Not covered <span className="font-normal tabular-nums">{report.notCovered.length}</span>
-          </h3>
-          {report.notCovered.length === 0 ? (
-            <p className="text-xs text-muted-foreground">The review found nothing the checks miss.</p>
-          ) : (
+          <SectionHeading
+            label="Not covered"
+            count={report.notCovered.length}
+            hint={report.notCovered.length === 0 ? "The review found nothing the checks miss." : "Neither the checks nor the review could confirm these; look at them yourself."}
+          />
+          {report.notCovered.length === 0 ? null : (
             <>
-              <p className="mb-1 text-xs text-muted-foreground">Neither the checks nor the review could confirm these; look at them yourself.</p>
               <ul className="flex flex-col gap-1 text-sm">
                 {report.notCovered.map((entry) => (
                   <li key={entry} className="flex gap-1.5">
