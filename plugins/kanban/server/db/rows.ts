@@ -30,6 +30,8 @@ export interface TicketRow {
   pr_updated_at: string | null;
   pr_head_ref: string | null;
   pr_checks: PullRequest["checks"];
+  pr_checks_url: string | null;
+  pr_body: string | null;
   jira_key: string | null;
   jira_url: string | null;
   jira_status: string | null;
@@ -370,6 +372,8 @@ export function rowToTicket(
           updatedAt: row.pr_updated_at ?? "",
           headRef: row.pr_head_ref,
           checks: row.pr_checks,
+          checksUrl: row.pr_checks_url,
+          body: row.pr_body,
         }
       : null;
   return {

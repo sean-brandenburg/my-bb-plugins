@@ -62,15 +62,17 @@ export function FindingAnnotation({
   const field = "w-full rounded-md border border-border bg-background px-2 py-1 text-xs";
   const reveal = useOpenedSinceMount(expanded) ? cn(enter.rise, FAST) : undefined;
   const meta = [
-    finding.id,
     SEVERITY_LABEL[finding.severity],
-    finding.importance !== null && finding.scopeFit !== null ? `importance ${finding.importance}/5 · scope fit ${finding.scopeFit}/5` : null,
-    finding.confidence != null ? `confidence ${finding.confidence}` : null,
-    finding.class != null && finding.class !== "" ? `class: ${finding.class}` : null,
     finding.locations.length > 1 ? `${finding.locations.length} instances` : null,
     item.carriedFrom !== null ? `still open from ${item.carriedFrom}` : null,
     item.edited ? "reworded by you" : null,
     item.overridden ? (item.selected ? "included by you" : "excluded by you") : null,
+  ].filter((part) => part !== null);
+  // The review's scores, for the id's tooltip: they shaped the triage and rarely change what the reader does.
+  const scores = [
+    finding.importance !== null && finding.scopeFit !== null ? `importance ${finding.importance}/5 · scope fit ${finding.scopeFit}/5` : null,
+    finding.confidence != null ? `verifier confidence ${finding.confidence}` : null,
+    finding.class != null && finding.class !== "" ? `class: ${finding.class}` : null,
   ].filter((part) => part !== null);
   return (
     <div data-finding-anchor="" className={cn("my-0.5 min-w-0 max-w-full break-words border-l-2 pl-2 text-sm [&_pre]:max-w-full [&_pre]:overflow-x-auto", entering && [enter.fade, FAST], OPACITY_TRANSITION, SEVERITY_BORDER[finding.severity], !item.selected && "opacity-60", focused && "rounded-r-md ring-1 ring-primary/70")}>
@@ -89,7 +91,13 @@ export function FindingAnnotation({
       {!editing ? (
         <div className={cn("flex flex-col gap-1 pb-1.5 text-sm", reveal, !expanded && "hidden")}>
           <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span className="min-w-0">{meta.join(" · ")}</span>
+            <span className="min-w-0">
+              <span className={cn("font-mono", scores.length > 0 && "cursor-help underline decoration-dotted underline-offset-2")} title={scores.length > 0 ? scores.join("\n") : undefined}>
+                {finding.id}
+              </span>
+              {" · "}
+              {meta.join(" · ")}
+            </span>
             <button type="button" className={cn("ml-auto rounded px-1 hover:bg-state-hover hover:text-foreground", PRESS)} onClick={beginEdit}>
               Edit
             </button>

@@ -52,6 +52,8 @@ function prTicket(): Ticket {
       updatedAt: "",
       headRef: null,
       checks: null,
+      checksUrl: null,
+      body: null,
     },
   });
 }

@@ -27,29 +27,26 @@ function DiffStats({ diff }: { diff: DiffResult }) {
   );
 }
 
-/** Where every new comment and reply in the view goes. GitHub replies are only possible in threads that are on GitHub; the rest stay local. */
+/**
+ * Where every new comment and reply in the view goes, as one button that names the current target and switches on
+ * press (T does the same). GitHub replies are only possible in threads that are on GitHub; the rest stay local.
+ */
 function CommentTargetSwitch({ target, onChange }: { target: DiffCommentTarget; onChange: (target: DiffCommentTarget) => void }) {
   const { labels } = useDiffSource();
-  const option = (value: DiffCommentTarget, label: string, title: string) => (
+  const github = target === "github";
+  return (
     <button
       type="button"
-      role="radio"
-      aria-checked={target === value}
-      title={title}
-      className={cn("rounded px-1.5 py-0.5", PRESS, target === value ? (value === "github" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300" : "bg-state-active text-foreground") : "text-muted-foreground hover:text-foreground")}
-      onClick={() => onChange(value)}
+      role="switch"
+      aria-checked={github}
+      aria-label="New comments go to the GitHub PR"
+      title={`New comments go to ${github ? "the GitHub PR, as drafts until you post them" : `the board: ${labels.localTarget.charAt(0).toLowerCase()}${labels.localTarget.slice(1)}`}. Click or T to switch.`}
+      className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px]", PRESS, github ? "border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300" : "border-border text-muted-foreground hover:text-foreground")}
+      onClick={() => onChange(github ? "local" : "github")}
     >
-      {label}
+      <span aria-hidden="true">→</span>
+      {github ? "GitHub PR" : "Local"}
     </button>
-  );
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      Comments go to
-      <span role="radiogroup" aria-label="Where new comments go" className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5 text-[11px]">
-        {option("local", "Local", labels.localTarget)}
-        {option("github", "GitHub PR", "Queued as drafts and posted to the pull request when you press Post")}
-      </span>
-    </span>
   );
 }
 
@@ -80,30 +77,24 @@ function ModeSwitch({ mode, stale, onChange }: { mode: DiffViewMode; stale: bool
 
 /**
  * The strip above a non-empty diff: the files / narrative switch where the source has a narrative, totals (what the
- * diff is against in their tooltip), keyboard help, where comments go, comment and finding controls, and progress:
- * files viewed, and in the narrative the step reached.
+ * diff is against in their tooltip), where comments go, the findings filter, and progress: files viewed, and in the
+ * narrative the step reached. The keys themselves are on `?`, named in the view's corner label.
  */
 export function SummaryBar({
   diff,
   viewed,
-  hasThreads,
   findingTotal,
   findingShown,
   findingFilter,
-  onNextComment,
-  onShowKeys,
   commentTarget,
   mode,
   progress,
 }: {
   diff: DiffResult;
   viewed: ReadonlySet<string>;
-  hasThreads: boolean;
   findingTotal: number;
   findingShown: number;
   findingFilter: FindingFilter;
-  onNextComment: () => void;
-  onShowKeys: () => void;
   /** Null unless comments can go to GitHub. */
   commentTarget: { target: DiffCommentTarget; onChange: (target: DiffCommentTarget) => void } | null;
   /** Null when the source has no narrative review to switch to. */
@@ -116,15 +107,7 @@ export function SummaryBar({
     <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground", enter.fade)}>
       {mode !== null ? <ModeSwitch mode={mode.value} stale={mode.stale} onChange={mode.onChange} /> : null}
       <DiffStats diff={diff} />
-      <button type="button" className={cn("rounded px-1 text-muted-foreground/70 hover:bg-state-hover hover:text-foreground", PRESS)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={onShowKeys}>
-        ⌨
-      </button>
       {commentTarget !== null ? <CommentTargetSwitch {...commentTarget} /> : null}
-      {hasThreads ? (
-        <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS)} title="Scroll to the next comment (c)" onClick={onNextComment}>
-          Next comment
-        </button>
-      ) : null}
       {findingTotal > 0 ? (
         <button
           type="button"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checksFromRollup, fetchPrHeads, parsePrHeads, type PrHeadsData } from "./github";
+import { checksFromRollup, checksUrlFromContexts, fetchPrHeads, parsePrHeads, type PrHeadsData } from "./github";
 
 const pull = (headRefName: string, rollup: { state: string } | null) => ({
   pullRequest: { headRefName, commits: { nodes: [{ commit: { statusCheckRollup: rollup } }] } },
@@ -37,10 +37,24 @@ describe("parsePrHeads", () => {
     };
     const heads = parsePrHeads(prs, data);
     expect([...heads]).toEqual([
-      ["acme/widgets#1", { headRef: "feature/login", checks: "passing" }],
-      ["acme/widgets#2", { headRef: "fix", checks: null }],
-      ["acme/widgets#5", { headRef: "empty", checks: null }],
+      ["acme/widgets#1", { headRef: "feature/login", checks: "passing", checksUrl: null }],
+      ["acme/widgets#2", { headRef: "fix", checks: null, checksUrl: null }],
+      ["acme/widgets#5", { headRef: "empty", checks: null, checksUrl: null }],
     ]);
+  });
+
+  it("links the checks tick to the failing check, else a pending one, else the first with a page", () => {
+    const run = (conclusion: string | null, detailsUrl: string, status = "COMPLETED") => ({ __typename: "CheckRun", status, conclusion, detailsUrl });
+    const context = (state: string, targetUrl: string | null) => ({ __typename: "StatusContext", state, targetUrl });
+    expect(checksUrlFromContexts([run("SUCCESS", "https://ci/ok"), context("FAILURE", "https://ci/status-failed"), run("FAILURE", "https://ci/failed")])).toBe("https://ci/status-failed");
+    expect(checksUrlFromContexts([run("SUCCESS", "https://ci/ok"), run(null, "https://ci/running", "IN_PROGRESS"), context("PENDING", "https://ci/pending")])).toBe("https://ci/running");
+    expect(checksUrlFromContexts([context("SUCCESS", null), run("SUCCESS", "https://ci/ok"), run("NEUTRAL", "https://ci/neutral")])).toBe("https://ci/ok");
+    expect(checksUrlFromContexts([context("SUCCESS", null), null])).toBeNull();
+    expect(checksUrlFromContexts(undefined)).toBeNull();
+    const data: PrHeadsData = {
+      pr0: { pullRequest: { headRefName: "feature/login", commits: { nodes: [{ commit: { statusCheckRollup: { state: "FAILURE", contexts: { nodes: [run("SUCCESS", "https://ci/ok"), run("FAILURE", "https://ci/failed")] } } } }] } } },
+    };
+    expect(parsePrHeads(prs.slice(0, 1), data).get("acme/widgets#1")).toEqual({ headRef: "feature/login", checks: "failing", checksUrl: "https://ci/failed" });
   });
 
   it("returns nothing when the response had no data", () => {
@@ -79,7 +93,7 @@ describe("fetchPrHeads", () => {
     expect(bodies[0]!.variables).toMatchObject({ owner0: "acme", name0: "widgets", number0: 1 });
     expect(bodies[0]!.query).not.toContain("widgets");
     expect(heads.size).toBe(40);
-    expect(heads.get("acme/widgets#40")).toEqual({ headRef: "branch-40", checks: "pending" });
+    expect(heads.get("acme/widgets#40")).toEqual({ headRef: "branch-40", checks: "pending", checksUrl: null });
     expect(heads.has("acme/widgets#41")).toBe(false);
     expect(warnings).toEqual([expect.stringContaining("Could not resolve"), expect.stringContaining("502")]);
   });

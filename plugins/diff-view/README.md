@@ -26,8 +26,8 @@ plugins embed.
   or the line numbers (or shift-click a second line number) to comment on a
   range of lines, as on GitHub. "Send N to the thread" sends every unsent
   comment to the thread's agent as one message. Hosts whose comments can go to
-  GitHub (kanban's PR cards) get a "Comments go to Local / GitHub PR" switch
-  above the diff that applies to every new comment and reply.
+  GitHub (kanban's PR cards) get a "→ Local / → GitHub PR" button above the
+  diff (`T`) that applies to every new comment and reply.
 - **Review findings** (hosts with reviews, such as kanban) show as one line
   each under their line: severity, title and the apply-round checkbox. A
   finding opens to its description, fix and scores on click, Enter, or while
@@ -38,8 +38,10 @@ plugins embed.
   none; the chip counts the ones hidden. Findings a host marks pre-existing
   (already in the code before the change) stay out of the diff, and those its
   verifier filtered out are folded under "N filtered"; both are listed above
-  the diff, the pre-existing ones with "Make a card" when the host can make
-  cards.
+  the diff, each folded under its count, the pre-existing ones with "Make a
+  card" when the host can make cards. A finding's scores (importance, scope
+  fit, verifier confidence, bug class) are in its id's tooltip once it is
+  open.
 - **Viewed marks** remember the file's patch; a mark lapses once the file
   changes again.
 - **Keyboard**: the whole review runs on vim-style keys, sent to the view that
@@ -131,7 +133,9 @@ dependency:
 ```
 
 - `bb-diff-view/app/diff-view`: `DiffView`, plus `DiffDisplayControls` and
-  `DiffRefreshButton` for a toolbar outside the view. The host passes a
+  `DiffRefreshButton` for a toolbar outside the view; `toolbar` may be a
+  function of the comments waiting to be sent, for a host that puts its send
+  controls in its own heading row (kanban does). The host passes a
   `DiffSource` with the core methods (diff, structural diff, symbols, file
   slices, viewed marks, comments) and any optional groups (GitHub comments and
   drafts, review findings, the delta since the last look, a tour, hunk

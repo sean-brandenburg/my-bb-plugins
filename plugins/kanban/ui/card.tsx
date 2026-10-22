@@ -5,11 +5,10 @@ import { LIFT, OPACITY_TRANSITION, POP, PRESS, STAGGER, enter, stagger, type Arr
 import type { Ticket } from "../shared/board";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import { totalTokens } from "../shared/spend";
-import { cardSnippet, dueStatus, shortAge, shortTokens, spendTitle, threadStatusText } from "./format";
+import { cardSnippet, dueStatus, threadStatusText } from "./format";
 import { ExternalLink, ThreadStatusDot } from "./primitives";
 import { TagBadges } from "./tags";
-import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph, ReviewBadge } from "./badges";
+import { ChecksMark, JiraStatusGlyph, LoopChip, PrStateGlyph, ReviewBadge, checksHref } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { useTicketHasDiff } from "./data";
 
@@ -22,8 +21,6 @@ export function CardView({
   thread,
   hiddenTags,
   today,
-  now,
-  columnName,
   isDone,
   isDragging,
   onOpen,
@@ -45,8 +42,6 @@ export function CardView({
   hiddenTags: ReadonlySet<string>;
   /** The viewer's local day, `YYYY-MM-DD`, that due dates are measured against. */
   today: string;
-  now: number;
-  columnName: string;
   isDone: boolean;
   isDragging: boolean;
   /** `viaKeyboard` moves focus into the opened card. */
@@ -136,10 +131,6 @@ export function CardView({
           {ticket.pendingDiffComments > 0 ? (
             <CardCounter icon="kanban-diff" count={ticket.pendingDiffComments} tone="attention" title={`${ticket.pendingDiffComments} diff comment${ticket.pendingDiffComments === 1 ? "" : "s"} not sent yet`} />
           ) : null}
-          {ticket.spend !== null ? <CardCounter icon="Coins" count={shortTokens(totalTokens(ticket.spend))} tone="quiet" title={spendTitle(ticket.spend)} /> : null}
-          <span className="tabular-nums" title={`In ${columnName} since ${new Date(ticket.columnEnteredAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}>
-            {shortAge(ticket.columnEnteredAt, now)}
-          </span>
         </span>
         {/* Hover actions sit over the counters instead of reserving room for themselves. */}
         <span className={`pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 bg-card pl-3 opacity-0 ${OPACITY_TRANSITION} [mask-image:linear-gradient(to_right,transparent,black_12px)] focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100`}>
@@ -230,7 +221,7 @@ function CardSource({ ticket }: { ticket: Ticket }) {
           {pr.repo.split("/")[1] ?? pr.repo} #{pr.number}
           {!nerdFont && pr.state !== "open" ? <span className={stateClass}> · {pr.state}</span> : null}
         </ExternalLink>
-        {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} /> : null}
+        {pr.checks !== null ? <ChecksMark checks={pr.checks} nerdFont={nerdFont} href={checksHref(pr)} /> : null}
         {pr.role === "other" ? (
           <span className="ml-auto min-w-0 truncate" title={`Your review was requested on @${pr.author}'s PR`}>
             reviewing @{pr.author}

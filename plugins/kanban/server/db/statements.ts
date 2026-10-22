@@ -28,11 +28,11 @@ export function prepareStatements(db: KanbanDatabase) {
     ),
     insert: db.prepare(
       `INSERT INTO tickets (id, title, description, column_id, kind, tags, source_id, thread_id, project_id, parent_id,
-         pr_repo, pr_number, pr_url, pr_role, pr_state, pr_author, pr_updated_at, pr_head_ref, pr_checks,
+         pr_repo, pr_number, pr_url, pr_role, pr_state, pr_author, pr_updated_at, pr_head_ref, pr_checks, pr_checks_url, pr_body,
          jira_key, jira_url, jira_status, jira_status_category, jira_issue_type, jira_priority, jira_assignee, jira_updated_at,
          due_date, position, column_entered_at, created_at, updated_at)
        VALUES (@id, @title, @description, @column_id, @kind, @tags, @source_id, @thread_id, @project_id, @parent_id,
-         @pr_repo, @pr_number, @pr_url, @pr_role, @pr_state, @pr_author, @pr_updated_at, @pr_head_ref, @pr_checks,
+         @pr_repo, @pr_number, @pr_url, @pr_role, @pr_state, @pr_author, @pr_updated_at, @pr_head_ref, @pr_checks, @pr_checks_url, @pr_body,
          @jira_key, @jira_url, @jira_status, @jira_status_category, @jira_issue_type, @jira_priority, @jira_assignee, @jira_updated_at,
          @due_date, @position, @created_at, @created_at, @updated_at)`,
     ),
@@ -62,13 +62,13 @@ export function prepareStatements(db: KanbanDatabase) {
       `UPDATE tickets SET title = ?, title_edited = MAX(title_edited, ?), description = ?, updated_at = ? WHERE id = ?`,
     ),
     setPr: db.prepare<
-      [string, string, PullRequest["state"], PullRequest["role"], string, string, number, string]
+      [string, string, PullRequest["state"], PullRequest["role"], string, string, string | null, number, string]
     >(
-      `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE tickets SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, pr_body = COALESCE(?, pr_body), updated_at = ? WHERE id = ?`,
     ),
     // title_edited keeps later syncs from renaming the card to the PR's title.
-    attachPr: db.prepare<[string, number, string, PullRequest["state"], PullRequest["role"], string, string, string, number, string]>(
-      `UPDATE tickets SET kind = 'pr', pr_repo = ?, pr_number = ?, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?,
+    attachPr: db.prepare<[string, number, string, PullRequest["state"], PullRequest["role"], string, string, string | null, string, number, string]>(
+      `UPDATE tickets SET kind = 'pr', pr_repo = ?, pr_number = ?, pr_url = ?, pr_state = ?, pr_role = ?, pr_author = ?, pr_updated_at = ?, pr_body = ?,
          source_id = COALESCE(source_id, ?), title_edited = 1, updated_at = ? WHERE id = ?`,
     ),
     setLeftSource: db.prepare<[number, string]>(`UPDATE tickets SET left_source = ? WHERE id = ?`),
@@ -81,7 +81,7 @@ export function prepareStatements(db: KanbanDatabase) {
       `SELECT * FROM tickets WHERE auto_review_depth IS NOT NULL AND kind = 'pr' AND pr_state = 'open' AND project_id IS NOT NULL ORDER BY created_at`,
     ),
     // CI flips without anyone editing the card, so this leaves updated_at alone.
-    setPrHead: db.prepare<[string, PullRequest["checks"], string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ? WHERE id = ?`),
+    setPrHead: db.prepare<[string, PullRequest["checks"], string | null, string]>(`UPDATE tickets SET pr_head_ref = ?, pr_checks = ?, pr_checks_url = ? WHERE id = ?`),
     setTags: db.prepare<[string, number, string]>(`UPDATE tickets SET tags = ?, updated_at = ? WHERE id = ?`),
     setDueDate: db.prepare<[string | null, number, string]>(`UPDATE tickets SET due_date = ?, updated_at = ? WHERE id = ?`),
     byJira: db.prepare<[string], TicketRow>(`SELECT * FROM tickets WHERE jira_key = ?`),

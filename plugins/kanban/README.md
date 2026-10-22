@@ -9,9 +9,13 @@ its PR is reviewed and its review findings and comments are handed to agents.
   on cards), and one quiet footer: a thread dot (words only when it is working,
   errored, or needs you), the PR or Jira id as text, the due date (red when
   overdue, amber when due today or tomorrow, never coloured in Done), and icon counters for
-  subtasks, review findings, open PR comments, and unsent diff comments,
-  coloured only when they need attention. PR cards also show the PR's state and
-  its head commit's CI checks (the card panel adds its branch); Jira cards their
+  subtasks, open PR comments, and unsent diff comments, coloured only when
+  they need attention; the review badge is one count of open findings, with
+  the severity split, the applied count and the apply selection in its
+  tooltip. Token spend and the time in the column are in the card panel, not
+  on the card. PR cards also show the PR's state and
+  its head commit's CI checks, a link to the failing (else pending, else first)
+  check's run on GitHub (the card panel adds its branch); Jira cards their
   status. With a Nerd Font the row leads with one muted glyph for the PR state
   or Jira status, and only a passing or failing check is coloured; otherwise
   they are words or outline icons. Hover actions overlay the counters. Clicking a card opens it in the page's right-side
@@ -81,12 +85,17 @@ its PR is reviewed and its review findings and comments are handed to agents.
   left edge goes back to the board leaving the card open. `t` and `D` open the card's thread and
   changes, and `m` turns its review loop on or off.
 - Card details follow one hierarchy: the title with a quiet meta line (kind,
-  id, column, PR or issue; the PR number or Jira key links to it, plus icon buttons for the thread, with its status dot, and the changes, with
-  the count of unsent comments), a property list (Column, Tags, Due, Thread, Monitor, then Checks on a monitored card, Author or Jira fields),
-  then collapsible groups for Code review, PR comments, and Description or
-  Notes. Title and description save when the field loses focus. A PR or Jira
-  card's title is editable too; once edited, sync keeps your title instead of
-  taking the PR's or issue's again.
+  id, column, PR or issue; the PR number or Jira key links to it, the checks
+  tick to the CI run, plus icon buttons for the thread, with its status dot,
+  and the changes, with the count of unsent comments). A PR card is read for
+  its review, so Code review, PR comments and the PR's description (as
+  written on GitHub, synced with the card) come next, then the property list
+  (Column, Tags, Due, a Start row while the card has no thread, Jira fields);
+  other cards show the properties first. Then the Review loop (folded while
+  off, and absent on someone else's PR), Subtasks (folded while there are
+  none) and Description or Notes. Title and description save when the field
+  loses focus. A PR or Jira card's title is editable too; once edited, sync
+  keeps your title instead of taking the PR's or issue's again.
 - **Brain dump**: New card → Brain dump. Type or dictate (mic button, transcribed
   by bb's voice service) a ramble of everything that needs doing and pick a
   project. A background planning thread reads the project and replies with a
@@ -211,9 +220,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   the card's next ready at a new commit, and the reason is kept.
   Needs you is sorted by level, Scrutinize first, then by how long each card
   has waited there. bb's plugin API has no notifications, so the column and
-  its chips are the signal. Every card shows the tokens its threads have used
-  (its own, checks, classify, review, apply and narrative threads), read from
-  Claude Code's transcripts every 30 seconds; the brief shows the same total.
+  its chips are the signal. The handoff brief shows the tokens the card's
+  threads have used (its own, checks, classify, review, apply and narrative
+  threads), read from Claude Code's transcripts every 30 seconds.
 - **Review PR** button on every PR card: spawns a review thread in a fresh
   worktree of the matching project, checks the PR head out detached, and runs
   your `code-review` skill (`~/.claude/skills/code-review`) against
@@ -236,11 +245,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   Every thread a code review button starts (reviews from the button, `bb kanban
   review` or an automation, applying findings or comments, tours, and hunk
   explanations) runs hidden, so it stays out of the sidebar and the project's
-  thread list. The changes view's heading row has a Review button that starts
-  the first review, a Fixes button for the latest review's apply thread once
-  there is one, and the "Threads" menu beside them, which lists every review
-  thread (the review thread itself is reached from there); tours and
-  explanations have a "thread" link.
+  thread list. The changes view's heading row has a Review button until the
+  card has a review, then one "Threads" menu that lists every code review
+  thread (review, apply, narrative, explanation) with its status; the
+  findings chip in the summary bar carries the count. Tours and explanations
+  also have a "thread" link.
   Turn off "Keep code review threads out of the sidebar" to show them (existing
   ones follow the setting).
 - **Review depth**: a review runs at Quick (correctness, CLAUDE.md
@@ -269,7 +278,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   shows severity counts on the card. Free-form reviews fall back to markdown.
   Each finding carries two 1–5 scores from the skill: **importance** (how much
   it matters before merge) and **scope** (how well the fix stays inside the
-  PR; 1 means a separate piece of work). Findings have a checkbox deciding
+  PR; 1 means a separate piece of work). The card panel lists each finding as
+  one row (checkbox, severity, title, where) that opens to its details on a
+  click or Enter; the scores, confidence and bug class are in the id's
+  tooltip once open, and the review's summary shows its first sentence with
+  "More". Findings have a checkbox deciding
   whether they go to the apply round; the suggested selection is the findings
   the review's triage applies (below), and for reviews from before triage,
   every critical finding plus anything with importance ≥ 3 and scope ≥ 3. Your
@@ -311,7 +324,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   empty list says the review found nothing the checks miss. A re-review keeps
   the earlier entries that still hold.
 - **Changes view**: "View changes" on a card (or the diff icon on hover)
-  opens a full-page diff at `/plugins/kanban/board/diff/<id>`: every file in
+  opens a full-page diff at `/plugins/kanban/board/diff/<id>`, closing the
+  right panel so the diff has the width (the card's findings are inline in
+  it): every file in
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a
   file list with per-file stats that jumps to a file and tracks the one in
   view. PR cards diff the pull request from GitHub; thread-backed cards diff
@@ -389,7 +404,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   "What changed", into the current one.
 - **Hunk headers**: every hunk in the structural view starts with a GitHub-style
   `@@` row naming the line span and enclosing function. Its "Explain" button
-  spawns one short agent thread (reusing the review, tour or card thread's
+  (shown under the pointer; `K` from the keys) spawns one short agent thread (reusing the review, tour or card thread's
   checkout) that explains what the hunk does and why; the answer renders as a
   collapsible strip under the header and is kept until the PR head moves. The same row shows the tour's semantic labels (rename,
   move, signature, reorder, reformat, extract, inline), and lines inside those
@@ -404,7 +419,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   tagged "new", "carried" or "touched" (re-reviews made before carry-over
   stack on the latest full review instead).
 - **Risk heat**: the narrative scores each file 1–5 for review attention; the file
-  tree tints rows from green to red accordingly (viewed files lose the tint),
+  tree marks each row with a dot from green to red accordingly (viewed files lose it),
   falling back to the worst finding severity in the file when there is no tour.
 - **Findings in the diff**: the latest completed review's open findings (not the applied ones) render
   inline under the lines their `locations` point at (new side), in both
@@ -439,13 +454,13 @@ its PR is reviewed and its review findings and comments are handed to agents.
   multi-line comment, and the text view keeps a range inside one hunk, as
   GitHub requires. The comment icon on a file header (shown under the pointer
   or the cursor), or `O`, leaves a file-level note. On PR cards a
-  **Comments go to Local / GitHub PR** switch in the strip above the diff sets
+  **→ Local / → GitHub PR** button in the strip above the diff (`T`) sets
   where every new comment and reply goes: local comments stay on the board for
   an agent, GitHub ones are drafts until you post them. It starts on GitHub for
   PRs carrying the review tag (`#pr-reviews` by default, configurable in
   settings) and on local everywhere else, and holds while the page is open.
   Replies in threads that are not on GitHub stay local either way. "Make local"
-  / "Move to GitHub" switches a comment that has not been sent yet. The heading row has two actions for them, beside Fixes and Threads:
+  / "Move to GitHub" switches a comment that has not been sent yet. The heading row has two actions for them, beside Threads:
   **Send N to agent** hands the local comments to a thread running
   `apply-pr-comments` (with the same and-push option), and **Submit review**
   (with the GitHub draft count on it) opens GitHub's "Finish your review"
@@ -493,8 +508,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   card panel folds it to its struck-through title with an "applied" chip, the
   changes view stops showing it, and later rounds never get it again (a
   finding the thread reports as not applied stays open). The board card's
-  badge counts what is still open ("2 findings · 3 applied", then "all
-  applied"). The check button on each finding crosses one off by hand or
+  badge counts what is still open ("2 findings", with the applied count in
+  its tooltip, then "all applied"). The check button on each finding crosses one off by hand or
   reopens it.
   The **and push** checkbox beside both apply buttons decides whether the
   thread pushes to the PR branch or only commits in its worktree and reports

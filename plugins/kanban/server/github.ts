@@ -30,6 +30,7 @@ export interface GithubSearchItem {
   user: { login: string } | null;
   updated_at: string;
   repository_url: string;
+  body?: string | null;
   pull_request?: { merged_at: string | null };
 }
 
@@ -80,6 +81,7 @@ export interface GithubPull {
   html_url: string;
   updated_at: string;
   user: { login: string } | null;
+  body?: string | null;
 }
 
 export function repoFromRepositoryUrl(url: string): string {
@@ -230,13 +232,50 @@ export function checksFromRollup(state: string | null | undefined): PullRequest[
 export interface PrHead {
   headRef: string;
   checks: PullRequest["checks"];
+  checksUrl: string | null;
+}
+
+/** One check run or commit status in the head commit's rollup, as GitHub's GraphQL union returns it. */
+export interface PrCheckContext {
+  __typename?: string;
+  /** CheckRun: COMPLETED, IN_PROGRESS, QUEUED, … */
+  status?: string | null;
+  /** CheckRun: SUCCESS, FAILURE, NEUTRAL, SKIPPED, … once completed. */
+  conclusion?: string | null;
+  detailsUrl?: string | null;
+  /** StatusContext: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED. */
+  state?: string | null;
+  targetUrl?: string | null;
 }
 
 interface PrHeadNode {
   pullRequest: {
     headRefName: string;
-    commits: { nodes: Array<{ commit: { statusCheckRollup: { state: string } | null } } | null> | null };
+    commits: { nodes: Array<{ commit: { statusCheckRollup: { state: string; contexts?: { nodes?: Array<PrCheckContext | null> | null } | null } | null } } | null> | null };
   } | null;
+}
+
+const FAILED_CONCLUSIONS = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"]);
+
+function contextOutcome(context: PrCheckContext): "failing" | "pending" | "other" {
+  if (context.state !== undefined && context.state !== null) {
+    if (context.state === "FAILURE" || context.state === "ERROR") return "failing";
+    if (context.state === "PENDING" || context.state === "EXPECTED") return "pending";
+    return "other";
+  }
+  if (context.status !== undefined && context.status !== null && context.status !== "COMPLETED") return "pending";
+  if (context.conclusion !== undefined && context.conclusion !== null && FAILED_CONCLUSIONS.has(context.conclusion)) return "failing";
+  return "other";
+}
+
+/** The page the checks tick should open: the first failing check's, else the first pending one's, else the first with a page at all. */
+export function checksUrlFromContexts(contexts: ReadonlyArray<PrCheckContext | null> | null | undefined): string | null {
+  const withUrl = (contexts ?? []).filter((context): context is PrCheckContext => context !== null).map((context) => ({ context, url: context.detailsUrl ?? context.targetUrl ?? null })).filter((entry): entry is { context: PrCheckContext; url: string } => entry.url !== null);
+  for (const outcome of ["failing", "pending", "other"] as const) {
+    const hit = withUrl.find((entry) => contextOutcome(entry.context) === outcome);
+    if (hit !== undefined) return hit.url;
+  }
+  return null;
 }
 
 /** Aliases a batched query answers, keyed `pr0`, `pr1`, … in the order of `prs`. */
@@ -258,7 +297,7 @@ function prHeadsQuery(prs: ReadonlyArray<{ repo: string; number: number }>): { q
       `pr${index}: repository(owner: $owner${index}, name: $name${index}) {
         pullRequest(number: $number${index}) {
           headRefName
-          commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+          commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 50) { nodes { __typename ... on CheckRun { status conclusion detailsUrl } ... on StatusContext { state targetUrl } } } } } } }
         }
       }`,
     );
@@ -276,7 +315,7 @@ export function parsePrHeads(prs: ReadonlyArray<{ repo: string; number: number }
     const pull = data?.[`pr${index}`]?.pullRequest;
     if (pull === null || pull === undefined) return;
     const rollup = pull.commits.nodes?.[0]?.commit.statusCheckRollup ?? null;
-    heads.set(`${pr.repo}#${pr.number}`, { headRef: pull.headRefName, checks: checksFromRollup(rollup?.state) });
+    heads.set(`${pr.repo}#${pr.number}`, { headRef: pull.headRefName, checks: checksFromRollup(rollup?.state), checksUrl: checksUrlFromContexts(rollup?.contexts?.nodes) });
   });
   return heads;
 }

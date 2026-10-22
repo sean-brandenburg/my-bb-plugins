@@ -123,7 +123,7 @@ export function SubtasksGroup({
           </>
         )
       }
-      defaultOpen
+      defaultOpen={children.length > 0}
     >
       {children.length > 0 ? (
         <ul className="flex flex-col gap-1">

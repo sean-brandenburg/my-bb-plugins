@@ -25,7 +25,6 @@ export function ColumnView({
   threads,
   hiddenTags,
   today,
-  now,
   isDone,
   draggingId,
   dropTarget,
@@ -52,7 +51,6 @@ export function ColumnView({
   threads: ReadonlyMap<string, PluginSidebarThread>;
   hiddenTags: ReadonlySet<string>;
   today: string;
-  now: number;
   isDone: boolean;
   draggingId: string | null;
   dropTarget: DropTarget | null;
@@ -134,8 +132,6 @@ export function ColumnView({
               thread={ticket.threadId === null ? null : threads.get(ticket.threadId)}
               hiddenTags={hiddenTags}
               today={today}
-              now={now}
-              columnName={column.name}
               isDone={isDone}
               isDragging={draggingId === ticket.id}
               onOpen={(viaKeyboard) => onOpen(ticket, viaKeyboard)}

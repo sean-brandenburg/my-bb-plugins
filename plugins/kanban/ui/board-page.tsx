@@ -375,7 +375,6 @@ export function BoardPage({ subPath }: { subPath: string }) {
               threads={threads}
               hiddenTags={sourceTags}
               today={today}
-              now={now}
               isDone={column.id === doneId}
               draggingId={draggingId}
               dropTarget={dropTarget}

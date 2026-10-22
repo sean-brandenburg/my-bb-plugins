@@ -377,7 +377,7 @@ function NarrativeOutline({
             thread
           </button>
         ) : null}
-        <WritingButton writing={writing} />
+        {writing.running !== null ? <WritingButton writing={writing} /> : null}
         <button type="button" className={cn("rounded p-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Hide outline" title="Hide outline (t)" onClick={onHide}>
           <Icon name="ChevronDown" className="size-3.5 rotate-90" />
         </button>

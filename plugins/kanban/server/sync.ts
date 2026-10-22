@@ -258,6 +258,8 @@ export function createSourceSync(
         updatedAt: item.updated_at,
         headRef: null,
         checks: null,
+        checksUrl: null,
+        body: item.body ?? null,
       };
       const sourceTags = itemSources.flatMap((source) => source.tags);
       const existing = stmts.byPr.get(repo, item.number);
@@ -265,7 +267,7 @@ export function createSourceSync(
         const threadId = /-(thr_[a-z0-9]+)$/u.exec(untrackedHeads.get(`${repo}#${item.number}`)?.headRef ?? "")?.[1];
         const threadCard = threadId === undefined ? undefined : stmts.byThread.get(threadId);
         if (threadCard?.kind === "adhoc" && threadCard.pr_repo === null) {
-          stmts.attachPr.run(repo, item.number, pr.url, pr.state, pr.role, pr.author, pr.updatedAt, itemSources[0]!.id, now, threadCard.id);
+          stmts.attachPr.run(repo, item.number, pr.url, pr.state, pr.role, pr.author, pr.updatedAt, pr.body, itemSources[0]!.id, now, threadCard.id);
           mergeTags(pass, threadCard, sourceTags);
           continue;
         }
@@ -287,7 +289,7 @@ export function createSourceSync(
         if (pass.autoStartThreads && projectId !== null) pass.toSpawn.push(ticket.id);
         continue;
       }
-      stmts.setPr.run(item.title, item.html_url, pr.state, pr.role, pr.author, item.updated_at, now, existing.id);
+      stmts.setPr.run(item.title, item.html_url, pr.state, pr.role, pr.author, item.updated_at, pr.body, now, existing.id);
       mergeTags(pass, existing, sourceTags);
       if (existing.left_source === 1) {
         stmts.setLeftSource.run(0, existing.id);
@@ -331,7 +333,7 @@ export function createSourceSync(
       }
       const state = prStateOf(pull);
       const author = pull.user?.login ?? row.pr_author ?? "";
-      stmts.setPr.run(pull.title, pull.html_url, state, roleOf(author), author, pull.updated_at, now, row.id);
+      stmts.setPr.run(pull.title, pull.html_url, state, roleOf(author), author, pull.updated_at, pull.body ?? null, now, row.id);
       finish(pass, row, state === "merged" || state === "closed" || goneFromDoneSource(pass, row));
     }
     await syncPrHeads(pass, token);
@@ -348,8 +350,8 @@ export function createSourceSync(
     );
     for (const row of rows) {
       const head = heads.get(`${row.pr_repo}#${row.pr_number}`);
-      if (head === undefined || (head.headRef === row.pr_head_ref && head.checks === row.pr_checks)) continue;
-      stmts.setPrHead.run(head.headRef, head.checks, row.id);
+      if (head === undefined || (head.headRef === row.pr_head_ref && head.checks === row.pr_checks && head.checksUrl === row.pr_checks_url)) continue;
+      stmts.setPrHead.run(head.headRef, head.checks, head.checksUrl, row.id);
     }
   }
 

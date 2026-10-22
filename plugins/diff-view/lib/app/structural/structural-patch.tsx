@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { DiffSide, HunkExplanation, SemanticChange, StructuralDiff, SymbolLookup } from "../../types";
 import { checkedLineRange } from "../../line-range";
 import { cn } from "../utils";
-import { FAST, PRESS, SHIMMER, enter } from "../ui/motion";
+import { FAST, OPACITY_TRANSITION, PRESS, SHIMMER, enter } from "../ui/motion";
 import { errorMessage } from "../format";
 import { useDiffSource } from "../source";
 import { useHostThemeName } from "../theme";
@@ -346,7 +346,7 @@ export function StructuralPatch({
     const explanation = explanations.find((entry) => entry.side === span.side && entry.startLine <= span.stop && entry.endLine >= span.start) ?? null;
     return (
       <Fragment key={`hunk-${index}`}>
-        <tr className="bg-muted/30 text-[11px] text-muted-foreground">
+        <tr className="group/hunk bg-muted/30 text-[11px] text-muted-foreground">
           <td colSpan={4} className="px-3 py-0.5">
             <div className="flex items-center gap-2">
               <code className="min-w-0 truncate text-muted-foreground/80" title={enclosing ?? undefined}>
@@ -362,7 +362,7 @@ export function StructuralPatch({
               <span className="ml-auto flex shrink-0 items-center gap-1 font-sans">
                 {explanation === null ? (
                   onExplain === null ? null : (
-                  <button type="button" className={cn("rounded px-1.5 py-px hover:bg-state-hover hover:text-foreground", PRESS)} title="Ask an agent what this hunk does and why" onClick={() => onExplain(span.side, span.start, span.stop)}>
+                  <button type="button" className={cn("rounded px-1.5 py-px opacity-0 hover:bg-state-hover hover:text-foreground focus-visible:opacity-100 group-hover/hunk:opacity-100", OPACITY_TRANSITION, PRESS)} title="Ask an agent what this hunk does and why (K)" onClick={() => onExplain(span.side, span.start, span.stop)}>
                     Explain
                   </button>
                   )

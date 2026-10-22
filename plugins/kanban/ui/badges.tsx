@@ -19,14 +19,26 @@ export function PrStateGlyph({ state }: { state: PullRequest["state"] }) {
   return <MarkGlyph mark={PR_STATE_MARK[state]} />;
 }
 
-/** The head commit's CI result. */
-export function ChecksMark({ checks, nerdFont }: { checks: NonNullable<PullRequest["checks"]>; nerdFont: boolean }) {
+/** Where the checks tick leads: the failing or pending check's own page when GitHub named one, else the PR's checks tab. */
+export function checksHref(pr: PullRequest): string {
+  return pr.checksUrl ?? `${pr.url}/checks`;
+}
+
+/** The head commit's CI result; with `href` it opens that run on GitHub. */
+export function ChecksMark({ checks, nerdFont, href }: { checks: NonNullable<PullRequest["checks"]>; nerdFont: boolean; href?: string }) {
   const mark = CHECKS_MARK[checks];
-  if (nerdFont) return <MarkGlyph mark={mark} />;
-  return (
+  const glyph = nerdFont ? (
+    <MarkGlyph mark={mark} />
+  ) : (
     <span role="img" aria-label={mark.label} title={mark.label} className={cn("inline-flex shrink-0", mark.tone)}>
       <Icon name={mark.icon} className="size-3" />
     </span>
+  );
+  if (href === undefined) return glyph;
+  return (
+    <ExternalLink href={href} title={`${mark.label} · open the checks on GitHub`} className="inline-flex shrink-0 rounded-sm hover:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      {glyph}
+    </ExternalLink>
   );
 }
 
@@ -115,14 +127,15 @@ export function ReviewBadge({ ticket }: { ticket: Ticket }) {
     if (appliedCount > 0) return <Badge tone="success" title={`All ${appliedCount} finding${appliedCount === 1 ? "" : "s"} applied`}>all applied</Badge>;
     return <Badge tone="success" title={depth === "" ? undefined : depth.trim()}>no findings</Badge>;
   }
+  // One number on the card: what is still open. The split, the applied count and the apply selection are in the tooltip.
+  const detail = [
+    `${depth}Open: ${counts.critical} critical, ${counts.important} important, ${counts.minor} minor`,
+    appliedCount > 0 ? `${appliedCount} applied` : null,
+    review.selectedCount !== null ? `${review.selectedCount} selected for the apply round` : null,
+  ].filter((line) => line !== null);
   return (
-    <Badge
-      tone={counts.critical > 0 ? "danger" : counts.important > 0 ? "warning" : "neutral"}
-      title={`${depth}Open: ${counts.critical} critical, ${counts.important} important, ${counts.minor} minor${appliedCount > 0 ? `; ${appliedCount} applied` : ""}`}
-    >
+    <Badge tone={counts.critical > 0 ? "danger" : counts.important > 0 ? "warning" : "neutral"} title={detail.join("; ")}>
       {total} finding{total === 1 ? "" : "s"}
-      {appliedCount > 0 ? ` · ${appliedCount} applied` : ""}
-      {review.selectedCount !== null && (review.selectedCount > 0 || appliedCount === 0) ? ` · ${review.selectedCount} to apply` : ""}
     </Badge>
   );
 }

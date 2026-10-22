@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
+import { Markdown, useBbNavigate, experimental_useAppPanel as useAppPanel, experimental_useFixedTabTarget as useFixedTabTarget } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { PRESS, enter, speed, useEntrance, usePopOnChange } from "bb-motion";
 import { useNerdFont } from "bb-nerd-font";
@@ -20,7 +20,7 @@ import { TagEditor } from "./tags";
 import { ReviewPanel } from "./review-panel";
 import { HandoffBrief, LeftOpenMinors, PlanApproval } from "./brief-panel";
 import { LoopSection } from "./loop-section";
-import { ChecksMark, JiraStatusGlyph, PrStateGlyph } from "./badges";
+import { ChecksMark, JiraStatusGlyph, PrStateGlyph, checksHref } from "./badges";
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
@@ -113,6 +113,7 @@ function TicketDetails({
   const hasDiff = useTicketHasDiff(ticket, thread);
   const rootRef = useRef<HTMLDivElement>(null);
   const monitored = ticket.loop?.monitored === true;
+  const reviewFirst = ticket.pr !== null;
   // The gates to monitor with, chosen before the switch turns on; a monitored card shows its own.
   const [gateChoice, setGateChoice] = useState(() => defaultGates(ticket.kind));
   useEffect(() => setGateChoice(defaultGates(ticket.kind)), [ticket.id, ticket.kind]);
@@ -178,7 +179,7 @@ function TicketDetails({
                   </ExternalLink>
                   {nerdFont ? null : ` · ${ticket.pr.state}`}
                 </span>
-                {ticket.pr.checks !== null ? <ChecksMark checks={ticket.pr.checks} nerdFont={nerdFont} /> : null}
+                {ticket.pr.checks !== null ? <ChecksMark checks={ticket.pr.checks} nerdFont={nerdFont} href={checksHref(ticket.pr)} /> : null}
                 {ticket.pr.headRef !== null ? (
                   <span className="min-w-0 truncate" title={`Branch ${ticket.pr.headRef}`}>
                     · {ticket.pr.headRef}
@@ -241,122 +242,208 @@ function TicketDetails({
       <PlanApproval ticket={ticket} rpc={rpc} run={run} pending={pending} />
       <LeftOpenMinors ticket={ticket} rpc={rpc} run={run} pending={pending} />
 
-      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
-        <Property label="Column">
-          <Select
-            aria-label="Column"
-            value={ticket.columnId}
-            className="h-7 w-auto"
-            onChange={(columnId) => void run(() => rpc.call("ticket_move", { id: ticket.id, columnId, index: null }))}
-          >
-            {columns.map((column) => (
-              <option key={column.id} value={column.id}>
-                {column.name}
-              </option>
-            ))}
-          </Select>
-        </Property>
-        <Property label="Tags">
-          <TagEditor ticket={ticket} rpc={rpc} run={run} suggestions={allTags} />
-        </Property>
-        <Property label="Due">
-          <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
-        </Property>
-        {ticket.parentId !== null || showParentPicker ? (
-          <ParentProperty rise={showParentPicker}>
-            <Select
-              aria-label="Parent card"
-              value={ticket.parentId ?? ""}
-              className="h-7 w-auto max-w-full"
-              onChange={(value) => void run(() => rpc.call("ticket_set_parent", { id: ticket.id, parentId: value === "" ? null : value }))}
-            >
-              <option value="">None (top-level)</option>
-              {parentOptions.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.title.length > 60 ? `${entry.title.slice(0, 60)}…` : entry.title}
-                </option>
-              ))}
-            </Select>
-          </ParentProperty>
-        ) : null}
-        <Property label="Thread">
-          {ticket.threadId !== null ? (
-            <button
-              type="button"
-              onClick={() => onOpenThread(ticket.threadId!)}
-              className="flex max-w-full items-center gap-1.5 text-left text-sm hover:underline"
-            >
-              <span className="truncate">{thread?.displayTitle ?? "Thread"}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">· {threadStatusText(thread)}</span>
-            </button>
-          ) : (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone={false} className="h-7 w-auto max-w-48" />
-              <Button
-                type="button"
-                variant="secondary"
-                className={COMPACT}
-                disabled={pending || projectId === ""}
-                onClick={() => void run(() => rpc.call("ticket_start_thread", { id: ticket.id, projectId }), "Thread started")}
+      {/* A PR card is read for its review: findings, PR comments and the PR's own description come before the card's properties. */}
+      {reviewFirst ? (
+        <>
+          <ReviewPanel
+            ticket={ticket}
+            threads={threads}
+            rpc={rpc}
+            pending={pending}
+            canReview={ticket.projectId !== null}
+            run={run}
+            onOpenThread={onOpenThread}
+            onOpenTicket={openTicket}
+          />
+          {ticket.pr !== null ? (
+            <CommentsPanel
+              ticket={ticket}
+              threads={threads}
+              rpc={rpc}
+              pending={pending}
+              canApply={ticket.projectId !== null}
+              run={run}
+              onOpenThread={onOpenThread}
+            />
+          ) : null}
+          {ticket.pr !== null && ticket.pr.body !== null && ticket.pr.body.trim() !== "" ? (
+            <Group title="PR description" defaultOpen>
+              <Markdown content={ticket.pr.body} className="text-sm" />
+            </Group>
+          ) : null}
+          <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+            <Property label="Column">
+              <Select
+                aria-label="Column"
+                value={ticket.columnId}
+                className="h-7 w-auto"
+                onChange={(columnId) => void run(() => rpc.call("ticket_move", { id: ticket.id, columnId, index: null }))}
               >
-                <Icon name="Play" className="size-3.5" />
-                Start
-              </Button>
-            </div>
-          )}
-        </Property>
-        {ticket.pr !== null ? (
-          <Property label="Author">
-            <span>{ticket.pr.author || "unknown"}</span>
-            {ticket.pr.role === "authored" ? <span className="text-xs text-muted-foreground"> (you)</span> : null}
-          </Property>
-        ) : null}
-        {ticket.jira !== null ? (
-          <>
-            <Property label="Type">{ticket.jira.issueType || "issue"}</Property>
-            {ticket.jira.priority !== null ? <Property label="Priority">{ticket.jira.priority}</Property> : null}
-            {ticket.jira.assignee !== null ? <Property label="Assignee">{ticket.jira.assignee}</Property> : null}
-          </>
-        ) : null}
-      </dl>
-
-      <LoopSection
-        ticket={ticket}
-        gates={monitored ? ticket.loop!.gates : gateChoice}
-        projectSettings={projectSettings}
-        rpc={rpc}
-        run={run}
-        pending={pending}
-        onToggle={toggleMonitored}
-        onGatesChange={(gates) => (monitored ? void run(() => rpc.call("loop_set_gates", { id: ticket.id, gates })) : setGateChoice(gates))}
-        onOpenThread={onOpenThread}
-        onLeave={keys.leave}
-      />
-
-      <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
-
-      <ReviewPanel
-        ticket={ticket}
-        threads={threads}
-        rpc={rpc}
-        pending={pending}
-        canReview={ticket.projectId !== null}
-        run={run}
-        onOpenThread={onOpenThread}
-        onOpenTicket={openTicket}
-      />
-
-      {ticket.pr !== null ? (
-        <CommentsPanel
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.name}
+                  </option>
+                ))}
+              </Select>
+            </Property>
+            <Property label="Tags">
+              <TagEditor ticket={ticket} rpc={rpc} run={run} suggestions={allTags} />
+            </Property>
+            <Property label="Due">
+              <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
+            </Property>
+            {ticket.parentId !== null || showParentPicker ? (
+              <ParentProperty rise={showParentPicker}>
+                <Select
+                  aria-label="Parent card"
+                  value={ticket.parentId ?? ""}
+                  className="h-7 w-auto max-w-full"
+                  onChange={(value) => void run(() => rpc.call("ticket_set_parent", { id: ticket.id, parentId: value === "" ? null : value }))}
+                >
+                  <option value="">None (top-level)</option>
+                  {parentOptions.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.title.length > 60 ? `${entry.title.slice(0, 60)}…` : entry.title}
+                    </option>
+                  ))}
+                </Select>
+              </ParentProperty>
+            ) : null}
+            {ticket.threadId !== null ? null : (
+              <Property label="Thread">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone={false} className="h-7 w-auto max-w-48" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={COMPACT}
+                    disabled={pending || projectId === ""}
+                    onClick={() => void run(() => rpc.call("ticket_start_thread", { id: ticket.id, projectId }), "Thread started")}
+                  >
+                    <Icon name="Play" className="size-3.5" />
+                    Start
+                  </Button>
+                </div>
+              </Property>
+            )}
+            {ticket.jira !== null ? (
+              <>
+                <Property label="Type">{ticket.jira.issueType || "issue"}</Property>
+                {ticket.jira.priority !== null ? <Property label="Priority">{ticket.jira.priority}</Property> : null}
+                {ticket.jira.assignee !== null ? <Property label="Assignee">{ticket.jira.assignee}</Property> : null}
+              </>
+            ) : null}
+          </dl>
+        </>
+      ) : (
+        <>
+          <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+            <Property label="Column">
+              <Select
+                aria-label="Column"
+                value={ticket.columnId}
+                className="h-7 w-auto"
+                onChange={(columnId) => void run(() => rpc.call("ticket_move", { id: ticket.id, columnId, index: null }))}
+              >
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.name}
+                  </option>
+                ))}
+              </Select>
+            </Property>
+            <Property label="Tags">
+              <TagEditor ticket={ticket} rpc={rpc} run={run} suggestions={allTags} />
+            </Property>
+            <Property label="Due">
+              <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
+            </Property>
+            {ticket.parentId !== null || showParentPicker ? (
+              <ParentProperty rise={showParentPicker}>
+                <Select
+                  aria-label="Parent card"
+                  value={ticket.parentId ?? ""}
+                  className="h-7 w-auto max-w-full"
+                  onChange={(value) => void run(() => rpc.call("ticket_set_parent", { id: ticket.id, parentId: value === "" ? null : value }))}
+                >
+                  <option value="">None (top-level)</option>
+                  {parentOptions.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.title.length > 60 ? `${entry.title.slice(0, 60)}…` : entry.title}
+                    </option>
+                  ))}
+                </Select>
+              </ParentProperty>
+            ) : null}
+            {ticket.threadId !== null ? null : (
+              <Property label="Thread">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone={false} className="h-7 w-auto max-w-48" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={COMPACT}
+                    disabled={pending || projectId === ""}
+                    onClick={() => void run(() => rpc.call("ticket_start_thread", { id: ticket.id, projectId }), "Thread started")}
+                  >
+                    <Icon name="Play" className="size-3.5" />
+                    Start
+                  </Button>
+                </div>
+              </Property>
+            )}
+            {ticket.jira !== null ? (
+              <>
+                <Property label="Type">{ticket.jira.issueType || "issue"}</Property>
+                {ticket.jira.priority !== null ? <Property label="Priority">{ticket.jira.priority}</Property> : null}
+                {ticket.jira.assignee !== null ? <Property label="Assignee">{ticket.jira.assignee}</Property> : null}
+              </>
+            ) : null}
+          </dl>
+          <ReviewPanel
+            ticket={ticket}
+            threads={threads}
+            rpc={rpc}
+            pending={pending}
+            canReview={ticket.projectId !== null}
+            run={run}
+            onOpenThread={onOpenThread}
+            onOpenTicket={openTicket}
+          />
+          {ticket.pr !== null ? (
+            <CommentsPanel
+              ticket={ticket}
+              threads={threads}
+              rpc={rpc}
+              pending={pending}
+              canApply={ticket.projectId !== null}
+              run={run}
+              onOpenThread={onOpenThread}
+            />
+          ) : null}
+          {ticket.pr !== null && ticket.pr.body !== null && ticket.pr.body.trim() !== "" ? (
+            <Group title="PR description" defaultOpen>
+              <Markdown content={ticket.pr.body} className="text-sm" />
+            </Group>
+          ) : null}
+        </>
+      )}
+      {/* Someone else's PR is not the loop's to drive; m still toggles it. */}
+      {ticket.pr?.role === "other" ? null : (
+        <LoopSection
           ticket={ticket}
-          threads={threads}
+          gates={monitored ? ticket.loop!.gates : gateChoice}
+          projectSettings={projectSettings}
           rpc={rpc}
-          pending={pending}
-          canApply={ticket.projectId !== null}
           run={run}
+          pending={pending}
+          onToggle={toggleMonitored}
+          onGatesChange={(gates) => (monitored ? void run(() => rpc.call("loop_set_gates", { id: ticket.id, gates })) : setGateChoice(gates))}
           onOpenThread={onOpenThread}
+          onLeave={keys.leave}
         />
-      ) : null}
+      )}
+      <SubtasksGroup ticket={ticket} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
 
       <Group
         title={ticket.kind === "adhoc" ? "Description" : "Notes"}

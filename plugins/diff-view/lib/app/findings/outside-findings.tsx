@@ -60,16 +60,18 @@ function ListedRow({ entry, index, onMakeCard }: { entry: ListedFinding; index: 
           <span className="min-w-0 truncate text-foreground">{finding.title}</span>
           {where !== "" ? <span className="min-w-0 shrink truncate font-mono text-[11px] text-muted-foreground">{where}</span> : null}
         </button>
-        {finding.confidence != null ? (
-          <span className="shrink-0 tabular-nums text-muted-foreground" title="How sure the review's verifier is that it is real (0–100); it does not measure importance">
-            confidence {finding.confidence}
-          </span>
-        ) : null}
         {onMakeCard !== null ? <CardButton entry={entry} onMakeCard={onMakeCard} /> : null}
       </div>
       {open ? (
         <div className={cn("flex flex-col gap-1 py-1 pl-5 text-sm", enter.rise, FAST)}>
-          {finding.verification != null && finding.verification !== "" ? <p className="text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
+          {finding.verification != null && finding.verification !== "" ? (
+            <p className="text-xs text-muted-foreground">
+              Verifier: {finding.verification}
+              {finding.confidence != null ? <span className="tabular-nums" title="How sure the verifier is that it is real (0–100); it does not measure importance"> (confidence {finding.confidence})</span> : null}
+            </p>
+          ) : finding.confidence != null ? (
+            <p className="text-xs tabular-nums text-muted-foreground" title="How sure the verifier is that it is real (0–100); it does not measure importance">Verifier confidence {finding.confidence}</p>
+          ) : null}
           {finding.class != null && finding.class !== "" ? <p className="text-xs text-muted-foreground">Class: {finding.class}</p> : null}
           {finding.description !== "" ? <Markdown content={finding.description} /> : <p className="text-xs text-muted-foreground">No description.</p>}
           {finding.fix !== null && finding.fix !== "" ? (
@@ -95,7 +97,8 @@ function GroupToggle({ open, onToggle, label, title }: { open: boolean; onToggle
 
 /**
  * The findings that have no place in the diff: pre-existing ones, which can become cards of their own, and the ones the
- * verifier filtered out, folded under their count. It moves with its own list keys; Escape hands the keyboard back.
+ * verifier filtered out, each folded under its count until asked for. It moves with its own list keys (gp reaches it);
+ * Escape hands the keyboard back.
  */
 export function OutsideFindings({
   preExisting,
@@ -114,7 +117,7 @@ export function OutsideFindings({
   onLeave: () => void;
 }) {
   const { labels } = useDiffSource();
-  const [preExistingOpen, setPreExistingOpen] = useState(true);
+  const [preExistingOpen, setPreExistingOpen] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
   // Before the review keys, so j and k move here; Enter is the focused button's own click.
   const onKeyDown = useKeyHandler<OutsideFindingsCommand>({
@@ -142,8 +145,7 @@ export function OutsideFindings({
             title="Findings already in the code before this change: never applied with it, but each can become a card of its own"
           />
         ) : null}
-        {filtered.length > 0 ? <GroupToggle open={filteredOpen} onToggle={() => onFilteredOpen(!filteredOpen)} label={`${filtered.length} filtered`} title={`${labels.filteredFindings} (gF)`} /> : null}
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground/70">gp to reach these</span>
+        {filtered.length > 0 ? <GroupToggle open={filteredOpen} onToggle={() => onFilteredOpen(!filteredOpen)} label={`${filtered.length} filtered`} title={`${labels.filteredFindings} (gF; gp moves the keyboard here)`} /> : null}
       </div>
       {preExisting.length > 0 && preExistingOpen ? (
         <ul aria-label="Pre-existing findings" className="flex flex-col">

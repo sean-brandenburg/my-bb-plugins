@@ -130,6 +130,10 @@ export const pullRequestSchema = z.object({
   headRef: z.string().nullable(),
   /** Null when the head commit has no checks, or they have not been read yet. */
   checks: prChecksSchema.nullable(),
+  /** Where the checks tick leads: the failing (else pending, else first) check's own page; null falls back to the PR's checks tab. */
+  checksUrl: z.string().nullable().default(null),
+  /** The PR's description as written on GitHub; null until a sync reads it. */
+  body: z.string().nullable().default(null),
 });
 export type PullRequest = z.infer<typeof pullRequestSchema>;
 

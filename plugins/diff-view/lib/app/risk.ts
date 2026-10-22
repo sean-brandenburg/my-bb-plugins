@@ -17,14 +17,4 @@ export function riskByPath(tour: TourState | null, findingsByPath: ReadonlyMap<s
   return map;
 }
 
-/** Risk 1–5 → tint for a file row; null (unscored) → none. */
-export function riskTint(risk: number | null): string {
-  if (risk === null) return "";
-  if (risk >= 5) return "bg-red-500/15";
-  if (risk === 4) return "bg-orange-500/12";
-  if (risk === 3) return "bg-amber-500/10";
-  if (risk === 2) return "bg-emerald-500/8";
-  return "bg-emerald-500/12";
-}
-
 export const RISK_DOT: Record<number, string> = { 1: "bg-emerald-500", 2: "bg-emerald-400", 3: "bg-amber-500", 4: "bg-orange-500", 5: "bg-red-500" };

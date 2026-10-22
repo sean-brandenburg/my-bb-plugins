@@ -19,6 +19,12 @@ export function shortSha(sha: string | null): string {
   return sha === null ? "?" : sha.slice(0, 7);
 }
 
+/** The first sentence of a text: up to a full stop followed by a capitalised word ("e.g. at" is not an end); the whole text without one. */
+export function firstSentence(text: string): string {
+  const match = /^[\s\S]*?[.!?](?=\s+[A-Z"(]|$)/u.exec(text.trim());
+  return match === null ? text.trim() : match[0];
+}
+
 /** Splits "Fix thing #infra #urgent" into a title and tags. */
 export function parseQuickAdd(text: string): { title: string; tags: string[] } {
   const tags: string[] = [];

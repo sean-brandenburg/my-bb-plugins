@@ -25,13 +25,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { shortSha } from "./format";
+import { firstSentence, shortSha } from "./format";
 import { type Rpc, usePushPreference, useReviewUnavailableReason } from "./data";
 import { PushToggle, Badge, ThreadStatusDot, COMPACT, Group, KANBAN_MENU, MENU_ITEM_CLASS, SegmentedTabs, menuVimKeys } from "./primitives";
 import { type RunAction, toastError } from "./actions";
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { critical: "Critical", important: "Important", minor: "Minor" };
-const CONFIDENCE_TITLE = "How sure the review's verifier is that it is real (0–100); it does not measure importance";
 const MAKE_CARD_TITLE = "Add a Backlog card carrying this finding's title, description, fix and locations";
 const SEVERITY_TONE: Record<FindingSeverity, "danger" | "warning" | "neutral"> = {
   critical: "danger",
@@ -56,6 +55,18 @@ function SeverityCountBadges({ counts, appliedCount }: { counts: NonNullable<Tic
   );
 }
 
+/** `a.ts:12`, or the first of several with how many more. */
+function whereLabel(finding: Finding): string | null {
+  const first = finding.locations[0];
+  if (first === undefined) return null;
+  return finding.locations.length === 1 ? locationLabel(first) : `${locationLabel(first)} +${finding.locations.length - 1}`;
+}
+
+/**
+ * One finding as a single row (checkbox, severity, title, where) that opens to its details on click or Enter. The
+ * scores the review gave it sit in the id's tooltip once open, since they shaped the triage and seldom change what the
+ * reader does with it.
+ */
 function FindingCard({
   finding,
   index,
@@ -85,11 +96,13 @@ function FindingCard({
   kind?: "introduced" | "deferred" | "pre-existing" | "filtered";
 }) {
   const appliedPop = usePopOnChange(applied);
+  const [open, setOpen] = useState(false);
+  const where = whereLabel(finding);
   return (
     <li
       style={stagger(index)}
       className={cn(
-        "rounded-md border border-border bg-card p-2.5",
+        "rounded-md border border-border bg-card px-2 py-1",
         enter.rise,
         speed.fast,
         STAGGER,
@@ -98,48 +111,29 @@ function FindingCard({
         (selected === false || applied || kind === "filtered") && "opacity-60",
       )}
     >
-      <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+      <div className="flex items-center gap-2">
         {selected !== null && onToggle !== null && !applied ? (
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(checked) => onToggle(checked === true)}
-            aria-label={`${selected ? "Exclude" : "Include"} ${finding.id} in the apply round`}
-            className="mt-0.5"
-          />
+          <Checkbox checked={selected} onCheckedChange={(checked) => onToggle(checked === true)} aria-label={`${selected ? "Exclude" : "Include"} ${finding.id} in the apply round`} />
         ) : null}
-        <Badge tone={applied ? "success" : SEVERITY_TONE[finding.severity]}>{finding.id}</Badge>
-        <span className={cn("min-w-0 flex-1 text-sm font-medium leading-5", applied && "text-muted-foreground line-through")}>{finding.title}</span>
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-0.5 text-left" aria-expanded={open} data-bbm-open={open} onClick={() => setOpen(!open)}>
+          <Icon name="ChevronRight" className={cn("size-3 shrink-0 text-muted-foreground", CHEVRON)} />
+          <span className={cn("size-1.5 shrink-0 rounded-full", applied ? "bg-emerald-500" : SEVERITY_DOT[finding.severity])} title={SEVERITY_LABEL[finding.severity]} />
+          <span className={cn("min-w-0 flex-1 truncate text-sm", applied && "text-muted-foreground line-through")} title={finding.title}>
+            {finding.title}
+          </span>
+          {where !== null ? (
+            <code className="hidden min-w-0 max-w-[40%] shrink truncate font-mono text-[11px] text-muted-foreground sm:inline" title={finding.locations.map(locationLabel).join("\n")}>
+              {where}
+            </code>
+          ) : null}
+        </button>
         {applied ? <Badge tone="success">applied</Badge> : null}
-        {finding.importance !== null && finding.scopeFit !== null ? (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title="importance / scope fit (1–5)">
-            {finding.importance}/{finding.scopeFit}
-          </span>
-        ) : null}
-        {finding.confidence !== null ? (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={CONFIDENCE_TITLE}>
-            confidence {finding.confidence}
-          </span>
-        ) : verified ? (
-          <span className="shrink-0 text-xs text-muted-foreground" title="The verifier gave no verdict on this one">
-            unverified
-          </span>
-        ) : null}
-        {finding.carriedFrom !== null ? (
-          <span className="shrink-0 text-xs text-muted-foreground" title={`Still open from an earlier review, where it was ${finding.carriedFrom.split("/").pop()}`}>
-            carried
-          </span>
-        ) : null}
-        {overridden && !applied ? <span className="shrink-0 text-xs text-muted-foreground" title="You changed this from the suggested selection">manual</span> : null}
         {onApplied !== null ? (
           <button
             type="button"
             aria-label={applied ? `Reopen ${finding.id}` : `Mark ${finding.id} as applied`}
             title={applied ? "Reopen: show it in the diff again and let its checkbox decide whether the next apply round gets it" : "Mark as applied: cross it off and hide it from the diff"}
-            className={cn(
-              "-my-0.5 flex size-6 shrink-0 items-center justify-center rounded hover:bg-state-hover",
-              PRESS,
-              applied ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground",
-            )}
+            className={cn("flex size-6 shrink-0 items-center justify-center rounded hover:bg-state-hover", PRESS, applied ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:text-foreground")}
             onClick={() => onApplied(!applied)}
           >
             {/* The pop lives on a wrapper so remounting it never takes focus from the button. */}
@@ -150,31 +144,38 @@ function FindingCard({
         ) : null}
         {action}
       </div>
-      {kind === "filtered" && finding.verification !== null && finding.verification !== "" ? <p className="mt-1 text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
-      {finding.triage !== null && finding.triage.decision !== "apply" && finding.triage.reason !== "" ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Triage: {finding.triage.decision === "defer" ? "deferred" : "dropped"} — {finding.triage.reason}
-        </p>
-      ) : null}
-      {applied ? null : <FindingDetails finding={finding} />}
+      {open ? <FindingDetails finding={finding} verified={verified} overridden={overridden && !applied} kind={kind} /> : null}
     </li>
   );
 }
 
-function FindingDetails({ finding }: { finding: Finding }) {
+const SEVERITY_DOT: Record<FindingSeverity, string> = { critical: "bg-red-500", important: "bg-amber-500", minor: "bg-slate-400" };
+
+function FindingDetails({ finding, verified, overridden, kind }: { finding: Finding; verified: boolean; overridden: boolean; kind: "introduced" | "deferred" | "pre-existing" | "filtered" }) {
   const instances = finding.locations.length;
+  const meta = [
+    SEVERITY_LABEL[finding.severity],
+    instances > 1 ? `${instances} instances` : null,
+    finding.carriedFrom !== null ? `still open from ${finding.carriedFrom.split("/").pop()}` : null,
+    overridden ? "selection changed by you" : null,
+    finding.confidence === null && verified ? "unverified" : null,
+  ].filter((part) => part !== null);
+  const scores = [
+    finding.importance !== null && finding.scopeFit !== null ? `importance ${finding.importance}/5 · scope fit ${finding.scopeFit}/5` : null,
+    finding.confidence !== null ? `verifier confidence ${finding.confidence} (how sure it is real, not how much it matters)` : null,
+    finding.class !== null && finding.class !== "" ? `class: ${finding.class}` : null,
+  ].filter((part) => part !== null);
   return (
-    <>
-      {finding.class !== null && finding.class !== "" ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          <span title="Bug class: the kind of mistake, so one fix covers every instance">{finding.class}</span>
-          {instances > 1 ? <span className="tabular-nums"> · {instances} instances</span> : null}
-        </p>
-      ) : instances > 1 ? (
-        <p className="mt-1 text-xs tabular-nums text-muted-foreground">{instances} instances</p>
-      ) : null}
-      {finding.locations.length > 0 ? (
-        <div className="mt-1 flex flex-wrap gap-1">
+    <div className={cn("flex flex-col gap-1.5 pb-1.5 pl-7 pt-1", enter.rise, speed.fast)}>
+      <p className="text-xs text-muted-foreground">
+        <span className={cn("font-mono", scores.length > 0 && "cursor-help underline decoration-dotted underline-offset-2")} title={scores.length > 0 ? scores.join("\n") : undefined}>
+          {finding.id}
+        </span>
+        {" · "}
+        {meta.join(" · ")}
+      </p>
+      {finding.locations.length > 1 ? (
+        <div className="flex flex-wrap gap-1">
           {finding.locations.map((location) => (
             <code key={locationLabel(location)} className="rounded bg-muted px-1 py-0.5 text-[11px] text-muted-foreground">
               {locationLabel(location)}
@@ -182,21 +183,37 @@ function FindingDetails({ finding }: { finding: Finding }) {
           ))}
         </div>
       ) : null}
-      {finding.description !== "" ? <Markdown content={finding.description} className="mt-1.5 text-sm" /> : null}
+      {kind === "filtered" && finding.verification !== null && finding.verification !== "" ? <p className="text-xs text-muted-foreground">Verifier: {finding.verification}</p> : null}
+      {finding.triage !== null && finding.triage.decision !== "apply" && finding.triage.reason !== "" ? (
+        <p className="text-xs text-muted-foreground">
+          Triage: {finding.triage.decision === "defer" ? "deferred" : "dropped"} — {finding.triage.reason}
+        </p>
+      ) : null}
+      {finding.description !== "" ? <Markdown content={finding.description} className="text-sm" /> : null}
       {finding.fix !== null && finding.fix !== "" ? (
-        <div className="mt-1.5 flex gap-1.5 text-sm">
+        <div className="flex gap-1.5 text-sm">
           <Icon name="kanban-wrench" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
           <Markdown content={finding.fix} className="min-w-0 flex-1" />
         </div>
       ) : null}
-      {finding.flaggedBy.length > 0 ? (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {finding.flaggedBy.map((reviewer) => (
-            <Badge key={reviewer}>{reviewer}</Badge>
-          ))}
-        </div>
+    </div>
+  );
+}
+
+/** The review's summary paragraph, cut to its first sentence until asked for whole. */
+function ReviewSummary({ summary }: { summary: string }) {
+  const [open, setOpen] = useState(false);
+  const first = firstSentence(summary);
+  const more = first.length < summary.trim().length;
+  return (
+    <div className="flex flex-col gap-1">
+      <Markdown content={open || !more ? summary : first} className="text-sm" />
+      {more ? (
+        <button type="button" className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Less" : "More"}
+        </button>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -314,7 +331,7 @@ function StructuredReview({
   );
   return (
     <div className="flex flex-col gap-3">
-      {report.summary !== "" ? <Markdown content={report.summary} className="text-sm" /> : null}
+      {report.summary !== "" ? <ReviewSummary summary={report.summary} /> : null}
       {introduced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span title={overriddenCount > 0 ? `${overriddenCount} changed by you` : suggested}>

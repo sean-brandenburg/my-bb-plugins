@@ -7,7 +7,7 @@ import { Badge } from "../ui/badge";
 import { CHEVRON, FAST, STAGGER, enter, stagger } from "../ui/motion";
 import { cn } from "../utils";
 import { isGeneratedFile } from "../generated";
-import { RISK_DOT, riskTint } from "../risk";
+import { RISK_DOT } from "../risk";
 import { buildFileTree, type FileTreeDir } from "./build-file-tree";
 import { runListMotion, runListScroll, useKeyHandler } from "../ui/vim-keys";
 import { FILE_TREE_KEYMAP, type FileTreeCommand } from "../keys/keymap";
@@ -140,7 +140,7 @@ export function FileTree({
         <button
           type="button"
           onClick={() => onSelect(file.path)}
-          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", ROW_ENTER, riskTint(fileRisk), file.path === activePath && "bg-state-active", ROW_FOCUS)}
+          className={cn("flex w-full items-center gap-1.5 py-1 pr-3 text-left text-xs hover:bg-state-hover", ROW_ENTER, file.path === activePath && "bg-state-active", ROW_FOCUS)}
           style={{ paddingLeft: 8 + depth * 12 + 16, ...stagger(cascade.next++) }}
           data-nav-row="item"
           data-file-tree-path={file.path}

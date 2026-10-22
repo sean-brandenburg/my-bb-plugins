@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { relativeTime, shortSha } from "./format";
+import { relativeTime } from "./format";
 import { useOpenThread, useNow, useReviewUnavailableReason } from "./data";
 import { Badge, COMPACT, ExternalLink, KANBAN_MENU, MENU_ITEM_CLASS, menuVimKeys } from "./primitives";
 import { toastError } from "./actions";
@@ -19,8 +19,8 @@ const PR_LINK = "inline-flex shrink-0 items-center gap-1 rounded-sm text-xs text
 
 /**
  * The changes page's heading: the card's title and PR on the left; on the right the send controls for the comments
- * left on the diff, then its review threads. The host title bar only has room on its right for short controls, so
- * the page names itself here.
+ * left on the diff, a Review button until the card has a review, and the Threads menu that reaches every code review
+ * thread. The host title bar only has room on its right for short controls, so the page names itself here.
  */
 export function DiffPageHeading({ subjectId, ticket, actions }: { subjectId: string; ticket: Ticket | null; actions?: ReactNode }) {
   return (
@@ -39,8 +39,8 @@ export function DiffPageHeading({ subjectId, ticket, actions }: { subjectId: str
       <span className="ml-auto flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5">
         {actions}
         <span className="flex shrink-0 items-center gap-1.5">
-          {ticket !== null ? <ReviewThreadButtons ticket={ticket} /> : null}
-          <CodeReviewThreadsMenu subjectId={subjectId} />
+          {ticket !== null && ticket.latestReview === null ? <StartReviewButton ticket={ticket} /> : null}
+          <CodeReviewThreadsMenu subjectId={subjectId} latestReview={ticket?.latestReview ?? null} />
         </span>
       </span>
     </div>
@@ -55,16 +55,12 @@ const CODE_REVIEW_THREAD_ICON: Record<CodeReviewThread["kind"], string> = {
   explain: "MessageSquare",
 };
 
-/**
- * Starts the first review from the changes page, or opens the latest review's apply round; the review thread itself
- * is reached through the Threads menu beside these.
- */
-export function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
+/** Starts the card's first review at Standard depth; once one exists its thread and apply round are in the Threads menu. */
+function StartReviewButton({ ticket }: { ticket: Ticket }) {
   const rpc = useRpc<typeof rpcContract>();
   const openThread = useOpenThread();
   const [starting, setStarting] = useState(false);
-  const review = ticket.latestReview;
-  const unavailable = useReviewUnavailableReason(ticket, review === null);
+  const unavailable = useReviewUnavailableReason(ticket, true);
   const startReview = async () => {
     setStarting(true);
     try {
@@ -76,30 +72,18 @@ export function ReviewThreadButtons({ ticket }: { ticket: Ticket }) {
       setStarting(false);
     }
   };
-  if (review === null) {
-    return (
-      <span title={unavailable ?? `${ticket.pr !== null ? "Review the PR" : "Review the card thread's commits"} at Standard depth; the card panel's Code review picks another depth`}>
-        <Button type="button" variant="secondary" className={COMPACT} disabled={starting || unavailable !== null} onClick={() => void startReview()}>
-          <Icon name="kanban-search-check" className="size-3.5" />
-          {starting ? "Starting…" : "Review"}
-        </Button>
-      </span>
-    );
-  }
-  const apply = review.apply;
-  if (apply === null) return null;
   return (
-    <span title={apply.completedAt === null ? "Open the thread applying the review" : `Fixes ${apply.push ? "pushed" : "committed"} as ${shortSha(apply.pushedCommit)}`}>
-      <Button type="button" variant="ghost" className={COMPACT} onClick={() => openThread(apply.threadId)}>
-        <Icon name="kanban-wrench" className={cn("size-3.5", apply.completedAt === null && "animate-pulse")} />
-        {apply.completedAt === null ? "Applying…" : "Fixes"}
+    <span title={unavailable ?? `${ticket.pr !== null ? "Review the PR" : "Review the card thread's commits"} at Standard depth; the card panel's Code review picks another depth`}>
+      <Button type="button" variant="secondary" className={COMPACT} disabled={starting || unavailable !== null} onClick={() => void startReview()}>
+        <Icon name="kanban-search-check" className="size-3.5" />
+        {starting ? "Starting…" : "Review"}
       </Button>
     </span>
   );
 }
 
 /** Code review threads run hidden from the sidebar and the project, so this menu is how the changes page reaches them. */
-export function CodeReviewThreadsMenu({ subjectId }: { subjectId: string }) {
+export function CodeReviewThreadsMenu({ subjectId, latestReview }: { subjectId: string; latestReview: Ticket["latestReview"] }) {
   const rpc = useRpc<typeof rpcContract>();
   const openThread = useOpenThread();
   const now = useNow();
@@ -111,14 +95,17 @@ export function CodeReviewThreadsMenu({ subjectId }: { subjectId: string }) {
   useRealtime(BOARD_CHANGED, load);
   if (threads.length === 0) return null;
   const running = threads.filter((thread) => thread.status === "running").length;
+  const failed = latestReview?.status === "failed" || threads.some((thread) => thread.status === "failed");
   return (
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
-        <Button type="button" variant="ghost" className={COMPACT} aria-label="Code review threads">
-          <Icon name="MessageSquare" className={cn("size-3.5", running > 0 && "animate-pulse")} />
-          Threads
-          <Badge tone={running > 0 ? "accent" : "neutral"}>{threads.length}</Badge>
-        </Button>
+        <span title={running > 0 ? `${running} thread${running === 1 ? "" : "s"} running; open one to watch` : "The review, apply, narrative and explanation threads of this card"}>
+          <Button type="button" variant="ghost" className={COMPACT} aria-label="Code review threads">
+            <Icon name="MessageSquare" className={cn("size-3.5", running > 0 && "animate-pulse")} />
+            Threads
+            <Badge tone={running > 0 ? "accent" : failed ? "danger" : "neutral"}>{threads.length}</Badge>
+          </Button>
+        </span>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content {...usePortalScopeProps()} align="end" sideOffset={4} className={cn("z-50 max-h-96 min-w-64 max-w-96 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md", POPOVER_MOTION, KANBAN_MENU)} onKeyDown={menuVimKeys}>

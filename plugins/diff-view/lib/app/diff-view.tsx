@@ -890,12 +890,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
               <SummaryBar
                 diff={diff}
                 viewed={viewed}
-                hasThreads={comments.threads.length > 0}
                 findingTotal={allFindings.length}
                 findingShown={shownFindingCount}
                 findingFilter={findingFilter}
-                onNextComment={() => (mode === "narrative" ? runNarrativeCommand : runFilesCommand)({ kind: "thread", direction: 1 }, 1)}
-                onShowKeys={() => setOverlay({ kind: "help" })}
                 commentTarget={source.canPostToGithub === true ? { target: comments.target, onChange: comments.setTarget } : null}
                 mode={narrativeAvailable ? { value: mode, stale, onChange: (next) => (next === mode ? undefined : next === "narrative" ? enterNarrative() : leaveToFiles()) } : null}
                 progress={mode === "narrative" ? { position: reader.position, total: reader.total } : null}

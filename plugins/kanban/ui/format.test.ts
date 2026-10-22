@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agedOut, doneColumnId, todoColumnId } from "../shared/columns";
-import { cardSnippet, dueStatus, localDay, parseQuickAdd, parseTagList, relativeTime, shortAge, slugify } from "./format";
+import { cardSnippet, dueStatus, firstSentence, localDay, parseQuickAdd, parseTagList, relativeTime, shortAge, slugify } from "./format";
 
 describe("parseQuickAdd", () => {
   it("pulls #tags out of a title, lowercased and deduplicated", () => {
@@ -103,5 +103,14 @@ describe("cardSnippet", () => {
     expect(cardSnippet("## Goal\n- [ ] Ship the **new** [docs](https://x.test)\n> quoted `code`")).toBe("Goal Ship the new docs quoted code");
     expect(cardSnippet("Before\n```ts\nconst x = 1;\n```\nafter ![img](a.png)")).toBe("Before after");
     expect(cardSnippet("   \n\n")).toBe("");
+  });
+});
+
+describe("firstSentence", () => {
+  it("cuts a review summary at its first sentence end, keeping a short text whole", () => {
+    expect(firstSentence("PR adds a backfill. It also seeds types. Fine.")).toBe("PR adds a backfill.");
+    expect(firstSentence("Runs on every startup, e.g. at 3.5s intervals! Then more.")).toBe("Runs on every startup, e.g. at 3.5s intervals!");
+    expect(firstSentence("No sentence end here")).toBe("No sentence end here");
+    expect(firstSentence("  Trimmed.  ")).toBe("Trimmed.");
   });
 });

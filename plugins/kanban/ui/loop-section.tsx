@@ -111,7 +111,7 @@ export function LoopSection({
   );
   return (
     <Tooltip.Provider delayDuration={400} skipDelayDuration={200}>
-      <Group title="Review loop" summary={monitored ? <LoopChip ticket={ticket} /> : <span className="text-xs text-muted-foreground">off</span>} defaultOpen>
+      <Group title="Review loop" summary={monitored ? <LoopChip ticket={ticket} /> : <span className="text-xs text-muted-foreground">off</span>} defaultOpen={monitored}>
         <div className="flex items-start gap-2.5 px-1">
           <Tip text={ABOUT_LOOP}>
             <span className="mt-0.5 inline-flex">

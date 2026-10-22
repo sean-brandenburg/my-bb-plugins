@@ -17,6 +17,7 @@ import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT } from "./primitives";
 import { toastError } from "./actions";
 import { HandoffStrip } from "./brief-panel";
+import { collapseRightPanel } from "./page-state";
 import { DiffPageHeading } from "./diff-heading";
 import { planStory } from "./reading-plan";
 import { notifyViewedChanged } from "./use-reading-plan";
@@ -439,6 +440,8 @@ export function KanbanDiffView({
   const rpc = useRpc<typeof rpcContract>();
   const [boardChanges, setBoardChanges] = useState(0);
   useRealtime(BOARD_CHANGED, () => setBoardChanges((count) => count + 1));
+  // The right panel holds the card, whose findings the diff already shows inline, or nothing; either way the diff wants the width.
+  useEffect(collapseRightPanel, []);
   if (ticket === null && (board === null || !subjectId.startsWith(THREAD_SUBJECT_PREFIX))) {
     return (
       <div className="p-4 text-sm text-muted-foreground">
