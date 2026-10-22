@@ -278,7 +278,7 @@ export function BoardHeader({ subPath }: { subPath: string }) {
         <Trail parent="Board" onParent={() => navigate.toPluginPanel("board", { subPath: "" })}>
           {ticket !== null ? (
             <span className="inline-flex min-w-0 items-center gap-1.5 px-1 text-muted-foreground">
-              <span className="max-w-[40vw] truncate font-medium text-foreground" title={ticket.title}>
+              <span className="max-w-[25vw] truncate font-medium text-foreground" title={ticket.title}>
                 {ticket.title}
               </span>
               <span aria-hidden className="shrink-0">
