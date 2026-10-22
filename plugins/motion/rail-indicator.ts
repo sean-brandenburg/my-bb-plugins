@@ -75,6 +75,9 @@ export function watchRailIndicator(root: Node = document.body): () => void {
     rail.addEventListener("scroll", onScroll, { capture: true, passive: true });
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => place(true));
     resize?.observe(rail);
+    // The window chrome above the items can grow without the rail resizing.
+    const nav = rail.querySelector("nav");
+    if (nav) resize?.observe(nav);
     place();
 
     const attached = rail;
