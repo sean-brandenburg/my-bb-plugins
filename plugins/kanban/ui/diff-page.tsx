@@ -282,7 +282,7 @@ function KanbanSubmitBar({
   const openReview = () => {
     setOpen(true);
     // Already open: the comment box, where a fresh one starts anyway.
-    triggerRef.current?.parentElement?.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')?.focus();
+    triggerRef.current?.closest("[data-diff-submit-bar]")?.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')?.focus();
   };
   const closeReview = useCallback(() => {
     setOpen(false);
