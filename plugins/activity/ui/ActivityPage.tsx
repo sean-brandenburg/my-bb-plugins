@@ -394,11 +394,13 @@ export function ActivityPage() {
     [pin, rangeMs, now],
   );
   const { summary, error } = useSummary(window, kind, version);
-  const bucketMs = bucketWidth(rangeMs, summary?.firstAt ?? null, now);
-  const offsetMs = bucketOffset(bucketMs, now);
-  const stripSince = useMemo(() => (rangeMs === null ? null : bucketStart(now - rangeMs, bucketMs, offsetMs)), [rangeMs, bucketMs, offsetMs, now]);
-  const counted = useTimeline(stripSince, kind, bucketMs, offsetMs, version);
   const firstAt = summary?.firstAt ?? null;
+  // A log younger than the range fills the strip from its first event instead of leaving most columns empty.
+  const stripFrom = rangeMs === null ? null : Math.max(now - rangeMs, firstAt ?? 0);
+  const bucketMs = bucketWidth(stripFrom === null ? null : now - stripFrom, firstAt, now);
+  const offsetMs = bucketOffset(bucketMs, now);
+  const stripSince = useMemo(() => (stripFrom === null ? null : bucketStart(stripFrom, bucketMs, offsetMs)), [stripFrom, bucketMs, offsetMs]);
+  const counted = useTimeline(stripSince, kind, bucketMs, offsetMs, version);
   const buckets = useMemo(() => fillBuckets(counted, stripSince, firstAt, now, bucketMs, offsetMs), [counted, stripSince, firstAt, now, bucketMs, offsetMs]);
 
   const groups = useMemo(() => (summary === null ? [] : groupItems(summary, query, emphasis, now)), [summary, query, emphasis, now]);

@@ -35,6 +35,10 @@ export function matchesEmphasis(item: SummaryItem, emphasis: Emphasis, now: numb
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
+const NAME_MAX = 36;
+/** A control's label short enough to sit in a sentence; list rows carry their whole text as a label. */
+const shortName = (label: string) => (label.length <= NAME_MAX ? label : `${label.slice(0, NAME_MAX - 1).trimEnd()}…`);
+
 /**
  * What the numbers say, as short sentences a key press can act on: controls that want a key, things nobody has
  * touched in two weeks, the busiest stretch, how much of the clicking happens from the keyboard, the most-opened
@@ -45,7 +49,7 @@ export function computeFindings(summary: Summary, buckets: readonly TimelineBuck
 
   const mouseOnly = summary.items.filter(isMouseOnly);
   if (mouseOnly.length > 0) {
-    const names = mouseOnly.slice(0, 2).map((item) => `“${item.label}”`);
+    const names = mouseOnly.slice(0, 2).map((item) => `“${shortName(item.label)}”`);
     const more = mouseOnly.length > 2 ? ` and ${mouseOnly.length - 2} more` : "";
     findings.push({
       id: "mouse-only",

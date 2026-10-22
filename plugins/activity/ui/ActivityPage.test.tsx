@@ -23,7 +23,8 @@ const click = (key: string, count: number, pointer: number, keyboard: number): S
 
 const SUMMARY: Summary = {
   total: 12,
-  firstAt: NOW - 86_400_000,
+  // Three days of log under a 7d range: the strip starts at the first event and buckets by six hours.
+  firstAt: NOW - 3 * 86_400_000,
   plugins: [
     { plugin: "kanban", count: 9 },
     { plugin: null, count: 3 },
