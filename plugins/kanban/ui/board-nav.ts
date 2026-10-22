@@ -78,6 +78,9 @@ export type BriefAction = "accept" | "send-back" | "rethink" | "pull-in" | "upho
 export const FINDING_ACTIONS: ReadonlySet<BriefAction> = new Set(["pull-in", "uphold", "close-dispute"]);
 
 /** Keys inside an open card, which take them before the board does. */
+/** In the diff's send bar, `i` starts typing the review's summary; the diff's own `i` (a line comment) stays out of it. */
+export const SEND_BAR_KEYS: Keymap<"summary"> = { i: "summary" };
+
 export const CARD_KEYMAP: Keymap<CardCommand> = {
   j: { kind: "step", direction: "down" },
   "<Down>": { kind: "step", direction: "down" },

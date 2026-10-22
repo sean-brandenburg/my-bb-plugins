@@ -66,8 +66,8 @@ plugins embed.
   between local and the GitHub PR, and `gx`/`go` open a thread on GitHub or
   the agent thread that replied. `T` switches where new comments go; `s`
   focuses the send bar (on kanban's GitHub drafts, the review-type picker:
-  `h`/`l` pick Comment, Approve or Request changes, Enter posts, Escape
-  returns to the diff). In a comment box or an edit ⌘↩ saves; Escape returns
+  `h`/`l` pick Comment, Approve or Request changes, `i` types the review's
+  summary, Enter or ⌘↩ posts, Escape returns to the diff). In a comment box or an edit ⌘↩ saves; Escape returns
   to the diff, keeping a new comment's or reply's draft (an empty one closes)
   and cancelling an edit of a comment or finding (with the vim-mode plugin,
   Escape twice). `v` marks a file viewed and moves on,

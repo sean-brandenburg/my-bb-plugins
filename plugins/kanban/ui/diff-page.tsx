@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { PRESS, enter, usePopOnChange } from "bb-motion";
+import { useKeyHandler } from "bb-vim-keys/react";
 import { DiffView, type DiffSource, type DiffViewLabels, type PendingComments } from "bb-diff-view/app/diff-view";
 import type { rpcContract } from "../contract";
 import type { Board, Ticket } from "../shared/board";
@@ -11,6 +12,7 @@ import { BOARD_CHANGED, THREAD_SUBJECT_PREFIX } from "../shared/events";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { SEND_BAR_KEYS } from "./board-nav";
 import { useBoard, usePushPreference } from "./data";
 import { PushToggle, COMPACT, SegmentedTabs } from "./primitives";
 import { toastError } from "./actions";
@@ -116,25 +118,48 @@ const REVIEW_EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string }> = [
   { value: "REQUEST_CHANGES", label: "Request changes" },
 ];
 
+const SUMMARY_PLACEHOLDER: Record<ReviewEvent, string> = {
+  COMMENT: "Summary for the review (optional)",
+  APPROVE: "Say why it's approved (optional)",
+  REQUEST_CHANGES: "Say what has to change (optional)",
+};
+
 /**
  * Sends local comments to an apply thread and GitHub drafts to the pull request, as a plain comment review or, on
- * someone else's PR, an approval or change request.
+ * someone else's PR, an approval or change request, with a summary over the review as GitHub's "Finish your review"
+ * takes.
  */
 function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmitted }: { subjectId: string; pending: PendingComments; canApprove: boolean; onOpenThread: (threadId: string) => void; onSubmitted: () => void }) {
   const rpc = useRpc<typeof rpcContract>();
   const [push, setPush] = usePushPreference();
   const [chosenEvent, setReviewEvent] = useState<ReviewEvent>("COMMENT");
   const reviewEvent = canApprove ? chosenEvent : "COMMENT";
+  const [summary, setSummary] = useState("");
+  const summaryRef = useRef<HTMLTextAreaElement | null>(null);
   const [submitting, setSubmitting] = useState<"github" | "agent" | null>(null);
   const { local, githubDrafts } = pending;
   const localPop = usePopOnChange(local.length);
   const draftsPop = usePopOnChange(githubDrafts.length);
+  const onKeyDown = useKeyHandler<"summary">({
+    keymap: SEND_BAR_KEYS,
+    active: () => githubDrafts.length > 0,
+    onCommand: () => summaryRef.current?.focus(),
+  });
   const submit = async (destination: "github" | "agent") => {
     setSubmitting(destination);
     try {
-      const result = await rpc.call("diff_comments_submit", { ticketId: subjectId, postToGithub: destination === "github", reviewEvent, address: destination === "agent", push });
+      const result = await rpc.call("diff_comments_submit", {
+        ticketId: subjectId,
+        postToGithub: destination === "github",
+        reviewEvent,
+        reviewBody: destination === "github" ? summary : "",
+        address: destination === "agent",
+        push,
+      });
       const posted = reviewEvent === "APPROVE" ? `Approved with ${result.posted} on GitHub${result.movedToDone ? "; the card moved to Done" : ""}` : reviewEvent === "REQUEST_CHANGES" ? `Requested changes with ${result.posted} on GitHub` : `Posted ${result.posted} to GitHub`;
       toast.success(destination === "github" ? posted : "Address thread started");
+      // A failed post keeps the summary for the retry.
+      if (destination === "github") setSummary("");
       if (result.apply !== null) onOpenThread(result.apply.threadId);
     } catch (cause) {
       toastError(cause);
@@ -145,7 +170,7 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
     }
   };
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)}>
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/30 px-3 py-2", enter.drop)} onKeyDown={onKeyDown}>
       {local.length > 0 ? (
         <>
           <span className="text-sm">
@@ -164,13 +189,27 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
         </>
       ) : null}
       {githubDrafts.length > 0 ? (
-        <span className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", local.length > 0 && "ml-auto")}>
+        <span className={cn("flex min-w-0 grow flex-wrap items-center gap-x-3 gap-y-1.5", local.length > 0 && "ml-auto")}>
           <span className="whitespace-nowrap text-sm">
             <span key={draftsPop.key} onAnimationEnd={draftsPop.onAnimationEnd} className={cn("inline-block font-medium tabular-nums", draftsPop.className)}>
               {githubDrafts.length}
             </span>{" "}
             GitHub draft{githubDrafts.length === 1 ? "" : "s"}
           </span>
+          <textarea
+            ref={summaryRef}
+            value={summary}
+            rows={1}
+            readOnly={submitting !== null}
+            onChange={(event) => setSummary(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && submitting === null) void submit("github");
+            }}
+            placeholder={SUMMARY_PLACEHOLDER[reviewEvent]}
+            aria-label="Review summary"
+            title="Posted as the review's summary, above any file-level drafts (⌘↩ posts, Esc back to the diff)"
+            className="min-w-48 grow resize-y rounded-md border border-input bg-transparent px-2.5 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring read-only:opacity-50"
+          />
           {canApprove ? <SegmentedTabs
               label="Review as"
               value={reviewEvent}

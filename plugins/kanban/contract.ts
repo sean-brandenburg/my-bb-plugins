@@ -276,6 +276,8 @@ export const rpcContract = defineRpcContract({
         postToGithub: z.boolean().default(false),
         /** The review the drafts post as, as on GitHub's "Finish your review". */
         reviewEvent: reviewEventSchema.default("COMMENT"),
+        /** The review's summary, as GitHub's "Leave a comment" box on "Finish your review"; posted above any file-level drafts. */
+        reviewBody: z.string().default(""),
         /** Start a thread that addresses the pending local comments. */
         address: z.boolean().default(true),
         push: z.boolean().default(true),

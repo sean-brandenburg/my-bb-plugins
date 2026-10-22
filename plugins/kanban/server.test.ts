@@ -2887,11 +2887,12 @@ describe("diff view and diff comments", () => {
     await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, address: false })).rejects.toThrow(/No pending comments/u);
 
     await current().harness.behavior.callRpc("diff_comment_update", { id: note.id, target: "github" });
-    const result = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, address: false })) as { posted: number; apply: CommentApply | null };
+    const result = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, reviewBody: "  Mostly nits.  ", address: false })) as { posted: number; apply: CommentApply | null };
     expect(result).toMatchObject({ posted: 1, apply: null });
     expect(posted).toHaveLength(2);
+    expect(posted[0]!.body).toBe("Mostly nits.");
     expect(posted[1]!.comments).toBeUndefined();
-    expect(String(posted[1]!.body)).toContain("a.go:99");
+    expect(String(posted[1]!.body)).toMatch(/^Mostly nits\.\n\n- `a.go:99`/u);
     const { comments } = (await current().harness.behavior.callRpc("diff_comments_list", { ticketId: card.id })) as { comments: DiffComment[] };
     expect(comments[0]).toMatchObject({ githubCommentId: "review:902" });
     await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: false })).rejects.toThrow();
@@ -2909,8 +2910,9 @@ describe("diff view and diff comments", () => {
     const mine = tickets.find((ticket) => ticket.pr?.number === 8)!;
 
     await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "LEFT", body: "Looks good", target: "github" });
-    const approved = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", address: false })) as { movedToDone: boolean; ticket: Ticket };
-    expect(posted[0]).toMatchObject({ event: "APPROVE", comments: [{ path: "a.go", body: "Looks good" }] });
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "b.go", line: null, body: "Whole file reads well", target: "github" });
+    const approved = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", reviewBody: "LGTM, one nit", address: false })) as { movedToDone: boolean; ticket: Ticket };
+    expect(posted[0]).toMatchObject({ event: "APPROVE", body: "LGTM, one nit\n\n- `b.go` — Whole file reads well", comments: [{ path: "a.go", body: "Looks good" }] });
     // Approving finishes your review, so the card goes to Done.
     expect(approved).toMatchObject({ movedToDone: true, ticket: { columnId: "done" } });
     expect((await board()).tickets.find((ticket) => ticket.id === theirs.id)?.columnId).toBe("done");
@@ -3056,6 +3058,12 @@ describe("diff comment threads", () => {
     expect(posted).toHaveLength(0);
     expect(repliesPosted).toEqual([{ to: 10, body: "Will do in this PR" }]);
     expect((await list(card.id)).find((comment) => comment.id === githubReply.id)).toMatchObject({ githubCommentId: "review-comment:7001" });
+
+    // With no new threads a comment review is only posted to carry a summary.
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: card.id, path: "a.go", body: "Second thought: alias it", inReplyTo: "review-comment:10", target: "github" });
+    await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: true, reviewBody: "Replied in the thread", address: false });
+    expect(repliesPosted).toHaveLength(2);
+    expect(posted).toEqual([{ event: "COMMENT", body: "Replied in the thread" }]);
 
     await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: card.id, postToGithub: false, address: true });
     const prompt = String(spawned[0]!.prompt);

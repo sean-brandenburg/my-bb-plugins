@@ -450,11 +450,14 @@ its PR is reviewed and its review findings and comments are handed to agents.
   `apply-pr-comments` (with the same and-push option), and
   **Post N to GitHub** posts the drafts: new threads as one review (inline
   where a line is given, in the review body otherwise) and replies into their
-  GitHub threads. On someone else's PR a **Comment / Approve / Request
-  changes** picker beside it sets how that review concludes, as GitHub's
-  "Finish your review" does; an approval also moves the card to Done, since
-  your review of it is finished. From the diff, `s` lands on the picker: `h`/`l`
-  (or the arrows) choose, Enter posts, Tab reaches the button, Escape returns.
+  GitHub threads. A summary box beside the drafts is the review's body, as
+  GitHub's "Leave a comment" on "Finish your review": it goes above any
+  file-level drafts, and with only replies to post it goes up as a review of
+  its own. On someone else's PR a **Comment / Approve / Request
+  changes** picker sets how that review concludes; an approval also moves the
+  card to Done, since your review of it is finished. From the diff, `s` lands
+  on the picker: `h`/`l` (or the arrows) choose, `i` types the summary (⌘↩
+  posts from it), Enter posts, Tab reaches the button, Escape returns.
 - **Comment threads**: the changes view shows the PR's inline GitHub review
   comments under their lines, threaded with their replies, alongside the
   board's own comments. Resolved threads start collapsed; comments whose line

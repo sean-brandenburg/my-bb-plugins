@@ -145,8 +145,10 @@ export function createDiffComments(
     return true;
   }
 
-  async function postDiffCommentsToGithub(ticket: Ticket, drafts: DiffComment[], event: ReviewEvent): Promise<{ posted: number; url: string | null; movedToDone: boolean }> {
+  async function postDiffCommentsToGithub(ticket: Ticket, drafts: DiffComment[], event: ReviewEvent, summary: string): Promise<{ posted: number; url: string | null; movedToDone: boolean }> {
     if (ticket.pr === null || !ticket.canPostToGithub) throw new Error("Only PR cards can post to GitHub");
+    /** The review's body: the user's summary over the file-level drafts, whichever of the two there are. */
+    const reviewBody = (...parts: string[]) => parts.filter((part) => part !== "").join("\n\n");
     const auth = await resolveToken(settings);
     if (auth === null) throw new Error("No GitHub token configured.");
     const { repo, number } = ticket.pr;
@@ -167,7 +169,7 @@ export function createDiffComments(
         review = await githubPost(path, auth.token, {
           event,
           ...(commitId === null ? {} : { commit_id: commitId }),
-          body: general.length === 0 ? "" : summarize(general),
+          body: reviewBody(summary, summarize(general)),
           comments: inline.map((comment) => ({
             path: comment.path,
             ...(comment.startLine === null ? {} : { start_line: comment.startLine, start_side: comment.startSide ?? comment.side }),
@@ -179,7 +181,7 @@ export function createDiffComments(
       } catch (error) {
         // A line outside the diff makes GitHub reject the whole review; fall back to one body-only review.
         if (!(error instanceof GithubHttpError) || error.status !== 422) throw error;
-        review = await githubPost(path, auth.token, { event, body: summarize(topLevel) });
+        review = await githubPost(path, auth.token, { event, body: reviewBody(summary, summarize(topLevel)) });
         inlinePosted = false;
       }
       // Mark first so nothing reposts these if the read-back below fails or the server stops.
@@ -226,12 +228,11 @@ export function createDiffComments(
         failed.push(`${locationLabel(reply.path, rowRange(reply))}: ${errorMessage(error)}`);
       }
     }
-    // Replies alone post no review, so an approval or change request goes up as its own once they are in.
-    if (topLevel.length === 0 && event !== "COMMENT" && failed.length === 0) {
-      const review = await githubPost<{ html_url: string }>(`/repos/${repo}/pulls/${number}/reviews`, auth.token, {
-        event,
-        ...(event === "REQUEST_CHANGES" ? { body: "Requesting changes; see my replies in the review threads." } : {}),
-      });
+    // Replies alone post no review, so an approval, change request or summary goes up as its own once they are in.
+    if (topLevel.length === 0 && (event !== "COMMENT" || summary !== "") && failed.length === 0) {
+      // GitHub wants a body on a change request; a summary takes its place.
+      const body = summary !== "" ? summary : event === "REQUEST_CHANGES" ? "Requesting changes; see my replies in the review threads." : "";
+      const review = await githubPost<{ html_url: string }>(`/repos/${repo}/pulls/${number}/reviews`, auth.token, { event, ...(body === "" ? {} : { body }) });
       url = review.html_url;
       if (event === "APPROVE") movedToDone = await moveApprovedToDone(ticket);
     }
@@ -344,12 +345,14 @@ export function createDiffComments(
     ticketId,
     postToGithub,
     reviewEvent,
+    reviewBody = "",
     address,
     push,
   }: {
     ticketId: string;
     postToGithub: boolean;
     reviewEvent: ReviewEvent;
+    reviewBody?: string | undefined;
     address: boolean;
     push: boolean;
   }): Promise<{ posted: number; postedUrl: string | null; movedToDone: boolean; apply: CommentApply | null; ticket: Ticket }> {
@@ -366,7 +369,7 @@ export function createDiffComments(
       postingDrafts.add(ticket.id);
       try {
         if (reviewEvent !== "COMMENT" && ticket.pr?.role === "authored") throw new Error("GitHub doesn't let you approve or request changes on your own pull request");
-        const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent);
+        const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent, reviewBody.trim());
         posted = result.posted;
         postedUrl = result.url;
         movedToDone = result.movedToDone;

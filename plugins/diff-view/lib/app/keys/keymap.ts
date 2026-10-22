@@ -159,7 +159,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["M"], action: "Move that comment between local and the GitHub PR" },
       { keys: ["gx", "go"], action: "Open the thread on GitHub / the agent thread that replied" },
       { keys: ["T"], action: "Switch where new comments go: local or the GitHub PR" },
-      { keys: ["s"], action: "Go to the send bar (h / l pick an option such as the review type, Enter sends, Tab for the next action, Esc back)" },
+      { keys: ["s"], action: "Go to the send bar (h / l pick an option such as the review type, i types in its text box such as a review summary, Enter sends, Tab for the next action, Esc back)" },
       { keys: ["⌘↩"], action: "In a comment box: add it; editing a finding: save" },
       { keys: ["Esc"], action: "In a comment box: back to the diff (an empty one closes); editing a comment or finding: cancel the edit" },
     ],
