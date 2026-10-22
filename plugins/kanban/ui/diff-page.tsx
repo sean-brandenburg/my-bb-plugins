@@ -133,7 +133,7 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
     setSubmitting(destination);
     try {
       const result = await rpc.call("diff_comments_submit", { ticketId: subjectId, postToGithub: destination === "github", reviewEvent, address: destination === "agent", push });
-      const posted = reviewEvent === "APPROVE" ? `Approved with ${result.posted} on GitHub` : reviewEvent === "REQUEST_CHANGES" ? `Requested changes with ${result.posted} on GitHub` : `Posted ${result.posted} to GitHub`;
+      const posted = reviewEvent === "APPROVE" ? `Approved with ${result.posted} on GitHub${result.movedToDone ? "; the card moved to Done" : ""}` : reviewEvent === "REQUEST_CHANGES" ? `Requested changes with ${result.posted} on GitHub` : `Posted ${result.posted} to GitHub`;
       toast.success(destination === "github" ? posted : "Address thread started");
       if (result.apply !== null) onOpenThread(result.apply.threadId);
     } catch (cause) {

@@ -2909,12 +2909,57 @@ describe("diff view and diff comments", () => {
     const mine = tickets.find((ticket) => ticket.pr?.number === 8)!;
 
     await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "LEFT", body: "Looks good", target: "github" });
-    await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", address: false });
+    const approved = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", address: false })) as { movedToDone: boolean; ticket: Ticket };
     expect(posted[0]).toMatchObject({ event: "APPROVE", comments: [{ path: "a.go", body: "Looks good" }] });
+    // Approving finishes your review, so the card goes to Done.
+    expect(approved).toMatchObject({ movedToDone: true, ticket: { columnId: "done" } });
+    expect((await board()).tickets.find((ticket) => ticket.id === theirs.id)?.columnId).toBe("done");
 
     await current().harness.behavior.callRpc("diff_comment_add", { ticketId: mine.id, path: "a.go", line: 3, side: "LEFT", body: "Note to self", target: "github" });
     await expect(current().harness.behavior.callRpc("diff_comments_submit", { ticketId: mine.id, postToGithub: true, reviewEvent: "REQUEST_CHANGES", address: false })).rejects.toThrow(/your own pull request/u);
     expect(posted).toHaveLength(1);
+  });
+
+  it("leaves the card where it is when a review posts as a comment or change request, or when the approval fails", async () => {
+    vi.stubGlobal("fetch", stubGithub({ requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })] }));
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const theirs = (await board()).tickets.find((ticket) => ticket.pr?.number === 7)!;
+    expect(theirs.columnId).toBe("todo");
+
+    const submit = (reviewEvent: string) => current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent, address: false }) as Promise<{ movedToDone: boolean; ticket: Ticket }>;
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "LEFT", body: "Hmm", target: "github" });
+    expect(await submit("COMMENT")).toMatchObject({ movedToDone: false, ticket: { columnId: "todo" } });
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "LEFT", body: "Please fix", target: "github" });
+    expect(await submit("REQUEST_CHANGES")).toMatchObject({ movedToDone: false, ticket: { columnId: "todo" } });
+
+    const stub = fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (/\/pulls\/\d+\/reviews$/u.test(url)) return new Response("boom", { status: 500 });
+      return stub(input, init);
+    }));
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "LEFT", body: "Ship it", target: "github" });
+    await expect(submit("APPROVE")).rejects.toThrow();
+    expect((await board()).tickets.find((ticket) => ticket.id === theirs.id)?.columnId).toBe("todo");
+  });
+
+  it("moves the card to Done when replies alone post with an approval", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubGithub({
+        requested: [searchItem("acme-co/widgets", 7, { user: { login: "alice" } })],
+        comments: { review: [{ id: 501, login: "alice", body: "Is this right?", path: "a.go", line: 3 }] },
+      }),
+    );
+    await load({ autoStartThreads: false });
+    await current().harness.behavior.callRpc("sync_now", null);
+    const theirs = (await board()).tickets.find((ticket) => ticket.pr?.number === 7)!;
+    await current().harness.behavior.callRpc("diff_comment_add", { ticketId: theirs.id, path: "a.go", line: 3, side: "RIGHT", body: "Yes", target: "github", inReplyTo: "review-comment:501" });
+    const result = (await current().harness.behavior.callRpc("diff_comments_submit", { ticketId: theirs.id, postToGithub: true, reviewEvent: "APPROVE", address: false })) as { movedToDone: boolean; ticket: Ticket };
+    expect(repliesPosted).toEqual([{ to: 501, body: "Yes" }]);
+    expect(posted[0]).toMatchObject({ event: "APPROVE" });
+    expect(result).toMatchObject({ movedToDone: true, ticket: { columnId: "done" } });
   });
 
   it("hides vendored files by default and never gives them a structural diff", async () => {

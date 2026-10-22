@@ -4,7 +4,7 @@ import type { KanbanContext } from "../context";
 import { rowToDiffComment, type DiffCommentRow } from "../db/rows";
 import type { Changes } from "../diff/changes";
 import type { DiffSubjects } from "../diff/subjects";
-import type { BoardStore } from "../board";
+import { doneColumn, type BoardStore } from "../board";
 import { GithubHttpError, githubPages, githubPost, resolveToken } from "../github";
 import type { PrComments } from "./pr-comments";
 import { errorMessage, shortId } from "../util";
@@ -40,7 +40,7 @@ export function createDiffComments(
   { board, subjects, changes, prComments }: { board: BoardStore; subjects: DiffSubjects; changes: Changes; prComments: PrComments },
 ) {
   const { bb, settings, stmts, sync, publish } = ctx;
-  const { getTicket } = board;
+  const { getTicket, getColumns, moveTicket } = board;
   const { resolveDiffSubject, ensureCardForSubject } = subjects;
   const { ticketDiff } = changes;
   const { syncPrComments, spawnApplyForComments } = prComments;
@@ -137,7 +137,15 @@ export function createDiffComments(
    * Post GitHub drafts: new threads as one review (inline where a line is given, otherwise in the review body), then
    * replies into their threads. Each draft records the synced comment it became so the board shows it once.
    */
-  async function postDiffCommentsToGithub(ticket: Ticket, drafts: DiffComment[], event: ReviewEvent): Promise<{ posted: number; url: string | null }> {
+  /** An approval finishes the user's review of someone else's PR, so the card goes where finished cards go. */
+  async function moveApprovedToDone(ticket: Ticket): Promise<boolean> {
+    const done = doneColumn(await getColumns());
+    if (ticket.columnId === done) return false;
+    moveTicket(ticket.id, done, null);
+    return true;
+  }
+
+  async function postDiffCommentsToGithub(ticket: Ticket, drafts: DiffComment[], event: ReviewEvent): Promise<{ posted: number; url: string | null; movedToDone: boolean }> {
     if (ticket.pr === null || !ticket.canPostToGithub) throw new Error("Only PR cards can post to GitHub");
     const auth = await resolveToken(settings);
     if (auth === null) throw new Error("No GitHub token configured.");
@@ -146,6 +154,7 @@ export function createDiffComments(
     const replyIds = drafts.filter((comment) => comment.inReplyTo !== null).map((comment) => comment.id);
     let posted = 0;
     let url: string | null = null;
+    let movedToDone = false;
     if (topLevel.length > 0) {
       const inline = topLevel.filter((comment) => comment.line !== null);
       const general = topLevel.filter((comment) => comment.line === null);
@@ -178,6 +187,7 @@ export function createDiffComments(
       for (const comment of topLevel) stmts.markDiffCommentPosted.run(now, review.html_url, `review:${review.id}`, comment.id);
       posted += topLevel.length;
       url = review.html_url;
+      if (event === "APPROVE") movedToDone = await moveApprovedToDone(ticket);
       const created = inlinePosted ? await reviewCommentsOf(repo, number, review.id, auth.token) : [];
       for (const comment of inline) {
         const index = created.findIndex((entry) => entry.path === comment.path && (entry.body ?? "").trim() === comment.body.trim());
@@ -223,6 +233,7 @@ export function createDiffComments(
         ...(event === "REQUEST_CHANGES" ? { body: "Requesting changes; see my replies in the review threads." } : {}),
       });
       url = review.html_url;
+      if (event === "APPROVE") movedToDone = await moveApprovedToDone(ticket);
     }
     const row = stmts.byId.get(ticket.id);
     if (repliesPosted > 0 && row !== undefined) {
@@ -232,7 +243,7 @@ export function createDiffComments(
       publish();
       throw new Error(`Posted ${posted}; ${failed.length} repl${failed.length === 1 ? "y" : "ies"} could not be posted: ${failed.join("; ")}`);
     }
-    return { posted, url };
+    return { posted, url, movedToDone };
   }
 
   async function reviewCommentsOf(repo: string, number: number, reviewId: number, token: string): Promise<Array<{ id: number; path: string; body: string | null; html_url: string }>> {
@@ -341,7 +352,7 @@ export function createDiffComments(
     reviewEvent: ReviewEvent;
     address: boolean;
     push: boolean;
-  }): Promise<{ posted: number; postedUrl: string | null; apply: CommentApply | null; ticket: Ticket }> {
+  }): Promise<{ posted: number; postedUrl: string | null; movedToDone: boolean; apply: CommentApply | null; ticket: Ticket }> {
     if (!postToGithub && !address) throw new Error("Choose at least one of: post to GitHub, address with a thread");
     const ticket = await ensureCardForSubject(await resolveDiffSubject(ticketId));
     if (postToGithub && postingDrafts.has(ticket.id)) throw new Error("Already posting this card's drafts to GitHub");
@@ -350,6 +361,7 @@ export function createDiffComments(
     if (local.length === 0 && drafts.length === 0) throw new Error("No pending comments to submit");
     let posted = 0;
     let postedUrl: string | null = null;
+    let movedToDone = false;
     if (drafts.length > 0) {
       postingDrafts.add(ticket.id);
       try {
@@ -357,6 +369,7 @@ export function createDiffComments(
         const result = await postDiffCommentsToGithub(ticket, drafts, reviewEvent);
         posted = result.posted;
         postedUrl = result.url;
+        movedToDone = result.movedToDone;
       } finally {
         postingDrafts.delete(ticket.id);
       }
@@ -368,7 +381,7 @@ export function createDiffComments(
       stmts.assignDiffCommentsApply.run(apply.id, JSON.stringify(local.map((comment) => comment.id)));
     }
     publish();
-    return { posted, postedUrl, apply, ticket: getTicket(ticket.id) };
+    return { posted, postedUrl, movedToDone, apply, ticket: getTicket(ticket.id) };
   }
 
   /** The card's unsent local comments, in the shape an apply prompt lists them. */

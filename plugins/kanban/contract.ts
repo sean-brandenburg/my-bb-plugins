@@ -281,7 +281,14 @@ export const rpcContract = defineRpcContract({
         push: z.boolean().default(true),
       })
       .strict(),
-    output: z.object({ posted: z.number().int(), postedUrl: z.string().nullable(), apply: commentApplySchema.nullable(), ticket: ticketSchema }),
+    output: z.object({
+      posted: z.number().int(),
+      postedUrl: z.string().nullable(),
+      /** An approval posted and the card went to Done for it. */
+      movedToDone: z.boolean(),
+      apply: commentApplySchema.nullable(),
+      ticket: ticketSchema,
+    }),
   },
   comments_list: {
     input: z.object({ ticketId: z.string() }).strict(),
