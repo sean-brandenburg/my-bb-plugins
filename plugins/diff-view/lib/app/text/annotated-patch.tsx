@@ -68,8 +68,17 @@ export function AnnotatedPatch({
   onStartComment,
   onCancelComposer,
   onSubmitComposer,
-}: PatchAnnotationProps & { patch: string }) {
-  const { layout } = useDiffPreferences();
+  layout: layoutOverride,
+  hunkSeparators,
+}: PatchAnnotationProps & {
+  patch: string;
+  /** Split or unified; the view's line-diff layout preference when absent. */
+  layout?: "unified" | "split";
+  /** How the gap before a hunk is drawn; Pierre's default (the count of hidden lines) when absent. */
+  hunkSeparators?: "simple" | "metadata" | "line-info" | "line-info-basic";
+}) {
+  const { layout: preferredLayout } = useDiffPreferences();
+  const layout = layoutOverride ?? preferredLayout;
   const { mode: themeMode } = useCodeTheme();
   const themes = useHostPierreThemes();
   const workerPool = useWorkerPool();
@@ -127,6 +136,7 @@ export function AnnotatedPatch({
     };
     return {
       diffStyle: layout,
+      ...(hunkSeparators === undefined ? {} : { hunkSeparators }),
       theme: themes,
       themeType: themeMode,
       disableFileHeader: true,
@@ -140,7 +150,7 @@ export function AnnotatedPatch({
       onLineSelectionChange: setDragged,
       onLineSelectionEnd: finish,
     };
-  }, [layout, themes, themeMode, rows]);
+  }, [layout, hunkSeparators, themes, themeMode, rows]);
   // Stable across cursor moves, which re-render this file for its selection, so Pierre leaves the annotations alone.
   const renderAnnotation = useCallback(
     ({ metadata }: DiffLineAnnotation<AnnotationMeta>) => {

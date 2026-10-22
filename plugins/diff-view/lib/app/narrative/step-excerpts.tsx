@@ -5,6 +5,7 @@ import { Button, COMPACT } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { CHEVRON, OPACITY_TRANSITION, PRESS } from "../ui/motion";
 import { useCursorOnHeader } from "../keys/review-keys-context";
+import { useDiffPreferences } from "../state";
 import type { PatchAnnotationProps } from "../patch-annotations";
 import { NoRows } from "../file-section";
 import { AnnotatedPatch } from "../text/annotated-patch";
@@ -42,6 +43,7 @@ export function ExcerptSection({
   onOpen: () => void;
 }) {
   const onHeader = useCursorOnHeader(excerpt.path);
+  const { narrativeLayout } = useDiffPreferences();
   const inert = annotations === null;
   return (
     <section ref={sectionRef} data-narrative-excerpt={excerpt.path} className="overflow-hidden rounded-md border border-border">
@@ -71,7 +73,7 @@ export function ExcerptSection({
         <NoRows path={excerpt.path} />
       ) : excerpt.patch !== null ? (
         <DiffErrorBoundary fallback={<NoRows path={excerpt.path} />}>
-          <AnnotatedPatch key={excerpt.path} {...(annotations ?? INERT)} path={excerpt.path} patch={excerpt.patch} />
+          <AnnotatedPatch key={excerpt.path} {...(annotations ?? INERT)} path={excerpt.path} patch={excerpt.patch} layout={narrativeLayout} hunkSeparators="simple" />
         </DiffErrorBoundary>
       ) : (
         <>

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { parseFindingFilter, type FindingFilter } from "./findings/findings";
 
 /** Every preference the view keeps in localStorage, under `diff-view:<name>`. */
-export type PreferenceName = "findingFilter" | "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth" | "viewMode" | "narrativeOutline" | `narrativeAt:${string}` | `narrativeRead:${string}`;
+export type PreferenceName = "findingFilter" | "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth" | "viewMode" | "narrativeOutline" | "narrativeLayout" | `narrativeAt:${string}` | `narrativeRead:${string}`;
 
 /** Reads a preference, falling back to the key kanban stored it under before the diff view became its own plugin. */
 export function readPreference(name: PreferenceName): string | null {
@@ -24,6 +24,8 @@ export function writePreference(name: PreferenceName, value: string): void {
 export interface DiffPreferences {
   /** Layout of files shown as a line diff, the fallback where difftastic cannot diff a file. */
   layout: "unified" | "split";
+  /** Layout of the narrative's excerpts, which are short and often one-sided, so they start unified. */
+  narrativeLayout: "unified" | "split";
   /** Which review findings show inline in the diff. */
   findingFilter: FindingFilter;
   /** The file list beside the diff, where the view is wide enough for one. */
@@ -48,6 +50,7 @@ function createStore<T>(initial: T) {
 
 const preferences = createStore<DiffPreferences>({
   layout: "split",
+  narrativeLayout: readPreference("narrativeLayout") === "split" ? "split" : "unified",
   findingFilter: parseFindingFilter(readPreference("findingFilter"), readPreference("showFindings")),
   fileTreeOpen: readPreference("fileTreeOpen") !== "false",
 });
@@ -55,6 +58,7 @@ const preferences = createStore<DiffPreferences>({
 export function setDiffPreferences(patch: Partial<DiffPreferences>): void {
   preferences.set({ ...preferences.get(), ...patch });
   if (patch.findingFilter !== undefined) writePreference("findingFilter", patch.findingFilter);
+  if (patch.narrativeLayout !== undefined) writePreference("narrativeLayout", patch.narrativeLayout);
   if (patch.fileTreeOpen !== undefined) writePreference("fileTreeOpen", String(patch.fileTreeOpen));
 }
 

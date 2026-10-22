@@ -563,6 +563,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       else notify(`${path} is not in the current diff`);
     },
     setCollapsed: reader.setCollapsed,
+    toggleLayout: () => setDiffPreferences({ narrativeLayout: preferences.narrativeLayout === "split" ? "unified" : "split" }),
     toggleFileTree: () => {
       const open = !reader.outline;
       reader.setOutline(open);
@@ -748,7 +749,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
         const top = scroller.scrollTop;
         scroller.scrollBy({ top: command.direction * count * PROSE_LINES * LINE_PX, behavior: "auto" });
         if (scroller.scrollTop !== top) {
-          if (inCode) return;
+          // A cursor the scroll brought into view is kept; one still out of view gives way to the code now showing.
+          if (inCode || (state.cursor !== null && onScreen(state.cursor) === true)) return;
           const next = visibleCursor(command.direction);
           if (next !== null) keys.set({ cursor: next, visual: null, focused: null });
           return;
