@@ -15,6 +15,8 @@ import type { NarrativeReader } from "./use-narrative-reader";
 /** The outline beside the steps; its rows take the list keys before the review keys. */
 export const NARRATIVE_OUTLINE = "[data-narrative-outline]";
 const ROW_FOCUS = "outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/70";
+/** The prose reads in a measured column; the excerpts under it take the pane's whole width, so split diffs wrap less. */
+const PROSE = "mx-auto flex w-full max-w-5xl flex-col gap-3";
 
 /**
  * What the view can ask of the agent: write a first narrative, update a stale one, or rewrite; the thread writing
@@ -105,9 +107,11 @@ export function NarrativeView({
           </div>
         ) : null}
         {chapter !== null && address !== null ? (
-          <div key={`${chapter.key}:${address.step}`} className={cn("mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4", enter.fade, FAST)}>
+          <div key={`${chapter.key}:${address.step}`} className={cn("flex flex-col gap-3 px-4 py-4", enter.fade, FAST)}>
             {step === null ? (
-              <ChapterIntro chapter={chapter} stale={chapter.current && stale} writing={writing} onGo={(index) => go({ chapter: address.chapter, step: index })} onOpenPath={chapter.current && !stale ? onOpenPath : null} />
+              <div className={PROSE}>
+                <ChapterIntro chapter={chapter} stale={chapter.current && stale} writing={writing} onGo={(index) => go({ chapter: address.chapter, step: index })} onOpenPath={chapter.current && !stale ? onOpenPath : null} />
+              </div>
             ) : (
               <StepPage
                 chapter={chapter}
@@ -134,15 +138,17 @@ export function NarrativeView({
                 ))}
               </StepPage>
             )}
-            {reader.narratedUnviewed.length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Every step of {reader.narratedUnviewed.map((path) => path.split("/").pop()).join(", ")} is read.{" "}
-                <button type="button" className="underline" onClick={onNarratedViewed}>
-                  Mark {reader.narratedUnviewed.length === 1 ? "it" : "them"} viewed (gv)
-                </button>
-              </p>
-            ) : null}
-            <PageFooter chapters={chapters} address={address} onGo={go} />
+            <div className={PROSE}>
+              {reader.narratedUnviewed.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Every step of {reader.narratedUnviewed.map((path) => path.split("/").pop()).join(", ")} is read.{" "}
+                  <button type="button" className="underline" onClick={onNarratedViewed}>
+                    Mark {reader.narratedUnviewed.length === 1 ? "it" : "them"} viewed (gv)
+                  </button>
+                </p>
+              ) : null}
+              <PageFooter chapters={chapters} address={address} onGo={go} />
+            </div>
           </div>
         ) : null}
       </div>
@@ -252,24 +258,26 @@ function StepPage({ chapter, step, index, affected, children }: { chapter: Narra
   const links = step.affects.map(affected).filter((link) => link !== null);
   return (
     <>
-      <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        <span>
-          {chapter.kind === "revision" ? "What changed" : "Step"} {index + 1} of {chapter.steps.length}
-        </span>
-        <span className="min-w-0 truncate font-normal normal-case tracking-normal">{chapter.title}</span>
-      </p>
-      <h2 className={cn("text-base font-semibold", uncovered && "text-amber-700 dark:text-amber-300")}>{step.title}</h2>
-      {step.body !== "" ? <Markdown content={step.body} className="text-sm" /> : null}
-      {links.length > 0 ? (
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          Shows up in
-          {links.map((link, position) => (
-            <button key={position} type="button" className={cn("rounded border border-border px-1.5 py-px text-foreground hover:bg-state-hover", PRESS)} title={position === 0 ? "ga" : undefined} onClick={link.go}>
-              {link.title}
-            </button>
-          ))}
+      <div className={PROSE}>
+        <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span>
+            {chapter.kind === "revision" ? "What changed" : "Step"} {index + 1} of {chapter.steps.length}
+          </span>
+          <span className="min-w-0 truncate font-normal normal-case tracking-normal">{chapter.title}</span>
         </p>
-      ) : null}
+        <h2 className={cn("text-base font-semibold", uncovered && "text-amber-700 dark:text-amber-300")}>{step.title}</h2>
+        {step.body !== "" ? <Markdown content={step.body} className="text-sm" /> : null}
+        {links.length > 0 ? (
+          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            Shows up in
+            {links.map((link, position) => (
+              <button key={position} type="button" className={cn("rounded border border-border px-1.5 py-px text-foreground hover:bg-state-hover", PRESS)} title={position === 0 ? "ga" : undefined} onClick={link.go}>
+                {link.title}
+              </button>
+            ))}
+          </p>
+        ) : null}
+      </div>
       <div className="flex flex-col gap-3">{children}</div>
     </>
   );
