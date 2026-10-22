@@ -76,7 +76,7 @@ describe("Usage", () => {
   it("shows the limit, the window's threads, and the daily totals", async () => {
     const slot = await render();
     expect(slot.getByText("Five-hour limit")).toBeTruthy();
-    expect(slot.getByText(/Nearly used · resets in 1h 30m/)).toBeTruthy();
+    expect(slot.getByText("Five-hour limit").parentElement?.textContent).toMatch(/Nearly used.*resets in 1h 30m/);
     expect(slot.getByText("outside bb")).toBeTruthy();
     expect(slot.getByText("This window").parentElement?.textContent).toContain("43k tokens · 3k output · 40k cache read");
     expect(slot.getByLabelText("Today: 43k tokens")).toBeTruthy();

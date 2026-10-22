@@ -43,12 +43,15 @@ const POLL_MS = 60_000;
 /** A finished turn writes its transcript a moment after bb's thread record changes. */
 const SETTLE_MS = 3000;
 
-const LIMIT_DOT: Readonly<Record<LimitStatus, string>> = {
-  allowed: "bg-emerald-500",
-  warning: "bg-amber-500",
-  blocked: "bg-red-500",
-  unknown: "bg-muted-foreground/40",
+/** The status pill's hue: green for room, amber for nearly none, red for none. */
+const LIMIT_PILL: Readonly<Record<LimitStatus, string>> = {
+  allowed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  blocked: "bg-red-500/15 text-red-700 dark:text-red-300",
+  unknown: "bg-muted text-muted-foreground",
 };
+/** Name, then a fixed block on the right: the bar and the total, so every row's numbers line up. */
+const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_5rem_3rem] items-center gap-x-3";
 const LIMIT_LABEL: Readonly<Record<LimitStatus, string>> = { allowed: "OK", warning: "Nearly used", blocked: "Reached", unknown: "Unknown" };
 
 type Readout = { title: string; tokens: Tokens } | null;
@@ -168,41 +171,48 @@ export function Usage(_props: { projectId: string | null }) {
       ref={setRoot}
       tabIndex={-1}
       data-dashboard=""
-      className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/80 p-3 text-sm outline-none backdrop-blur-sm"
+      className="flex flex-col overflow-hidden rounded-lg border border-border bg-background/80 text-sm outline-none backdrop-blur-sm"
     >
-      {help ? (
-        <div className={cx("border-b border-border/60 pb-3", enter.fade, speed.fast)}>
-          <KeyHelp sections={HELP} />
-        </div>
-      ) : null}
-      {usage === null ? (
-        <p className="text-muted-foreground">{error ?? "Reading Claude Code's transcripts…"}</p>
-      ) : (
-        <>
-          {usage.limits.length === 0 && window === null ? <p className="text-muted-foreground">No usage limit reported yet.</p> : null}
+      {usage !== null && usage.limits.length > 0 ? (
+        <header className="flex flex-col gap-1 border-b border-border bg-muted/50 px-3 py-2">
           {usage.limits.map((limit) => (
-            <div key={limit.key} className="flex items-center gap-2">
-              <span className={cx("size-2 shrink-0 rounded-full", LIMIT_DOT[limit.status])} aria-hidden />
-              <span className="text-foreground">{limit.label}</span>
-              <span className="text-muted-foreground">
-                {LIMIT_LABEL[limit.status]}
-                {limit.resetsAtMs === null ? "" : ` · resets in ${formatSpan(limit.resetsAtMs - now)}`}
-              </span>
+            <div key={limit.key} className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium text-foreground">{limit.label}</span>
+              <span className={cx("shrink-0 rounded px-1.5 py-px text-[10px] font-medium", LIMIT_PILL[limit.status])}>{LIMIT_LABEL[limit.status]}</span>
+              {limit.resetsAtMs === null ? null : (
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  resets in <span className="font-medium tabular-nums text-foreground">{formatSpan(limit.resetsAtMs - now)}</span>
+                </span>
+              )}
             </div>
           ))}
-          {window !== null ? <WindowSessions window={window} onShow={show} onClear={clear} onOpen={(session) => session.threadId !== null && actions.open(session.threadId)} /> : null}
-          <DayChart days={usage.days} onShow={show} onClear={clear} />
-          <p className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground" aria-live="polite">
-            {shown === null ? null : (
-              <>
-                <span className="shrink-0 text-foreground">{shown.title}</span>
-                <span className="min-w-0 truncate">{describeTokens(shown.tokens)}</span>
-              </>
-            )}
-            <span className="ml-auto shrink-0">? keys</span>
-          </p>
-        </>
-      )}
+        </header>
+      ) : null}
+      <div className="flex flex-col gap-3 p-3">
+        {help ? (
+          <div className={cx("rounded-md border border-border bg-muted/40 p-3", enter.fade, speed.fast)}>
+            <KeyHelp sections={HELP} />
+          </div>
+        ) : null}
+        {usage === null ? (
+          <p className="text-muted-foreground">{error ?? "Reading Claude Code's transcripts…"}</p>
+        ) : (
+          <>
+            {usage.limits.length === 0 && window === null ? <p className="text-muted-foreground">No usage limit reported yet.</p> : null}
+            {window !== null ? <WindowSessions window={window} onShow={show} onClear={clear} onOpen={(session) => session.threadId !== null && actions.open(session.threadId)} /> : null}
+            <DayChart days={usage.days} onShow={show} onClear={clear} />
+            <p className="flex min-w-0 items-baseline gap-2 border-t border-border/60 pt-2 text-xs text-muted-foreground" aria-live="polite">
+              {shown === null ? null : (
+                <>
+                  <span className="shrink-0 font-medium text-foreground">{shown.title}</span>
+                  <span className="min-w-0 truncate tabular-nums">{describeTokens(shown.tokens)}</span>
+                </>
+              )}
+              <span className="ml-auto shrink-0 text-muted-foreground/70">? keys</span>
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -216,12 +226,13 @@ function WindowSessions(props: {
   const { window } = props;
   const largest = Math.max(1, ...window.sessions.map((session) => totalTokens(session.tokens)));
   return (
-    <section className="flex flex-col gap-1">
-      <h3 className="flex items-baseline gap-2 text-xs text-muted-foreground">
-        <span>
+    <section className="flex flex-col gap-0.5 border-l-2 border-sky-500/40 pl-3">
+      <h3 className={cx(ROW_GRID, "mb-1 text-xs text-muted-foreground")}>
+        <span className="truncate">
           This window{window.estimated ? " (estimated)" : ""} · since {formatClock(window.startMs)}
         </span>
-        <span className="ml-auto tabular-nums text-foreground">{formatTokens(totalTokens(window.tokens))}</span>
+        <span />
+        <span className="text-right font-medium tabular-nums text-foreground">{formatTokens(totalTokens(window.tokens))}</span>
       </h3>
       {window.sessions.map((session) => {
         const total = totalTokens(session.tokens);
@@ -237,25 +248,28 @@ function WindowSessions(props: {
             onMouseEnter={props.onShow(readout)}
             onMouseLeave={props.onClear}
             className={cx(
-              "-mx-1.5 flex flex-col gap-1 rounded-md px-1.5 py-1 outline-none hover:bg-accent/50 focus:bg-accent",
+              ROW_GRID,
+              "-mx-1.5 rounded-md px-1.5 py-1 outline-none hover:bg-accent/50 focus:bg-accent",
               session.threadId === null ? "cursor-default" : "cursor-pointer",
             )}
           >
             <span className="flex min-w-0 items-baseline gap-2">
-              <span className="min-w-0 truncate text-foreground">{session.title}</span>
-              {session.project ? <span className="shrink-0 text-xs text-muted-foreground">{session.project}</span> : null}
-              {session.threadId === null ? <span className="shrink-0 text-xs text-muted-foreground">outside bb</span> : null}
-              <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{formatTokens(total)}</span>
+              <span className="min-w-0 truncate text-[13px] text-foreground">{session.title}</span>
+              {session.project ? <span className="shrink-0 text-[11px] text-muted-foreground">{session.project}</span> : null}
+              {session.threadId === null ? <span className="shrink-0 text-[11px] text-muted-foreground">outside bb</span> : null}
             </span>
-            <span className="h-1 w-full rounded-full bg-muted" aria-hidden>
+            <span className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
               <span className="block h-full rounded-full bg-sky-500/70" style={{ width: `${(total / largest) * 100}%` }} />
             </span>
+            <span className="text-right text-xs font-medium tabular-nums">{formatTokens(total)}</span>
           </div>
         );
       })}
       {window.others.count > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {window.others.count} more · {formatTokens(totalTokens(window.others.tokens))}
+        <p className={cx(ROW_GRID, "px-0 py-0.5 text-xs text-muted-foreground")}>
+          <span>{window.others.count} more</span>
+          <span />
+          <span className="text-right tabular-nums">{formatTokens(totalTokens(window.others.tokens))}</span>
         </p>
       ) : null}
     </section>
@@ -268,11 +282,11 @@ function DayChart(props: { days: UsageData["days"]; onShow: (readout: Readout) =
   const last = props.days.length - 1;
   if (props.days.every((day) => totalTokens(day.tokens) === 0)) return <p className="text-xs text-muted-foreground">No Claude Code usage in the last {props.days.length} days.</p>;
   return (
-    <section className="flex flex-col gap-1">
-      <h3 className="text-xs text-muted-foreground">Last {props.days.length} days</h3>
+    <section className="flex flex-col gap-1 border-l-2 border-border pl-3">
+      <h3 className="mb-0.5 text-xs text-muted-foreground">Last {props.days.length} days</h3>
       <div
         data-nav-row="toolbar"
-        className="flex h-14 items-end gap-0.5 border-b border-border/60"
+        className="flex h-14 items-end gap-1 border-b border-border"
         onPointerDown={() => {
           pointer.current = true;
         }}
@@ -300,8 +314,8 @@ function DayChart(props: { days: UsageData["days"]; onShow: (readout: Readout) =
             >
               <span
                 className={cx(
-                  "block w-full max-w-6 rounded-t",
-                  index === last ? "bg-sky-500" : "bg-foreground/20 group-hover/day:bg-foreground/35 group-focus/day:bg-foreground/35",
+                  "block w-full max-w-6 rounded-t-sm",
+                  index === last ? "bg-sky-500" : "bg-foreground/25 group-hover/day:bg-foreground/40 group-focus/day:bg-foreground/40",
                   "group-focus/day:ring-2 group-focus/day:ring-ring/60",
                 )}
                 style={{ height: total === 0 ? 0 : `max(2px, ${(total / largest) * 100}%)` }}
@@ -310,9 +324,9 @@ function DayChart(props: { days: UsageData["days"]; onShow: (readout: Readout) =
           );
         })}
       </div>
-      <div className="flex justify-between text-xs text-muted-foreground">
+      <div className="flex justify-between text-[11px] text-muted-foreground">
         <span>{props.days[0] === undefined ? "" : formatDay(props.days[0].day)}</span>
-        <span>Today</span>
+        <span className="text-foreground">Today</span>
       </div>
     </section>
   );
