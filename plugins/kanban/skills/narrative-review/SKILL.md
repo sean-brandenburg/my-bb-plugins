@@ -110,13 +110,20 @@ change, generated files.
 
 ## The summary, reading order and watch-outs
 
-The report's `summary` is Markdown. Its first sentence must be plain prose that
-says what the change does, because the board shows that sentence alone in a
-collapsed strip and would show raw markup there. After it, structure the rest:
-a short bullet list of the main parts of the change (bold lead-in, one sentence
-each), a sentence on why, and a diagram when the change as a whole is a flow or
-a model change. About 40–100 words of text; no detail that a step already
-carries.
+The report's `summary` orients the reader before the first step: what the
+change is, and the high-level pieces it is made of, at a glance. It is Markdown
+shaped like this:
+
+1. One plain-prose sentence saying what the change does and why. The board
+   shows this sentence alone in a collapsed strip, so it carries no markup.
+2. A tight bullet list of the high-level changes, 3–7 items, each a short
+   clause of at most about 12 words: `- **Backfill** co-grants on every writer
+   grant at startup`. One bullet per piece of the change, not per file; each
+   should map onto one or more steps. No sub-bullets, no detail a step carries.
+3. Optionally one small `mermaid` diagram, when the change as a whole is a flow
+   or a data-model change and a picture orients faster than the list.
+
+Nothing else: no second paragraph, no watch-outs (those have their own field).
 `readingOrder` lists every changed file once, each with:
 
 - `role`: `key`, `supporting` or `mechanical`;
