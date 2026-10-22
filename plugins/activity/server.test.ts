@@ -90,6 +90,15 @@ describe("activity server", () => {
     ]);
   });
 
+  it("scrubs content out of labels that structural keys once carried", async () => {
+    await host.harness.behavior.callRpc("record", { events: [event({ key: "option in Unread threads", label: "MB the sizing seems wrong" }), event({ key: "link /threads/*", label: "Fix the login bug" }), event({ key: "View changes", label: "View changes" })] });
+    // The host runs migrations on load; a database with rows from before the scrub meets it on the next load.
+    host.bb.storage.database().prepare("DELETE FROM _bb_migrations WHERE id = 3").run();
+    host = await host.harness.lifecycle.reload(plugin);
+    const all = (await host.harness.behavior.callRpc("summary", { sinceMs: null, kind: null, plugin: null, limit: 10 })) as Summary;
+    expect(all.items.map((item) => item.label).sort()).toEqual(["View changes", "link /threads/*", "option in Unread threads"]);
+  });
+
   it("refuses a batch over the limit or with a bad shape", async () => {
     await expect(host.harness.behavior.callRpc("record", { events: [{ ...event({}), kind: "hover" }] })).rejects.toThrow();
     await expect(host.harness.behavior.callRpc("record", { events: Array.from({ length: 501 }, () => event({})) })).rejects.toThrow();

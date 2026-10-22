@@ -17,6 +17,8 @@ const MIGRATIONS = [
   )`,
   `CREATE INDEX IF NOT EXISTS events_at ON events(at)`,
   `CREATE INDEX IF NOT EXISTS events_group ON events(kind, plugin, key)`,
+  // Labels once kept a sample of a row's content (a thread's title); a structural key now reads as itself.
+  `UPDATE events SET label = key WHERE kind = 'click' AND (key LIKE '% in %' OR key LIKE 'link %')`,
 ];
 
 interface Row {

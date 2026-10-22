@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { KEY_COMMAND_EVENT, type KeyCommandDetail } from "bb-vim-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chordToken, type Collector, controlKey, controlLabel, mountCollector, normalizeRoute, routePlugin } from "./collector";
+import { chordToken, type Collector, controlKey, controlLabel, describeControl, generalize, mountCollector, normalizeRoute, routePlugin } from "./collector";
 import type { ActivityEvent } from "./contract";
 
 let sent: ActivityEvent[][];
@@ -92,40 +92,75 @@ describe("control names", () => {
         <button id="b">3 open cards</button>
         <button id="c"><img alt="Settings"></button>
         <button id="d" data-testid="composer-send">Send</button>
+        <button id="e">7d</button>
       </div>`);
     const by = (id: string) => document.getElementById(id)!;
-    expect(controlLabel(by("a"))).toBe("Refresh board");
-    expect(controlKey(by("a"))).toBe("Refresh board");
-    expect(controlLabel(by("b"))).toBe("3 open cards");
-    expect(controlKey(by("b"))).toBe("# open cards");
+    expect(describeControl(by("a"))).toEqual({ key: "Refresh board", label: "Refresh board" });
+    expect(describeControl(by("b"))).toEqual({ key: "# open cards", label: "3 open cards" });
     expect(controlLabel(by("c"))).toBe("Settings");
     expect(controlKey(by("d"))).toBe("#composer-send");
+    expect(describeControl(by("e"))).toEqual({ key: "7d", label: "7d" });
   });
 
-  it("treats a button whose text is longer than a name as content, grouped by where it sits", () => {
-    html(`<section aria-label="Timeline"><button id="run">Ran bb activity recent --limit 90 --json 2>/dev/null | python3 -I -c "import json"</button></section>`);
-    const run = document.getElementById("run")!;
-    expect(controlKey(run)).toBe("<button> in Timeline");
-    expect(controlLabel(run)).toContain("Ran bb activity recent");
-  });
-
-  it("groups list rows by their list rather than their content, and links by their page", () => {
+  it("groups list rows by their list rather than their content, and links by their page, keeping no content in the label", () => {
     html(`
       <nav aria-label="Threads">
         <a id="t1" href="/threads/thr_1">Fix the login bug</a>
         <a id="t2" href="/threads/thr_2">Write the release notes</a>
       </nav>
-      <section data-bb-plugin="kanban">
+      <section data-bb-plugin="kanban"><section>
         <h3>In review</h3>
         <ul><li><div id="card" data-nav-row="item" role="button">kanban: Submit review button</div></li></ul>
-      </section>
+      </section></section>
       <div role="listbox" aria-label="Pick a model"><div id="opt" role="option">Opus 5.5</div></div>`);
     const by = (id: string) => document.getElementById(id)!;
-    expect(controlKey(by("t1"))).toBe("link /threads/*");
+    expect(describeControl(by("t1"))).toEqual({ key: "link /threads/*", label: "link /threads/*" });
     expect(controlKey(by("t1"))).toBe(controlKey(by("t2")));
-    expect(controlLabel(by("t1"))).toBe("Fix the login bug");
-    expect(controlKey(by("card"))).toBe("item in In review");
-    expect(controlKey(by("opt"))).toBe("option in Pick a model");
+    expect(describeControl(by("card"))).toEqual({ key: "item in In review", label: "item in In review" });
+    expect(describeControl(by("opt"))).toEqual({ key: "option in Pick a model", label: "option in Pick a model" });
+  });
+
+  it("names the thing a control sits in from a marker or id attribute, not the card's own title", () => {
+    html(`
+      <div data-bb-plugin="kanban">
+        <div data-kanban-card="" data-ticket-id="tk_1">
+          <h2>Accept grants on contracts</h2>
+          <ul><li><button id="cancel">Cancel</button></li></ul>
+          <section data-thread-id="th_9">
+            <button id="fold" aria-expanded="false"><span>outdated</span><span>GitHub</span><span>L20–28</span><span>1 reply</span></button>
+          </section>
+        </div>
+        <div data-column-id="todo"><h3>Short title</h3><ul><li id="row">Write the release notes</li></ul></div>
+      </div>`);
+    const by = (id: string) => document.getElementById(id)!;
+    expect(describeControl(by("cancel"))).toEqual({ key: "Cancel in kanban card", label: "Cancel in kanban card" });
+    expect(describeControl(by("fold"))).toEqual({ key: "<button> in thread", label: "<button> in thread" });
+    expect(describeControl(by("row"))).toEqual({ key: "li in column", label: "li in column" });
+  });
+
+  it("blanks file names and paths, and ignores headings that are dates or titles", () => {
+    html(`
+      <section data-bb-plugin="obsidian"><section>
+        <h3>Thursday, October 22</h3>
+        <ul><li id="meeting" data-nav-row="item">Roundtable for: Jordan</li></ul>
+      </section></section>
+      <div data-bb-plugin="kanban"><button id="viewed">Mark config.go as viewed</button></div>
+      <button id="attachment">Screenshot-2026-10-22-at-11.25.37-AM-1792682744165-lre19h.png</button>
+      <button id="path">Open src/ui/board.tsx</button>
+      <a id="site" href="https://github.com">github.com</a>`);
+    const by = (id: string) => document.getElementById(id)!;
+    expect(controlKey(by("meeting"))).toBe("item in page");
+    expect(describeControl(by("viewed"))).toEqual({ key: "Mark <file> as viewed", label: "Mark <file> as viewed" });
+    expect(controlKey(by("attachment"))).toBe("<file>");
+    expect(controlKey(by("path"))).toBe("Open <path>");
+    expect(controlKey(by("site"))).toBe("external link");
+    expect(generalize("github.com", true)).toBe("github.com");
+  });
+
+  it("treats a button whose text is longer than a name as content, grouped by where it sits", () => {
+    html(`<section aria-label="Timeline"><button id="run">Ran bb activity recent --limit 90 --json 2>/dev/null | python3 -I -c "import json"</button></section>`);
+    const run = document.getElementById("run")!;
+    expect(describeControl(run)).toEqual({ key: "<button> in Timeline", label: "<button> in Timeline" });
   });
 });
 

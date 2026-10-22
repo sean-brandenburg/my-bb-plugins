@@ -22,8 +22,12 @@ export interface Collector {
 const PLUGIN_ROOT = "[data-bb-plugin]";
 /** What a click lands on: bb's pressables plus menu, list, and tree items and the rows plugin cursors move over. */
 const CONTROL = `${PRESSABLE}, [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="treeitem"], [role="row"], [role="link"], [data-nav-row], label, summary`;
-/** Controls whose text is content (a thread's title) rather than a name; they group by the list they sit in. */
-const CONTENT_ROLES = new Set(["option", "treeitem", "row"]);
+/** Rows whose text is content (a thread's title) rather than a name; they group by the list they sit in. */
+const CONTENT_ROLES = new Set(["option", "treeitem", "row", "gridcell", "listitem", "article"]);
+/** Roles that name a part of a page a control can sit in. */
+const STRUCTURAL_ROLES = new Set(["list", "listbox", "tree", "grid", "table", "menu", "menubar", "tablist", "tabpanel", "toolbar", "dialog", "alertdialog", "navigation", "region", "log", "feed", "form", "search", "group", "radiogroup", "main", "complementary", "banner"]);
+/** `data-*` names (after the prefix) that carry state or belong to bb, the key library, or a UI kit, never a kind of thing. */
+const NOT_A_TYPE = /^(?:bb-|nav-|vim-|aura-|radix-|escape-|lazy-|bbm-|testid$|state$|slot$|index$|value$|cursor$|row$|line$|alt-line$|orientation$|side$|align$|highlighted$|disabled$|selected$|open$)/u;
 const LIST = '[role="list"], [role="listbox"], [role="tree"], [role="grid"], [role="menu"], [role="tablist"], [role="radiogroup"], [data-nav-group], ul, ol, table, nav, section, aside, main, dialog, [role="dialog"]';
 const HEADING = "h1, h2, h3, h4, h5, h6, legend, caption";
 const POINTER_CLICK_MS = 500;
@@ -32,6 +36,12 @@ const ID_SEGMENT = /^(?:[a-z]+_[A-Za-z0-9]+|[0-9a-f]{8,}|\d+|.+\.[A-Za-z0-9]{1,5
 const ROUTE_DEPTH = 3;
 /** Longer than any control's name; past it a button's text is the content it shows. */
 const NAME_LENGTH = 48;
+/** A heading longer than this, or with a digit in it, is a title or a date rather than a section's name. */
+const HEADING_LENGTH = 24;
+/** Labels at least this long get their digits blanked; shorter ones (7d, 24h) are nothing without them. */
+const BLANK_DIGITS_FROM = 5;
+/** A button with this many text-bearing parts is a row of badges and fields, not a named control. */
+const COMPOSITE_PARTS = 3;
 
 export function clip(text: string): string {
   const collapsed = text.replace(/\s+/gu, " ").trim();
@@ -91,54 +101,149 @@ function ownText(element: Element): string {
   return image?.getAttribute("alt") ?? image?.getAttribute("aria-label") ?? "";
 }
 
-/** How a control reads: its label, else its text, else an image's name, else its tag. */
-export function controlLabel(element: Element): string {
-  const label = element.getAttribute("aria-label") ?? element.getAttribute("title") ?? ownText(element);
-  const text = clip(label);
-  return text === "" ? `<${element.tagName.toLowerCase()}>` : text;
+/** A word that is a file name: a base, optional dotted parts, and an extension that isn't a web domain. */
+const FILE_NAME = /^[\w-]{2,}(?:\.[\w-]+)*\.(?!(?:com|org|net|io|dev|app|co)$)[a-z][a-z0-9]{0,4}$/iu;
+const PUNCTUATION = /^[(["'“‘]+|[)\]"'”’,.;:!?]+$/gu;
+
+/**
+ * Text with its content taken out: file names and paths blanked, and, when `digits` is set and the
+ * text is long enough to still read, numbers too. Short labels (7d, 24h) keep their digits.
+ */
+export function generalize(text: string, digits: boolean): string {
+  const words = clip(text)
+    .split(" ")
+    .map((word) => {
+      const bare = word.replace(PUNCTUATION, "");
+      if (bare.includes("/") && /\w/u.test(bare)) return word.replace(bare, "<path>");
+      if (FILE_NAME.test(bare)) return word.replace(bare, "<file>");
+      return word;
+    })
+    .join(" ");
+  return digits && words.length >= BLANK_DIGITS_FROM ? words.replace(/\d[\d,.]*/gu, "#") : words;
 }
 
-function containerName(element: Element): string {
-  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+/**
+ * The kind of thing an element is, from a `data-*` attribute of its own that names a type: a marker
+ * with no value (`data-kanban-card`) or an identity (`data-ticket-id`). Attributes carrying state or
+ * belonging to bb, the key library, or a UI kit don't count.
+ */
+export function typeOf(element: Element): string | null {
+  for (const { name, value } of Array.from(element.attributes)) {
+    if (!name.startsWith("data-")) continue;
+    const bare = name.slice(5);
+    if (NOT_A_TYPE.test(bare)) continue;
+    if (value !== "" && !bare.endsWith("-id")) continue;
+    return bare.replace(/-id$/u, "").replace(/-/gu, " ");
+  }
+  return null;
+}
+
+/** A heading names its section only when it reads as a name, not a date or a title. */
+function headingName(container: Element): string | null {
+  const heading = container.querySelector(HEADING);
+  const text = clip(heading?.textContent ?? "");
+  if (text === "" || text.length > HEADING_LENGTH || /\d/u.test(text)) return null;
+  return text;
+}
+
+/**
+ * What a control sits in, below its plugin's root: the nearest ancestor with a label, a test id, a
+ * type of its own, or a structural role; failing those, the nearest list-like ancestor's heading.
+ * Null when nothing below the root says.
+ */
+export function containerOf(element: Element): string | null {
+  const ancestors: Element[] = [];
+  for (let node = element.parentElement; node !== null && !node.hasAttribute("data-bb-plugin") && node !== node.ownerDocument.body; node = node.parentElement) ancestors.push(node);
+  for (const node of ancestors) {
     const named = node.getAttribute("aria-label");
-    if (named !== null && named.trim() !== "") return clip(named);
-    if (node.matches(LIST)) {
-      const heading = node.querySelector(HEADING);
-      if (heading !== null && (heading.textContent ?? "").trim() !== "") return clip(heading.textContent ?? "");
-      const id = node.id || node.getAttribute("data-testid");
-      if (id) return id;
+    if (named !== null && named.trim() !== "") {
+      const name = generalize(named, true);
+      if (name.length <= NAME_LENGTH) return name;
+    }
+    const testId = node.getAttribute("data-testid");
+    if (testId !== null && testId !== "") return testId;
+    const type = typeOf(node);
+    if (type !== null) return type;
+    const role = node.getAttribute("role");
+    if (role !== null && STRUCTURAL_ROLES.has(role)) {
+      const heading = headingName(node);
+      return heading === null ? role : `${role} ${heading}`;
     }
   }
-  return pluginOf(element) ?? "page";
+  for (const node of ancestors) {
+    if (!node.matches(LIST)) continue;
+    const heading = headingName(node);
+    if (heading !== null) return heading;
+  }
+  return null;
 }
 
-/** Whether the control's text is content that would make every row a different key. */
-function isContentItem(element: Element): boolean {
+/** Whether the element is itself a row whose text is content: an option, a tree or table row, a cursor row, a list item. */
+function isContentRow(element: Element): boolean {
   const role = element.getAttribute("role");
   if (role !== null && CONTENT_ROLES.has(role)) return true;
   if (element.hasAttribute("data-nav-row")) return element.getAttribute("data-nav-row") !== "toolbar";
-  return element.closest("li, tr") !== null;
+  return element.matches("li, tr");
 }
 
-/** What groups the same control across clicks: a test id, a link's page, a list's name for its rows, else the label with numbers blanked. */
-export function controlKey(element: Element): string {
+/** How many descendants carry text of their own; a row made of badges and fields reads as content, a labelled button doesn't. */
+function textBearingDescendants(element: Element): number {
+  let count = 0;
+  for (const child of Array.from(element.querySelectorAll("*"))) {
+    if (Array.from(child.childNodes).some((node) => node.nodeType === 3 && (node.textContent ?? "").trim() !== "")) count++;
+  }
+  return count;
+}
+
+export interface ControlDescription {
+  /** What groups the same control across clicks. */
+  key: string;
+  /** How it reads; carries no content, only digits a short label keeps. */
+  label: string;
+}
+
+/**
+ * A control described without its content: a test id; a link's page; a row by its kind and the list
+ * it sits in; a long or badge-filled button by its tag and container; else its name with numbers
+ * and file names blanked, plus the thing it sits in (`Cancel in kanban card`) when one is marked.
+ */
+export function describeControl(element: Element): ControlDescription {
+  const tag = element.tagName.toLowerCase();
   const testId = element.getAttribute("data-testid");
-  if (testId !== null) return `#${testId}`;
+  if (testId !== null) return { key: `#${testId}`, label: `#${testId}` };
   if (element instanceof HTMLAnchorElement && element.getAttribute("href") !== null) {
     const href = element.getAttribute("href")!;
-    if (href.startsWith("/")) return `link ${normalizeRoute(href.split(/[?#]/u)[0]!)}`;
-    if (!href.startsWith("#")) return "external link";
+    if (href.startsWith("/")) {
+      const key = `link ${normalizeRoute(href.split(/[?#]/u)[0]!)}`;
+      return { key, label: key };
+    }
+    if (!href.startsWith("#")) return { key: "external link", label: "external link" };
   }
-  if (isContentItem(element)) {
+  const container = containerOf(element) ?? "page";
+  if (isContentRow(element)) {
     const role = element.getAttribute("role");
-    const kind = element.getAttribute("data-nav-row") ?? (role !== null && CONTENT_ROLES.has(role) ? role : element.tagName.toLowerCase());
-    return `${kind} in ${containerName(element)}`;
+    const kind = typeOf(element) ?? element.getAttribute("data-nav-row") ?? (role !== null && CONTENT_ROLES.has(role) ? role : tag);
+    const key = `${kind} in ${container}`;
+    return { key, label: key };
   }
-  const label = element.getAttribute("aria-label") ?? element.getAttribute("title") ?? ownText(element);
-  const text = clip(label.replace(/\d[\d,.]*/gu, "#"));
-  // A name is short; a row showing a command bb ran or a message's first line is content.
-  if (text === "" || text.length > NAME_LENGTH) return `<${element.tagName.toLowerCase()}> in ${containerName(element)}`;
-  return text;
+  const named = element.getAttribute("aria-label") ?? element.getAttribute("title");
+  const raw = named ?? ownText(element);
+  const label = generalize(raw, false);
+  const composite = named === null && textBearingDescendants(element) >= COMPOSITE_PARTS;
+  if (label === "" || label.length > NAME_LENGTH || composite) {
+    const key = `<${tag}> in ${container}`;
+    return { key, label: key };
+  }
+  const where = containerOf(element) === null ? "" : ` in ${container}`;
+  return { key: `${generalize(raw, true)}${where}`, label: `${label}${where}` };
+}
+
+export function controlKey(element: Element): string {
+  return describeControl(element).key;
+}
+
+export function controlLabel(element: Element): string {
+  return describeControl(element).label;
 }
 
 function controlOf(target: Element | null, win: Window): Element | null {
@@ -208,7 +313,8 @@ export function mountCollector(doc: Document, win: Window, options: CollectorOpt
     const keyboard = (event as MouseEvent).detail === 0 && now() - lastPointerDown > POINTER_CLICK_MS;
     // Enter or Space on a button fires this click; the click is the record, with how it was made.
     if (keyboard && lastKey !== null && now() - lastKey.at < POINTER_CLICK_MS && (lastKey.record.key === "<CR>" || lastKey.record.key === "<Space>")) drop(lastKey.record);
-    push({ at: now(), kind: "click", plugin: pluginOf(control), route: route(), key: controlKey(control), label: controlLabel(control), via: keyboard ? "keyboard" : "pointer", count: null });
+    const { key, label } = describeControl(control);
+    push({ at: now(), kind: "click", plugin: pluginOf(control), route: route(), key, label, via: keyboard ? "keyboard" : "pointer", count: null });
   };
 
   const onKeyDown = (event: Event) => {
