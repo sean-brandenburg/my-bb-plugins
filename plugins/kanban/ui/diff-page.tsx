@@ -119,12 +119,6 @@ const REVIEW_EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string }> = [
   { value: "REQUEST_CHANGES", label: "Request changes" },
 ];
 
-const SUMMARY_PLACEHOLDER: Record<ReviewEvent, string> = {
-  COMMENT: "Summary for the review (optional)",
-  APPROVE: "Say why it's approved (optional)",
-  REQUEST_CHANGES: "Say what has to change (optional)",
-};
-
 /**
  * Sends local comments to an apply thread and GitHub drafts to the pull request, as a plain comment review or, on
  * someone else's PR, an approval or change request, with a summary over the review as GitHub's "Finish your review"
@@ -206,7 +200,7 @@ function KanbanSubmitBar({ subjectId, pending, canApprove, onOpenThread, onSubmi
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && submitting === null) void submit("github");
             }}
-            placeholder={SUMMARY_PLACEHOLDER[reviewEvent]}
+            placeholder="Leave a comment"
             aria-label="Review summary"
             title="Posted as the review's summary, above any file-level drafts (⌘↩ posts, Esc back to the diff)"
             className="min-w-48 grow resize-y rounded-md border border-input bg-transparent px-2.5 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring read-only:opacity-50"
