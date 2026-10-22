@@ -86,7 +86,10 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
   const navigate = useBbNavigate();
   const openNote = useOpenNote();
   const monday = weekStart(dateKey);
-  const [data, setData] = useState<WeekData | null>(() => weekCache.get(monday) ?? null);
+  // The week is read straight from the cache each render, so a day change shows its meetings
+  // (and puts the cursor on one) in the same render rather than a state update later.
+  const [, setVersion] = useState(0);
+  const data = weekCache.get(monday) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
@@ -98,22 +101,16 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
 
   const load = useCallback(
     (force: boolean) => {
-      const cached = weekCache.get(monday);
-      if (cached !== undefined && !force) {
-        setData(cached);
-        setError(null);
-        return;
-      }
+      if (weekCache.has(monday) && !force) return;
       const seq = (request.current += 1);
       setLoading(true);
-      setData(cached ?? null);
       rpc.call("meetings", { from: monday, to: addDays(monday, 7) }).then(
         (next) => {
           weekCache.set(monday, next);
           if (seq !== request.current) return;
-          setData(next);
           setError(null);
           setLoading(false);
+          setVersion((version) => version + 1);
         },
         (cause) => {
           if (seq !== request.current) return;
@@ -139,13 +136,14 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
     if (!isAside(meeting)) counts.set(meeting.date, (counts.get(meeting.date) ?? 0) + 1);
   }
 
+  const settled = data !== null || error !== null;
   useEffect(() => {
-    if (!focusPending.current || loading || root === null) return;
+    if (!focusPending.current || loading || !settled || root === null) return;
     focusPending.current = false;
     const first = readRows(root).elements[0];
     if (first !== undefined) focusRow(first);
     else root.focus({ preventScroll: true });
-  }, [loading, dateKey, root, meetings.length]);
+  }, [loading, settled, dateKey, root, meetings.length]);
 
   const goTo = (next: string) => {
     focusPending.current = true;
@@ -293,7 +291,7 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
               Try again
             </Button>
           </div>
-        ) : data === null ? (
+        ) : data === null || (loading && meetings.length === 0) ? (
           <LoadingLines lines={4} className="mt-6" />
         ) : meetings.length === 0 ? (
           <p className="mt-5 rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground">Nothing on the calendar {dateKey === today ? "today" : "that day"}.</p>

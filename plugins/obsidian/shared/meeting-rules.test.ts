@@ -148,6 +148,7 @@ describe("renderPlaceholders", () => {
 describe("sanitizeNoteName", () => {
   it("drops Obsidian's forbidden characters and tidies whitespace", () => {
     assert.equal(sanitizeNoteName('  Roundtable for: Jordan / "Lead" #1 [x]...'), "Roundtable for Jordan Lead 1 x");
+    assert.equal(sanitizeNoteName("Alex/Sam | Acme Widgets/Roadmap"), "Alex Sam Acme Widgets Roadmap");
     assert.equal(sanitizeNoteName("::"), "");
   });
 });

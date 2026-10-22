@@ -261,9 +261,10 @@ export function renderPlaceholders(text: string, fields: Record<string, string>,
 
 const INVALID_NAME_CHARS_ALL = new RegExp(INVALID_NAME_CHARS.source, "g");
 
-/** A rendered name made legal for a note: Obsidian's forbidden characters dropped, spaces tidied. */
+/** A rendered name made legal for a note: separators become spaces ("Alex/Sam" → "Alex Sam"), Obsidian's other forbidden characters go, spaces are tidied. */
 export function sanitizeNoteName(name: string): string {
   return name
+    .replace(/[/\\|]/g, " ")
     .replace(INVALID_NAME_CHARS_ALL, "")
     .replace(/\s+/g, " ")
     .replace(/^[\s.]+|[\s.]+$/g, "");
