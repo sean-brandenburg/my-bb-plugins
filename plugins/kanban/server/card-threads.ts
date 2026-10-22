@@ -2,7 +2,7 @@ import type { Column, Ticket } from "../shared/board";
 import type { BoardStore } from "./board";
 import type { KanbanContext } from "./context";
 import { prShortName } from "./github";
-import { threadTitle } from "./util";
+import { errorMessage, threadTitle } from "./util";
 
 /** The thread behind each card: starting it, prompting it, and linking existing threads. */
 export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardStore }) {
@@ -15,6 +15,7 @@ export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardS
       "",
       `This thread is kanban ticket ${ticket.id}. Columns: ${columnList}.`,
       "Move the card as the work progresses with `bb kanban move <column-id>` (it finds this thread's card automatically).",
+      ...(ticket.integratesInto === null ? [] : [INTEGRATION_MEMBER_NOTE]),
       "Do not post comments or reviews on GitHub unless the user explicitly asks.",
     ].join("\n");
     if (ticket.jira !== null) {
@@ -55,9 +56,11 @@ export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardS
     ].join("\n");
   }
 
+  /** A card whose work merges into an integration card gets a worktree of its own, so it has a branch to merge. */
   async function spawnThreadForTicket(ticketId: string, projectId: string): Promise<Ticket> {
     const ticket = getTicket(ticketId);
     if (ticket.threadId !== null) return ticket;
+    const environment: ThreadEnvironment | { type: "project-default" } = ticket.integratesInto === null ? { type: "project-default" } : await freshWorktree(projectId);
     const columns = await getColumns();
     const title =
       ticket.pr !== null
@@ -68,7 +71,7 @@ export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardS
     const parentThreadId = ticket.parentId === null ? null : (stmts.byId.get(ticket.parentId)?.thread_id ?? null);
     const thread = await bb.sdk.threads.spawn({
       projectId,
-      environment: { type: "project-default" },
+      environment,
       prompt: threadPrompt(ticket, columns),
       title: threadTitle(title),
       ...(parentThreadId === null ? {} : { parentThreadId }),
@@ -133,8 +136,62 @@ export function createCardThreads(ctx: KanbanContext, { board }: { board: BoardS
     };
   }
 
-  return { spawnThreadForTicket, promptTicketThread, linkThread, projectHostId, freshWorktree };
+  /**
+   * Where a card's committed work stands: its thread's branch head and how far it is past the base branch, read from
+   * the thread's environment. A fresh worktree of the project only sees commits made in that repository, so an
+   * environment on another machine is unavailable.
+   */
+  async function cardHead(ticket: Ticket): Promise<CardHead> {
+    if (ticket.threadId === null) return { kind: "unavailable", reason: "Start the card's thread first; a review covers the commits it makes" };
+    let thread;
+    try {
+      thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
+    } catch (error) {
+      return { kind: "unavailable", reason: `The card's thread can't be read: ${errorMessage(error)}` };
+    }
+    if (thread.environmentId === null) return { kind: "unavailable", reason: "The card's thread has no environment yet" };
+    let environment;
+    try {
+      environment = await bb.sdk.environments.get({ environmentId: thread.environmentId });
+    } catch (error) {
+      return { kind: "unavailable", reason: `The card's environment can't be read: ${errorMessage(error)}` };
+    }
+    const base = environment.mergeBaseBranch ?? environment.defaultBranch;
+    if (base === null) return { kind: "unavailable", reason: "The card's environment has no default branch to review its commits against" };
+    if (environment.hostId !== (await projectHostId(thread.projectId))) {
+      return { kind: "unavailable", reason: "The card's thread runs on another machine than the project's checkout, so a review worktree can't see its commits" };
+    }
+    const status = await bb.sdk.environments.status({ environmentId: environment.id, mergeBaseBranch: base });
+    if (status.outcome === "not_applicable") return { kind: "unavailable", reason: status.message };
+    if (status.outcome === "unavailable") return { kind: "unavailable", reason: status.failure.message };
+    const { checkout, mergeBase } = status.workspace;
+    const head = checkout.kind === "branch" || checkout.kind === "detached" ? checkout.headSha : null;
+    if (head === null) return { kind: "unavailable", reason: "The card's thread has no commits yet" };
+    const common = { head, base, branch: checkout.kind === "branch" ? checkout.branchName : null, projectId: thread.projectId, environmentId: environment.id, dirty: status.workspace.workingTree?.hasUncommittedChanges === true };
+    if (mergeBase === null || mergeBase.aheadCount === 0) return { kind: "nothing", ...common };
+    return { kind: "ahead", ...common, ahead: mergeBase.aheadCount };
+  }
+
+  return { spawnThreadForTicket, promptTicketThread, linkThread, projectHostId, freshWorktree, cardHead };
 }
+
+/** Told to a card whose work merges into a brain dump's integration card once every card of the dump is done. */
+export const INTEGRATION_MEMBER_NOTE =
+  "This card is one piece of a larger feature: commit your work on this thread's own branch (do not push it or merge it anywhere), and finish the card only once that work is committed; once every piece is done the board merges all of their branches into one worktree to test the feature end to end.";
+
+interface CardCheckout {
+  head: string;
+  /** The branch the work is measured against: the environment's merge-base branch, else the default branch. */
+  base: string;
+  branch: string | null;
+  projectId: string;
+  environmentId: string;
+  /** Uncommitted changes in the thread's worktree, which no merge would carry. */
+  dirty: boolean;
+}
+
+/** A card thread's committed work, or why it can't be read. */
+export type CardHead = { kind: "unavailable"; reason: string } | ({ kind: "nothing" } & CardCheckout) | ({ kind: "ahead"; ahead: number } & CardCheckout);
 
 export type CardThreads = ReturnType<typeof createCardThreads>;
 

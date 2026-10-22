@@ -4,7 +4,8 @@ import { parseProposal } from "./agent-output";
 import { initialColumn, type BoardStore } from "./board";
 import type { CardThreads } from "./card-threads";
 import type { KanbanContext } from "./context";
-import { rowToDump } from "./db/rows";
+import { rowToDump as rowToDumpBare, type DumpRow } from "./db/rows";
+import type { IntegrationService } from "./integration";
 import { errorMessage, shortId } from "./util";
 
 const PROPOSAL_FORMAT = [
@@ -45,10 +46,14 @@ function refinePrompt(dump: Dump, answers: Record<string, string>, notes: string
 }
 
 /** Brain dumps: a planning thread turns dictation into proposed cards the user edits and accepts. */
-export function createDumps(ctx: KanbanContext, { board, threads }: { board: BoardStore; threads: CardThreads }) {
+export function createDumps(ctx: KanbanContext, { board, threads, integration }: { board: BoardStore; threads: CardThreads; integration: IntegrationService }) {
   const { bb, stmts, publish } = ctx;
   const { getTicket, getColumns, createTicket } = board;
   const { spawnThreadForTicket } = threads;
+
+  function rowToDump(row: DumpRow): Dump {
+    return rowToDumpBare(row, integration.integrationForDump(row.id));
+  }
 
   async function archivePlanningThread(threadId: string | null): Promise<void> {
     if (threadId === null) return;
@@ -92,13 +97,18 @@ export function createDumps(ctx: KanbanContext, { board, threads }: { board: Boa
     return rowToDump(stmts.dumpById.get(id)!);
   }
 
-  async function finalizeDump(id: string, proposed: ProposedTicket[], columnId: string | undefined, startThreads: boolean): Promise<{ dump: Dump; tickets: Ticket[] }> {
+  /**
+   * `integrate` adds an integration card that merges every created card's branch into one worktree once they are all
+   * done; its cards then work in worktrees of their own (see `spawnThreadForTicket`), so each has a branch to merge.
+   */
+  async function finalizeDump(id: string, proposed: ProposedTicket[], columnId: string | undefined, startThreads: boolean, integrate: boolean): Promise<{ dump: Dump; tickets: Ticket[] }> {
     const row = stmts.dumpById.get(id);
     if (row === undefined) throw new Error(`No brain dump with id ${id}`);
     if (row.status === "done" || row.status === "discarded") throw new Error("This dump was already closed");
     const columns = await getColumns();
     const target = columnId !== undefined && columns.some((column) => column.id === columnId) ? columnId : initialColumn(columns, null);
     const created: Ticket[] = [];
+    const byProposalId = new Map<string, Ticket>();
     for (const item of proposed) {
       const ticket = createTicket({
         title: item.title.trim(),
@@ -124,8 +134,10 @@ export function createDumps(ctx: KanbanContext, { board, threads }: { board: Boa
         });
       }
       created.push(getTicket(ticket.id));
+      byProposalId.set(item.id, ticket);
     }
     stmts.setDumpDone.run(JSON.stringify(created.map((ticket) => ticket.id)), Date.now(), id);
+    if (integrate) integration.create(row, proposed, byProposalId, target);
     publish();
     await archivePlanningThread(row.thread_id);
     if (startThreads) {

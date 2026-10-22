@@ -10,7 +10,7 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import type { PluginThreadEventPayloads, PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import type { ReadingPlan } from "./shared/reading-plan";
-import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
+import plugin, { adfToText, defaultSelected, githubRepoFromRemote, newLineRangesFromPatch, parseNarrative, parseProposal, parseReviewReport, splitUnifiedDiff, type Board, type CodeReviewThread, type CommentApply, type DiffComment, type Dump, type Finding, type Integration, type Narrative, type NarrativeStory, type PrComment, type Review, type StructuralDiff, type SymbolLookup, type Ticket, type TicketDiff } from "./server";
 import { phaseChip } from "./shared/loop";
 
 type Host = ReturnType<typeof createFakePluginHost>;
@@ -3614,6 +3614,161 @@ describe("brain dumps", () => {
     const discarded = (await current().harness.behavior.callRpc("dump_discard", { id: dump.id })) as Dump;
     expect(discarded.status).toBe("discarded");
     expect(current().harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(1);
+  });
+});
+
+describe("brain dump integration", () => {
+  const ctx = (threadId: string) => ({ threadId, signal: new AbortController().signal });
+  const proposalBlock = (tickets: unknown[]) => `Plan.\n\n\`\`\`json kanban-proposal\n${JSON.stringify({ version: 1, summary: "Billing.", tickets, questions: [] })}\n\`\`\``;
+  const T1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1";
+  const T2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2";
+
+  /** Each member thread's worktree: `env_thr_N` is `ahead` commits past main at `head`, on `branch`; another `hostId` is another machine. */
+  function stubEnvironments(byEnv: Record<string, { head: string; ahead: number; branch?: string; hostId?: string; dirty?: boolean }>) {
+    current().harness.sdk.stub("environments.get", async ({ environmentId }: { environmentId: string }) => ({ id: environmentId, hostId: byEnv[environmentId]?.hostId ?? "host_1", mergeBaseBranch: null, defaultBranch: "main" }));
+    current().harness.sdk.stub("environments.status", async ({ environmentId }: { environmentId: string }) => {
+      const env = byEnv[environmentId]!;
+      return {
+        outcome: "available",
+        workspace: {
+          branch: { currentBranch: env.branch ?? "feature", defaultBranch: "main" },
+          checkout: { kind: "branch", branchName: env.branch ?? "feature", headSha: env.head },
+          mergeBase: { aheadCount: env.ahead, behindCount: 0, baseRef: null, commits: [], files: [], insertions: 0, deletions: 0, hasCommittedUnmergedChanges: env.ahead > 0, lineStatsComplete: true, mergeBaseBranch: "main" },
+          workingTree: { hasUncommittedChanges: env.dirty ?? false, files: [], insertions: 0, deletions: 0, lineStatsComplete: true, state: "clean" },
+        },
+      };
+    });
+  }
+
+  /** A dump planned into T1 and T2 (T2 after T1), finalized with threads and an integration card; returns the two member cards. */
+  async function finalized(): Promise<{ dump: Dump; members: Ticket[]; integrationCard: Ticket }> {
+    await load({ autoStartThreads: false });
+    current().harness.sdk.stub("threads.send", async () => ({ ok: true }));
+    current().harness.sdk.stub("threads.archive", async () => ({ archived: 1 }));
+    const dump = (await current().harness.behavior.callRpc("dump_create", { text: "Move billing to the payments service.\nThen hide stale invoices.", projectId: "proj_acme" })) as Dump;
+    await current().harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_1", projectId: "proj_acme" }),
+      lastAssistantText: proposalBlock([
+        { id: "T2", title: "Hide stale invoices", description: "Filter them out", dependsOn: ["T1"] },
+        { id: "T1", title: "Charge via payments service", description: "Replace the billing call" },
+      ]),
+    });
+    const fresh = (await board()).dumps[0]!;
+    const result = (await current().harness.behavior.callRpc("dump_finalize", { id: dump.id, tickets: fresh.proposal!.tickets, columnId: "todo", startThreads: true, integrate: true })) as { dump: Dump; tickets: Ticket[] };
+    const integrationCard = (await board()).tickets.find((ticket) => ticket.id === result.dump.integration!.ticketId)!;
+    return { dump: result.dump, members: result.tickets, integrationCard };
+  }
+
+  it("creates an integration card, starts member threads in their own worktrees, and merges once every card is done", async () => {
+    const { dump, members, integrationCard } = await finalized();
+    expect(dump.integration).toMatchObject({ status: "waiting", ticketId: integrationCard.id, threadId: null });
+    // Merge order follows dependsOn: T1 before T2, whatever the proposal's order.
+    expect(dump.integration!.members.map((member) => member.proposalId)).toEqual(["T1", "T2"]);
+    expect(integrationCard).toMatchObject({ title: "Integrate: Move billing to the payments service.", tags: ["integration"], columnId: "todo", threadId: null });
+    expect(integrationCard.description).toContain("Charge via payments service");
+    expect(integrationCard.integration?.status).toBe("waiting");
+    const t2 = members.find((ticket) => ticket.title === "Hide stale invoices")!;
+    const t1 = members.find((ticket) => ticket.title === "Charge via payments service")!;
+    expect((await board()).tickets.find((ticket) => ticket.id === t1.id)?.integratesInto).toBe(integrationCard.id);
+    // Member threads: fresh worktrees, told to commit on their branch.
+    expect(spawned).toHaveLength(3);
+    for (const spawn of spawned.slice(1)) {
+      expect(spawn.environment).toEqual({ type: "host", hostId: "host_1", workspace: { type: "managed-worktree", baseBranch: { kind: "default" } } });
+      expect(String(spawn.prompt)).toContain("commit your work on this thread's own branch");
+    }
+    const t1Thread = `thr_${spawned.findIndex((spawn) => String(spawn.title) === t1.title) + 1}`;
+    const t2Thread = `thr_${spawned.findIndex((spawn) => String(spawn.title) === t2.title) + 1}`;
+    const configured = await current().harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ pluginMetadata: { ticketId: t1.id } }));
+    expect(configured?.instructions).toContain("one piece of a larger feature");
+
+    stubEnvironments({ [`env_${t1Thread}`]: { head: T1, ahead: 2, branch: "bb/charge" }, [`env_${t2Thread}`]: { head: T2, ahead: 1, branch: "bb/hide" } });
+    await current().harness.behavior.runCli(["move", "done"], ctx(t1Thread));
+    await vi.waitFor(async () => {
+      const integration = (await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.integration!;
+      expect(integration.members.find((member) => member.ticketId === t1.id)).toMatchObject({ outcome: "ready", headSha: T1, branch: "bb/charge" });
+      expect(integration.members.find((member) => member.ticketId === t2.id)).toMatchObject({ outcome: "pending" });
+      expect(integration.status).toBe("waiting");
+    });
+    expect(spawned).toHaveLength(3);
+
+    await current().harness.behavior.runCli(["move", "done"], ctx(t2Thread));
+    await vi.waitFor(() => expect(spawned).toHaveLength(4));
+    const integrate = spawned[3]!;
+    expect(integrate).toMatchObject({
+      projectId: "proj_acme",
+      environment: { type: "host", hostId: "host_1", workspace: { type: "managed-worktree", baseBranch: { kind: "default" } } },
+      title: "Integrate: Move billing to the payments service.",
+      pluginMetadata: { ticketId: integrationCard.id, role: "integrate" },
+    });
+    const prompt = String(integrate.prompt);
+    expect(prompt.indexOf(`git merge --no-ff --no-edit ${T1}`)).toBeLessThan(prompt.indexOf(`git merge --no-ff --no-edit ${T2}`));
+    expect(prompt).toContain("branch `bb/charge`");
+    expect(prompt).toContain("bb kanban integrated");
+    expect(prompt).toContain("Then hide stale invoices.");
+    expect(prompt).toContain("Replace the billing call");
+    let integration = (await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.integration!;
+    expect(integration).toMatchObject({ status: "integrating", threadId: "thr_4" });
+    expect((await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.threadId).toBe("thr_4");
+    const instructions = await current().harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ pluginMetadata: { ticketId: integrationCard.id, role: "integrate" } }));
+    expect(instructions?.instructions).toContain("integration worktree");
+
+    // The thread records the merge: T1 merged, T2 conflicted, checks passed.
+    const recorded = await current().harness.behavior.runCli(["integrated", "--commit", "cccccccccccccccccccccccccccccccccccccccc", "--conflicts", "T2", "--exit-code", "0"], ctx("thr_4"));
+    expect(recorded.stdout).toContain("1 merged, 1 in conflict");
+    integration = (await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.integration!;
+    expect(integration).toMatchObject({ status: "integrated", commitSha: "cccccccccccccccccccccccccccccccccccccccc", checkExitCode: 0 });
+    expect(integration.members.map((member) => member.outcome)).toEqual(["merged", "conflict"]);
+    // An unknown id is refused.
+    const refused = await current().harness.behavior.runCli(["integrated", "--commit", "cccccccccccccccccccccccccccccccccccccccc", "--merged", "T9"], ctx("thr_4"));
+    expect(refused).toMatchObject({ exitCode: 1 });
+    expect(refused.stderr).toContain("No card T9");
+    // The dump lists the same integration.
+    const all = (await current().harness.behavior.callRpc("dumps_list", { includeClosed: true })) as { dumps: Dump[] };
+    expect(all.dumps[0]!.integration?.status).toBe("integrated");
+
+    // Integrating again re-reads the heads and prompts the same thread in its worktree.
+    current().harness.sdk.stub("threads.get", async ({ threadId }: { threadId: string }) => makeThreadResponse({ id: threadId, projectId: "proj_acme", environmentId: `env_${threadId}`, status: "idle", archivedAt: null }));
+    stubEnvironments({ [`env_${t1Thread}`]: { head: T1, ahead: 2 }, [`env_${t2Thread}`]: { head: "dddddddddddddddddddddddddddddddddddddddd", ahead: 2 } });
+    const again = await current().harness.behavior.runCli(["integrate"], ctx("thr_4"));
+    expect(again.stdout).toContain("@thread:thr_4");
+    const sent = current().harness.inspection.sdk.callsTo("threads.send");
+    expect(JSON.stringify(sent.at(-1))).toContain("Integrate again");
+    expect(JSON.stringify(sent.at(-1))).toContain("dddddddddddddddddddddddddddddddddddddddd");
+    expect(spawned).toHaveLength(4);
+    integration = (await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.integration!;
+    expect(integration.status).toBe("integrating");
+    expect((await current().harness.behavior.runCli(["integrate"], ctx("thr_4"))).stderr).toContain("still merging");
+
+    // A thread that ends without recording leaves the integration failed, with the reason.
+    await current().harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "thr_4", projectId: "proj_acme" }), lastAssistantText: "I got stuck." });
+    integration = (await board()).tickets.find((ticket) => ticket.id === integrationCard.id)!.integration!;
+    expect(integration.status).toBe("failed");
+    expect(integration.error).toContain("without recording");
+  });
+
+  it("records a card with no commits or on another machine, and merges what is there on demand", async () => {
+    const { members, integrationCard } = await finalized();
+    const t1 = members.find((ticket) => ticket.title === "Charge via payments service")!;
+    const t2 = members.find((ticket) => ticket.title === "Hide stale invoices")!;
+    const t1Thread = `thr_${spawned.findIndex((spawn) => String(spawn.title) === t1.title) + 1}`;
+    const t2Thread = `thr_${spawned.findIndex((spawn) => String(spawn.title) === t2.title) + 1}`;
+    stubEnvironments({ [`env_${t1Thread}`]: { head: T1, ahead: 0 }, [`env_${t2Thread}`]: { head: T2, ahead: 3, hostId: "host_other" } });
+    // Integrate now, with nothing done: every member is read as it stands.
+    const run = (await current().harness.behavior.callRpc("integration_run", { ticketId: t1.id })) as Integration;
+    expect(run.status).toBe("integrating");
+    expect(run.members.find((member) => member.ticketId === t1.id)).toMatchObject({ outcome: "nothing", headSha: T1 });
+    expect(run.members.find((member) => member.ticketId === t2.id)).toMatchObject({ outcome: "unavailable" });
+    expect(run.members.find((member) => member.ticketId === t2.id)!.note).toContain("another machine");
+    const prompt = String(spawned[3]!.prompt);
+    expect(prompt).toContain("Nothing has commits to merge");
+    expect(prompt).toContain("Not merged:");
+    expect(prompt).toContain("No commits beyond main");
+    // Deleting the integration card hides the integration; undo brings it back whole.
+    await current().harness.behavior.callRpc("ticket_delete", { id: integrationCard.id });
+    expect((await board()).tickets.find((ticket) => ticket.id === t1.id)?.integratesInto).toBeNull();
+    await current().harness.behavior.callRpc("ticket_restore", { id: integrationCard.id });
+    expect((await board()).tickets.find((ticket) => ticket.id === t1.id)?.integratesInto).toBe(integrationCard.id);
+    expect((await board()).tickets.find((ticket) => ticket.id === integrationCard.id)?.integration?.members).toHaveLength(2);
   });
 });
 

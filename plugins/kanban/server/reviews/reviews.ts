@@ -25,7 +25,7 @@ export function createReviews(
 ) {
   const { bb, stmts, publish } = ctx;
   const { getTicket } = board;
-  const { freshWorktree, projectHostId } = threads;
+  const { freshWorktree, cardHead } = threads;
   const { projectForTicket } = projects;
   const { codeReviewThreadVisibility } = codeReviewThreads;
 
@@ -34,24 +34,10 @@ export function createReviews(
    * runs in that thread's project. The error says why the card can't be reviewed yet, in words the board shows.
    */
   async function localReviewTarget(ticket: Ticket): Promise<{ subject: ReviewSubject; projectId: string; branch: string | null }> {
-    if (ticket.threadId === null) throw new Error("Start the card's thread first; a review covers the commits it makes");
-    const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
-    if (thread.environmentId === null) throw new Error("The card's thread has no environment yet");
-    const environment = await bb.sdk.environments.get({ environmentId: thread.environmentId });
-    const branch = environment.mergeBaseBranch ?? environment.defaultBranch;
-    if (branch === null) throw new Error("The card's environment has no default branch to review its commits against");
-    // The review's fresh worktree comes from the project's checkout, so it only has commits made in that repository.
-    if (environment.hostId !== (await projectHostId(thread.projectId))) {
-      throw new Error("The card's thread runs on another machine than the project's checkout, so a review worktree can't see its commits");
-    }
-    const status = await bb.sdk.environments.status({ environmentId: environment.id, mergeBaseBranch: branch });
-    if (status.outcome === "not_applicable") throw new Error(status.message);
-    if (status.outcome === "unavailable") throw new Error(status.failure.message);
-    const { checkout, mergeBase } = status.workspace;
-    const head = checkout.kind === "branch" || checkout.kind === "detached" ? checkout.headSha : null;
-    if (head === null) throw new Error("The card's thread has no commits yet");
-    if (mergeBase === null || mergeBase.aheadCount === 0) throw new Error(`No commits beyond \`${branch}\` to review; commit the card's work first`);
-    return { subject: localSubject(head, branch), projectId: thread.projectId, branch: checkout.kind === "branch" ? checkout.branchName : null };
+    const head = await cardHead(ticket);
+    if (head.kind === "unavailable") throw new Error(head.reason);
+    if (head.kind === "nothing") throw new Error(`No commits beyond \`${head.base}\` to review; commit the card's work first`);
+    return { subject: localSubject(head.head, head.base), projectId: head.projectId, branch: head.branch };
   }
 
   /** Why the card can't be reviewed yet, or null when it can; a PR card always can once it has a project. */

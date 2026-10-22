@@ -24,6 +24,7 @@ import { ChecksMark, JiraStatusGlyph, PrStateGlyph, checksHref } from "./badges"
 import { jiraStatusMark } from "./source-marks";
 import { CommentsPanel } from "./comments-panel";
 import { SubtasksGroup } from "./subtasks";
+import { IntegrationGroup } from "./integration";
 import { type RunAction, usePendingAction } from "./actions";
 
 /** The header line truncates, which clips an outline to a sliver at the link's end, so focus draws inside the link. */
@@ -292,6 +293,14 @@ function TicketDetails({
             <Property label="Due">
               <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
             </Property>
+            {ticket.integratesInto !== null ? (
+              <Property label="Feature">
+                <button type="button" className={cn("flex max-w-full items-center gap-1 text-left text-sm", LINE_LINK)} title="The integration card that merges this card's branch with the others once they are all done" onClick={() => openTicket(ticket.integratesInto!)}>
+                  <Icon name="GitMerge" className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{tickets.find((entry) => entry.id === ticket.integratesInto)?.title ?? ticket.integratesInto}</span>
+                </button>
+              </Property>
+            ) : null}
             {ticket.parentId !== null || showParentPicker ? (
               <ParentProperty rise={showParentPicker}>
                 <Select
@@ -358,6 +367,14 @@ function TicketDetails({
             <Property label="Due">
               <DueDateEditor ticket={ticket} isDone={ticket.columnId === doneColumnId(columns)} rpc={rpc} run={run} />
             </Property>
+            {ticket.integratesInto !== null ? (
+              <Property label="Feature">
+                <button type="button" className={cn("flex max-w-full items-center gap-1 text-left text-sm", LINE_LINK)} title="The integration card that merges this card's branch with the others once they are all done" onClick={() => openTicket(ticket.integratesInto!)}>
+                  <Icon name="GitMerge" className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{tickets.find((entry) => entry.id === ticket.integratesInto)?.title ?? ticket.integratesInto}</span>
+                </button>
+              </Property>
+            ) : null}
             {ticket.parentId !== null || showParentPicker ? (
               <ParentProperty rise={showParentPicker}>
                 <Select
@@ -428,6 +445,9 @@ function TicketDetails({
           ) : null}
         </>
       )}
+      {ticket.integration !== null ? (
+        <IntegrationGroup integration={ticket.integration} tickets={tickets} columns={columns} threads={threads} rpc={rpc} pending={pending} run={run} onOpenTicket={openTicket} onOpenThread={onOpenThread} />
+      ) : null}
       {/* Someone else's PR is not the loop's to drive; m still toggles it. */}
       {ticket.pr?.role === "other" ? null : (
         <LoopSection

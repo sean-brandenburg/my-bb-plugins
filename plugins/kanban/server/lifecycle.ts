@@ -2,13 +2,17 @@ import { COLUMN } from "../shared/columns";
 import { doneColumn, type BoardStore } from "./board";
 import type { KanbanContext } from "./context";
 import type { Dumps } from "./dumps";
+import type { IntegrationService } from "./integration";
 import type { Loop } from "./loop/loop";
 import type { ReviewResume } from "./reviews/resume";
 import type { Reviews } from "./reviews/reviews";
 import type { Tour } from "./tour";
 
 /** Cards follow their threads: activity moves them on, archiving finishes them, and idle threads deliver their output. */
-export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour, reviews, loop, reviewResume }: { board: BoardStore; dumps: Dumps; tour: Tour; reviews: Reviews; loop: Loop; reviewResume: ReviewResume }): void {
+export function registerThreadLifecycle(
+  ctx: KanbanContext,
+  { board, dumps, integration, tour, reviews, loop, reviewResume }: { board: BoardStore; dumps: Dumps; integration: IntegrationService; tour: Tour; reviews: Reviews; loop: Loop; reviewResume: ReviewResume },
+): void {
   const { bb, settings, stmts, publish } = ctx;
   const { getColumns, moveTicket } = board;
 
@@ -29,6 +33,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
     // Skills like code-review fan out to background agents, and the thread idles between their reports; only the idle after the last one is final.
     if (thread.activeBackgroundAgentCount > 0) return;
     if (dumps.handleIdle(thread.id, lastAssistantText)) return;
+    if (integration.handleIdle(thread.id)) return;
     if (tour.handleIdle(thread.id, lastAssistantText)) return;
     if (loop.handleIdle(thread.id, lastAssistantText)) return;
     if (reviews.handleIdle(thread.id, lastAssistantText)) void loop.reviewFinished(thread.id);
@@ -54,6 +59,7 @@ export function registerThreadLifecycle(ctx: KanbanContext, { board, dumps, tour
 
   bb.events.on("thread.deleted", ({ thread }) => {
     loop.threadFailed(thread.id, null);
+    integration.threadDeleted(thread.id);
     const now = Date.now();
     const changes = stmts.clearThread.run(now, thread.id).changes + stmts.clearReviewThread.run(now, thread.id).changes;
     if (changes > 0) publish();

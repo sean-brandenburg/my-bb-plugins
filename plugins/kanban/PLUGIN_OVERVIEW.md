@@ -20,7 +20,9 @@ A kanban board where every card is a BB thread.
   choose.
 - **Brain dump**: type or dictate everything that needs doing; a planning
   thread proposes cards (with subtasks, dependencies and open questions) that
-  you edit and accept on the board.
+  you edit and accept on the board. An integration card merges every card's
+  branch into one worktree once they are all done, so the feature can be
+  tested end to end before it lands.
 - **Due dates** on any card, shown on the board and flagged when overdue.
 - **Subtasks** on any card, written by you (also while creating the card) or
   by the card's agent, with agents started on them one thread each or one

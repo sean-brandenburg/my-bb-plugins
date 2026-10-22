@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PullRequest, Ticket } from "../../shared/board";
 import type { CommentApply, DiffComment, DiffCommentTarget, PrComment } from "../../shared/comments";
-import { proposalSchema, type Dump, type Proposal } from "../../shared/dump";
+import { proposalSchema, type Dump, type Integration, type IntegrationMember, type Proposal } from "../../shared/dump";
 import { parseLoopState, type CheckCommand } from "../../shared/loop";
 import type { Review, ReviewDepth } from "../../shared/review";
 import type { HunkExplanation, Narrative } from "../../shared/tour";
@@ -236,7 +236,58 @@ export interface DumpRow {
   updated_at: number;
 }
 
-export function rowToDump(row: DumpRow): Dump {
+export interface IntegrationRow {
+  id: string;
+  dump_id: string;
+  ticket_id: string;
+  project_id: string;
+  thread_id: string | null;
+  status: Integration["status"];
+  commit_sha: string | null;
+  check_exit_code: number | null;
+  error: string | null;
+  started_at: number | null;
+  completed_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface IntegrationMemberRow {
+  integration_id: string;
+  ticket_id: string;
+  proposal_id: string;
+  position: number;
+  head_sha: string | null;
+  branch: string | null;
+  outcome: IntegrationMember["outcome"];
+  note: string;
+  updated_at: number;
+}
+
+export function rowToIntegrationMember(row: IntegrationMemberRow): IntegrationMember {
+  return { ticketId: row.ticket_id, proposalId: row.proposal_id, position: row.position, headSha: row.head_sha, branch: row.branch, outcome: row.outcome, note: row.note };
+}
+
+export function rowToIntegration(row: IntegrationRow, members: IntegrationMemberRow[]): Integration {
+  return {
+    id: row.id,
+    dumpId: row.dump_id,
+    ticketId: row.ticket_id,
+    projectId: row.project_id,
+    threadId: row.thread_id,
+    status: row.status,
+    commitSha: row.commit_sha,
+    checkExitCode: row.check_exit_code,
+    error: row.error,
+    members: members.map(rowToIntegrationMember),
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function rowToDump(row: DumpRow, integration: Integration | null): Dump {
   let proposal: Proposal | null = null;
   try {
     const parsed = proposalSchema.safeParse(JSON.parse(row.proposal_json ?? "null"));
@@ -260,6 +311,7 @@ export function rowToDump(row: DumpRow): Dump {
     proposal,
     answers,
     createdTicketIds: parseStringArray(row.created_ticket_ids),
+    integration,
     error: row.error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -366,7 +418,15 @@ export function rowToTicket(
   row: TicketRow,
   latestReview: Review | null,
   comments: Ticket["comments"],
-  extras: { pendingDiffComments: number; canPostToGithub: boolean; defaultCommentTarget: DiffCommentTarget; children: Ticket["children"]; spend: Ticket["spend"] },
+  extras: {
+    pendingDiffComments: number;
+    canPostToGithub: boolean;
+    defaultCommentTarget: DiffCommentTarget;
+    children: Ticket["children"];
+    spend: Ticket["spend"];
+    integration: Integration | null;
+    integratesInto: string | null;
+  },
 ): Ticket {
   const pr: PullRequest | null =
     row.pr_repo !== null &&
@@ -424,6 +484,8 @@ export function rowToTicket(
     position: row.position,
     columnEnteredAt: row.column_entered_at ?? row.updated_at,
     loop: row.loop_state === null ? null : parseLoopState(row.loop_state),
+    integration: extras.integration,
+    integratesInto: extras.integratesInto,
     spend: extras.spend,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -28,6 +28,8 @@ page, its Todo list view, and `bb kanban` read and write the same data.
 | `bb kanban ready --commit <sha> --evidence-stdin [--screenshot <path>] [--check-command "<cmd>"]` | Run from a monitored card's own thread once its work is committed and verified (see below). |
 | `bb kanban landed [--ticket <id>]` | Run from a monitored local card's own thread after the user accepted it and you landed it with the project's finishing steps: the board moves the card to Done. |
 | `bb kanban checks-record --exit-code <n> --output-stdin` | Run from a checks thread: records the check command's exit code and the tail of its output. |
+| `bb kanban integrate [--ticket <id>]` | Merge a brain dump's cards into its integration worktree now, done or not. Inside a thread, defaults to that thread's card (the integration card or one of its members). |
+| `bb kanban integrated --commit <sha> [--merged T1,T2] [--conflicts T3] [--exit-code <n>]` | Run from an integration thread after merging and running the checks: records the merge commit, which cards merged (by their proposal ids; default: every card with commits not in `--conflicts`), which conflicted, and the check command's exit code. |
 | `bb kanban review-show [--ticket <id>]` | Print the latest persisted review (findings + reviewed commit). |
 | `bb kanban narrative-check --report-stdin < draft.json` | Run from a narrative thread: checks a draft kanban-narrative report parses and that its steps (and revision steps) cover every changed line; lists what they miss. |
 | `bb kanban narrative-context` | Run from a narrative thread: prints the earlier narrative's steps and the delta a revision chapter must explain. |
@@ -99,6 +101,22 @@ tickets. It reads the project first, then ends each proposing reply with a
 ```` ```json kanban-proposal ```` block (tickets with stable ids, subtasks,
 dependencies, estimates; open questions with options). It never creates cards
 or starts work; the user reviews the proposal on the board.
+
+## Integration threads
+
+A brain dump finalized with "merge into one worktree when done" has an
+integration card. Each of its cards works in its own worktree: commit on that
+branch, never push or merge it, and move the card to `done` only once the work
+is committed. When every card is done the board starts the integration card's
+thread in a fresh worktree with the branches to merge, in dependency order.
+That thread merges them (`git merge --no-ff --no-edit <sha>`), resolves a
+conflict only when both sides' intent makes the answer clear and otherwise
+aborts that merge and reports it, fixes small seams between the cards in their
+own commit, runs the project's check command, records the result with
+`bb kanban integrated`, and then tests the feature end to end as the dictation
+describes and reports card by card. It never lands, pushes or merges the
+result elsewhere and never moves a card; the user continues in it to validate
+the feature.
 
 ## Subtasks
 

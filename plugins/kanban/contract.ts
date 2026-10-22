@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, pendingReviewStateSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
 import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
-import { dumpSchema, proposedTicketSchema } from "./shared/dump";
+import { dumpSchema, integrationSchema, proposedTicketSchema } from "./shared/dump";
 import { PLAN_MAX_LENGTH, attentionLevelSchema, levelOverrideSchema, loopGatesSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
 import { readingPlanSchema } from "./shared/reading-plan";
 import { DEFAULT_REVIEW_DEPTH, findingEditSchema, reviewDepthSchema, reviewSchema } from "./shared/review";
@@ -64,9 +64,16 @@ export const rpcContract = defineRpcContract({
         tickets: z.array(proposedTicketSchema).min(1),
         columnId: z.string().optional(),
         startThreads: z.boolean().default(false),
+        /** Add an integration card that merges every created card's branch into one worktree once they are all done. */
+        integrate: z.boolean().default(false),
       })
       .strict(),
     output: z.object({ dump: dumpSchema, tickets: z.array(ticketSchema) }),
+  },
+  /** Merge a brain dump's cards into the integration worktree now, done or not; `ticketId` is the integration card or one of its members. */
+  integration_run: {
+    input: z.object({ ticketId: z.string() }).strict(),
+    output: integrationSchema,
   },
   dump_discard: {
     input: z.object({ id: z.string() }).strict(),

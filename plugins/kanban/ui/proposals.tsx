@@ -15,6 +15,7 @@ import { relativeTime } from "./format";
 import { useNow } from "./data";
 import { Badge, Select, COMPACT, Group } from "./primitives";
 import { TagBadges } from "./tags";
+import { IntegrationActions, IntegrationStatusBadge } from "./integration";
 import { usePendingAction, toastError } from "./actions";
 
 function DumpStatusBadge({ dump }: { dump: Dump }) {
@@ -65,6 +66,7 @@ export function ProposalsList({ onOpen }: { onOpen: (id: string) => void }) {
                 {dump.proposal.questions.length > 0 ? ` · ${dump.proposal.questions.length} question${dump.proposal.questions.length === 1 ? "" : "s"}` : ""}
               </span>
             ) : null}
+            {dump.integration !== null ? <IntegrationStatusBadge integration={dump.integration} /> : null}
             <span className="ml-auto text-xs text-muted-foreground">{relativeTime(dump.updatedAt, now)}</span>
           </div>
           <p className="line-clamp-2 text-sm">{dump.text}</p>
@@ -82,6 +84,7 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
   const [notes, setNotes] = useState("");
   const [columnId, setColumnId] = useState(todoColumnId(columns) ?? "");
   const [startThreads, setStartThreads] = useState(false);
+  const [integrate, setIntegrate] = useState(true);
   const [showText, setShowText] = useState(false);
   const loadedProposal = useRef<string | null>(null);
   const load = useCallback(() => {
@@ -261,13 +264,17 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
                   <Checkbox checked={startThreads} onCheckedChange={(checked) => setStartThreads(checked === true)} aria-label="Start a thread for each card" />
                   start a thread per card
                 </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Adds an integration card. Once every card is done, their branches are merged into one fresh worktree and the project's checks run there, so the feature can be tested end to end before it lands. Each card's thread then works in a worktree of its own.">
+                  <Checkbox checked={integrate} onCheckedChange={(checked) => setIntegrate(checked === true)} aria-label="Merge the cards into one worktree when they are all done" />
+                  merge into one worktree when done
+                </label>
                 <Button
                   type="button"
                   className={cn(COMPACT, "ml-auto")}
                   disabled={pending || included.length === 0 || dump.status === "planning"}
                   onClick={() =>
                     void run(
-                      () => rpc.call("dump_finalize", { id: dump.id, tickets: included.map(({ include, ...ticket }) => ticket), columnId, startThreads }),
+                      () => rpc.call("dump_finalize", { id: dump.id, tickets: included.map(({ include, ...ticket }) => ticket), columnId, startThreads, integrate }),
                       `Created ${included.length} card${included.length === 1 ? "" : "s"}`,
                     )
                   }
@@ -285,6 +292,17 @@ export function ProposalView({ dumpId, columns, onBack, onOpenThread, onOpenTick
                     {id}
                   </button>
                 ))}
+              </div>
+            ) : null}
+            {dump.integration !== null ? (
+              <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2 text-xs text-muted-foreground">
+                Integration:
+                <IntegrationStatusBadge integration={dump.integration} />
+                <Button type="button" variant="ghost" className={COMPACT} onClick={() => onOpenTicket(dump.integration!.ticketId)}>
+                  <Icon name="GitMerge" className="size-3.5" />
+                  Integration card
+                </Button>
+                <IntegrationActions integration={dump.integration} thread={undefined} rpc={rpc} pending={pending} run={run} onOpenThread={onOpenThread} />
               </div>
             ) : null}
           </Group>
