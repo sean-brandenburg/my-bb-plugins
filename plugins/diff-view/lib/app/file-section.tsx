@@ -118,8 +118,21 @@ export function FileSection({
       {collapsed ? null : (
         <LazyMount root={scrollRoot} estimateLines={file.additions + file.deletions + 6} className={reveal}>
           {() => {
+            // GitHub leaves the patch out of a very large file; difftastic reads the checkout, so it still gets a structural diff.
             const textDiff =
-              file.patch === null ? null : (
+              file.patch === null ? (
+                <>
+                  <NoRows path={file.path} />
+                  <FileLevelComments
+                    path={file.path}
+                    threads={annotations.threads}
+                    composing={annotations.composer !== null}
+                    onSubmit={annotations.onSubmitComposer}
+                    onCancel={annotations.onCancelComposer}
+                  />
+                  <p className="p-4 text-sm text-muted-foreground">No text diff for this file (binary or too large).</p>
+                </>
+              ) : (
                 <DiffErrorBoundary key={file.path} fallback={
                     <>
                       <NoRows path={file.path} />
@@ -129,7 +142,7 @@ export function FileSection({
                   <AnnotatedPatch key={file.path} {...annotations} patch={file.patch} />
                 </DiffErrorBoundary>
               );
-            return file.patch !== null && !file.vendored ? (
+            return !file.vendored ? (
               <StructuralPatch
                 key={`structural-${file.path}`}
                 {...annotations}
@@ -139,21 +152,10 @@ export function FileSection({
                 semantics={semantics}
                 changedRanges={changedRanges}
                 fallback={textDiff}
+                fallbackNote={file.patch === null ? "difftastic could not diff this file" : undefined}
               />
-            ) : textDiff !== null ? (
-              textDiff
             ) : (
-              <>
-                <NoRows path={file.path} />
-                <FileLevelComments
-                  path={file.path}
-                  threads={annotations.threads}
-                  composing={annotations.composer !== null}
-                  onSubmit={annotations.onSubmitComposer}
-                  onCancel={annotations.onCancelComposer}
-                />
-                <p className="p-4 text-sm text-muted-foreground">No text diff for this file (binary or too large).</p>
-              </>
+              textDiff
             );
           }}
         </LazyMount>

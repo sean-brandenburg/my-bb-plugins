@@ -64,9 +64,12 @@ export function StructuralPatch({
   semantics,
   changedRanges,
   fallback,
+  fallbackNote,
 }: PatchAnnotationProps & {
   /** The file's text diff, shown instead when difftastic cannot diff it. */
   fallback: ReactNode;
+  /** The line above the fallback, when it is not a line diff. */
+  fallbackNote?: string;
   onOpenFile: (lookup: SymbolLookup, definition: SymbolLookup["definitions"][number]) => void;
   explanations: HunkExplanation[];
   /** Null when the data source cannot explain hunks. */
@@ -294,7 +297,7 @@ export function StructuralPatch({
     return (
       <>
         <p className="px-3 pt-1.5 text-[11px] text-muted-foreground" title={error ?? diff?.reason ?? undefined}>
-          Shown as a line diff: difftastic could not diff this file
+          {fallbackNote ?? "Shown as a line diff: difftastic could not diff this file"}
         </p>
         {fallback}
       </>
