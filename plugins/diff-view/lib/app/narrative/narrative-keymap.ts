@@ -17,9 +17,9 @@ export type NarrativeCommand = ReviewCommand | NarrativeOnlyCommand;
 
 /**
  * The review keys, so the cursor, comments and findings work over a step's excerpts exactly as over the files, plus
- * the step keys. `h` and `l` turn pages: excerpts are unified unless asked otherwise, so sides mean little here and
- * the arrows keep them (← past the old side reaches the outline, as `h` does in the files view). `/`, `n`, `N`
- * search steps, `t` shows the outline, and `S` returns to the files.
+ * the step keys. `h` and `l` turn pages, the surface's main motion; the arrows keep the old and new side (← past the
+ * old side reaches the outline, as `h` does in the files view). `/`, `n`, `N` search steps, `t` shows the outline,
+ * and `S` returns to the files.
  */
 export const NARRATIVE_KEYMAP: Keymap<NarrativeCommand> = {
   ...REVIEW_KEYMAP,
@@ -46,7 +46,7 @@ function reworded(section: KeyHelpSection, actions: Record<string, string>): Key
 const SHARED_HELP = KEY_HELP.filter((section) => section.title !== "File list").map((section) =>
   reworded(arrowsForSides(section), {
     "j k": "Next / previous line; past the step's code it reads on through the step, and past the step's end into the next (a count repeats: 5j)",
-    "← →": "Old / new side, in excerpts shown split; ← past the old side (or on an excerpt header) goes to the outline",
+    "← →": "Old / new side; ← past the old side (or on an excerpt header) goes to the outline",
     "]f [f": "Next / previous excerpt",
     "gg G": "First / last line of the step",
     "Ctrl-d Ctrl-u": "Half a page down / up (Ctrl-f / Ctrl-b a whole page)",

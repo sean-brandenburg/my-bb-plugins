@@ -102,14 +102,14 @@ plugins embed.
   file to open it in the files view), its watch-outs and its steps; the
   outline beside the steps (wide views, `t`) ticks the steps read, and ←
   past the old side moves into it (`j`/`k`, Enter, Escape). Keys of its own:
-  `h`/`l` previous / next page (a count repeats; excerpts are unified unless
-  `gl` says otherwise, so the arrow keys keep the old / new side, and ←
-  past the old side goes to the outline), `]]`/`[[` chapters, `]f`/`[f`
+  `h`/`l` previous / next page (a count repeats; the arrow keys keep the
+  old / new side, and ← past the old side goes to the outline), `]]`/`[[`
+  chapters, `]f`/`[f`
   excerpts, `gf` opens the files view at the cursor's line (an excerpt's
   header too), `ga` follows a revision step to the step it led to, `gv`
   marks viewed the files every one of whose steps has been read, `/` and
-  `n`/`N` search steps, `gl` switches the excerpts between unified (the
-  default) and split, `U` writes a narrative (or an update once the code
+  `n`/`N` search steps, `gl` switches the excerpts between split (the
+  default) and unified, `U` writes a narrative (or an update once the code
   moved, which the switch flags with a dot), `S` returns to the files with
   the cursor where it was. Steps of an earlier narrative or a revision show
   their lines without comments, since those are not today's lines; comment

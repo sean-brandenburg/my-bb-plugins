@@ -24,7 +24,7 @@ export function writePreference(name: PreferenceName, value: string): void {
 export interface DiffPreferences {
   /** Layout of files shown as a line diff, the fallback where difftastic cannot diff a file. */
   layout: "unified" | "split";
-  /** Layout of the narrative's excerpts, which are short and often one-sided, so they start unified. */
+  /** Layout of the narrative's excerpts, kept apart from the files' so each view reads as the reader likes. */
   narrativeLayout: "unified" | "split";
   /** Which review findings show inline in the diff. */
   findingFilter: FindingFilter;
@@ -50,7 +50,7 @@ function createStore<T>(initial: T) {
 
 const preferences = createStore<DiffPreferences>({
   layout: "split",
-  narrativeLayout: readPreference("narrativeLayout") === "split" ? "split" : "unified",
+  narrativeLayout: readPreference("narrativeLayout") === "unified" ? "unified" : "split",
   findingFilter: parseFindingFilter(readPreference("findingFilter"), readPreference("showFindings")),
   fileTreeOpen: readPreference("fileTreeOpen") !== "false",
 });
