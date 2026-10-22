@@ -1,5 +1,11 @@
 # Agent notes
 
+## Public repo
+
+This repo is public on GitHub, and a pushed commit can't be taken back. Never commit real personal or work data: not in code, tests, fixtures, docs, screenshots, or commit messages. That covers people's names, emails, and GitHub handles; calendar events, meeting titles, and call links or dial-in numbers; interview or hiring details; company, customer, and internal project names; work repos, Jira keys, hostnames, and IPs; and vault note contents.
+
+When a real calendar event, PR, ticket, or note prompts a test, rewrite it with placeholders before committing: `acme-co/widgets`, `ACME-1`, `@acme.example` addresses, `meet.google.com/abc-defg-hij`, `555-01xx` phone numbers, invented names such as Jordan Rivera or Alex and Sam, and generic titles. Screenshots for docs use placeholder boards, threads, and titles. Before pushing, search the diff for anything copied from a real source.
+
 ## Keyboard first
 
 Build every plugin to be driven from the keyboard, with vim-style keys wherever they fit:
