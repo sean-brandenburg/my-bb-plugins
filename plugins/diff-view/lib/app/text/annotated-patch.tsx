@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { experimental_useCodeTheme as useCodeTheme } from "@get-bb/plugin-sdk/app";
 import { PatchDiff, VirtualizerContext, useWorkerPool, type DiffLineAnnotation } from "@pierre/diffs/react";
 import { useDiffPreferences } from "../state";
@@ -13,6 +13,7 @@ import { useCursorShown, useFileCursor, usePublishNavModel, type FileNavModel } 
 import type { DiffSide, LineRange } from "../../types";
 import { buildLineAnnotations, fromPierreSide, toPierreSide, type AnnotationMeta, type PierreSide } from "./line-annotations";
 import { navRows, patchRows, selectionRange } from "./patch-rows";
+import { SearchHighlightCss } from "../search/use-diff-search";
 
 /**
  * Pierre sizes each code column `1fr`, which cannot shrink below its widest unbreakable content: a long token or an
@@ -82,6 +83,7 @@ export function AnnotatedPatch({
   const { mode: themeMode } = useCodeTheme();
   const themes = useHostPierreThemes();
   const workerPool = useWorkerPool();
+  const searchCss = useContext(SearchHighlightCss);
   // GitHub patches lack the `diff --git` header Pierre expects; synthesize one for the file.
   const fullPatch = useMemo(
     () => (patch.startsWith("diff --git") ? patch : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${patch}`),
@@ -142,7 +144,7 @@ export function AnnotatedPatch({
       themeType: themeMode,
       disableFileHeader: true,
       overflow: "wrap" as const,
-      unsafeCSS: COLUMN_CSS,
+      unsafeCSS: COLUMN_CSS + searchCss,
       lineHoverHighlight: "both" as const,
       enableGutterUtility: true,
       enableLineSelection: true,
@@ -151,7 +153,7 @@ export function AnnotatedPatch({
       onLineSelectionChange: setDragged,
       onLineSelectionEnd: finish,
     };
-  }, [layout, hunkSeparators, themes, themeMode, rows]);
+  }, [layout, hunkSeparators, themes, themeMode, rows, searchCss]);
   // Stable across cursor moves, which re-render this file for its selection, so Pierre leaves the annotations alone.
   const renderAnnotation = useCallback(
     ({ metadata }: DiffLineAnnotation<AnnotationMeta>) => {

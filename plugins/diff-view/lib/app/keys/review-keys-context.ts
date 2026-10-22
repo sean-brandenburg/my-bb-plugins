@@ -18,6 +18,8 @@ export interface FileNavModel {
    * is open); absent where the renderer has no peeks.
    */
   symbols?: { at: (row: number, side: DiffSide) => string[]; peek: (row: number, symbol: string) => void; close: () => boolean };
+  /** Loads the patch of a file the diff came without one for; Enter on its header calls it. Absent once there is nothing to load. */
+  loadPatch?: () => void;
 }
 
 /** What a comment thread lets the keyboard do to it. */

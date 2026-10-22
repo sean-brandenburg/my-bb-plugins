@@ -120,11 +120,13 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     review_set_applied: ({ reviewId, findingId, applied }) => reviews.setApplied(reviewId, findingId, applied),
     review_edit_finding: ({ reviewId, findingId, edit }) => reviews.editFinding(reviewId, findingId, edit),
     review_make_card: ({ reviewId, findingId }) => reviews.makeFindingCard(reviewId, findingId),
-    diff_get: async ({ ticketId, refresh }) => changes.ticketDiff(await resolveDiffSubject(ticketId), refresh),
-    diff_structural: async ({ ticketId, path }) => changes.structuralDiff(await resolveDiffSubject(ticketId), path),
+    diff_get: async ({ ticketId, refresh, range }) => changes.ticketDiff(await resolveDiffSubject(ticketId), refresh, range),
+    diff_structural: async ({ ticketId, path, range }) => changes.structuralDiff(await resolveDiffSubject(ticketId), path, range),
     symbol_definitions: async ({ ticketId, symbol }) => changes.symbolDefinitions(await resolveDiffSubject(ticketId), symbol),
     symbol_usages: async ({ ticketId, symbol }) => changes.symbolUsages(await resolveDiffSubject(ticketId), symbol),
     symbol_peek_file: async ({ ticketId, path, startLine, endLine }) => changes.peekFile(await resolveDiffSubject(ticketId), path, startLine, endLine),
+    diff_blame: async ({ ticketId, path, side, startLine, endLine, range }) => ({ lines: await changes.blame(await resolveDiffSubject(ticketId), path, side, startLine, endLine, range) }),
+    diff_commits: async ({ ticketId }) => changes.ticketCommits(await resolveDiffSubject(ticketId)),
     diff_comments_list: async ({ ticketId }) => {
       const list = await diffComments.listDiffComments(ticketId);
       // The changes page is open: look for pending-review changes made on GitHub meanwhile.
@@ -160,5 +162,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
       await sourceSync.runSync();
       return sync;
     },
+    diff_load_patch: async ({ ticketId, path, range }) => ({ patch: await changes.loadPatch(await resolveDiffSubject(ticketId), path, range) }),
+    suggestions_apply: async ({ ticketId, items, message }) => services.suggestions.applySuggestions(await resolveDiffSubject(ticketId), items, message),
   });
 }

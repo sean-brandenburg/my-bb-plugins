@@ -329,8 +329,11 @@ its PR is reviewed and its review findings and comments are handed to agents.
   it): every file in
   one continuous scroll with sticky, collapsible headers (as on GitHub), and a
   file list with per-file stats that jumps to a file and tracks the one in
-  view. PR cards diff the pull request from GitHub; thread-backed cards diff
-  their environment against its merge base. The button, hover icon and `D` are
+  view. PR cards diff the pull request from GitHub (up to GitHub's 3,000-file
+  maximum; past it, a banner above the diff says how many files are missing);
+  thread-backed cards diff their environment against its merge base. A file
+  GitHub sent without a patch (too large) shows "Load diff", which builds it
+  from the file's two sides. The button, hover icon and `D` are
   greyed out and do nothing on a card with no PR whose thread has no changed
   files yet (or that has no thread). `diff/thread/<threadId>` opens a
   thread's changes the same way, as its card when it has one; submitting
@@ -352,6 +355,31 @@ its PR is reviewed and its review findings and comments are handed to agents.
   the peek to drill into another symbol with a back trail, and "Open file"
   for bb's file preview. Without a checkout it falls back to GitHub code
   search.
+- **Links and blame**: `yl` copies GitHub permalinks at the PR's head (base
+  for old lines); `gO` opens a PR card's file on GitHub and a thread card's in
+  bb's file preview. `gb` blames from the card's local checkout when it has
+  the PR's commits (or a thread card's working tree and merge base), else
+  from GitHub's GraphQL blame.
+- **Suggested changes**: a ```` ```suggestion ```` block in any comment (a
+  synced GitHub one or the board's own) shows as a small diff of the commented
+  lines; `I` starts one. `A` applies the one under the cursor, `B` batches it,
+  and "Commit N suggestions" (or `gB`) applies the batch. On a PR card that is
+  one commit on the PR's head branch (the fork's, for a PR from one), "Apply
+  suggestions from code review", made through GitHub's git data API from the
+  branch's tip and never forced, after which each applied GitHub thread is
+  resolved; on a thread card it writes the thread's checkout, uncommitted.
+  Either way, if any suggestion's lines changed since it was made, nothing is
+  applied and the error names them. Comments with a suggestion reach the agent
+  with a line saying the block is the exact replacement.
+- **Commits** (`gr`, or the summary bar's Commits control): a PR card lists
+  the pull request's commits (GitHub's `/pulls/{n}/commits`, up to 250) and
+  reads a range through GitHub's compare (up to 300 files, with a banner past
+  that); file sides come from the range's merge base and end. Its marks are
+  "Since last review" (the card's latest completed review's commit) and "Since
+  your last GitHub review" (your latest submitted review's commit), each when
+  that commit is in the PR. Thread cards list their local checkout's commits,
+  uncommitted changes last, and read ranges with local git. Diffs are cached
+  per card and range.
 - **Projects for every repository**: a PR card whose repository matches no
   project's git remote gets one created for it: the repo is cloned (blobless,
   SSH when your other projects use SSH) under the clone directory setting
@@ -434,6 +462,17 @@ its PR is reviewed and its review findings and comments are handed to agents.
   above the diff instead, with "Make a card" on the pre-existing ones and the
   filtered ones folded; `gp` moves the keyboard there (`j`/`k`, Enter, Escape
   back) and `gF` unfolds the filtered ones.
+- **Findings' suggestions**: a review report from version 6 on may give a
+  finding a `suggestion` (`{ file, startLine, endLine, replacement }`, new-side
+  lines of one of its files), which the board stores with it, keeps through
+  rewording and carries into a re-review (renumbered, or dropped when its lines
+  changed); a malformed one is dropped, not the report. The finding's line in
+  the diff shows it as a suggestion diff: `A` applies it now and `B` batches it,
+  the same way as a comment's suggestion (a PR card's commit, a thread card's
+  checkout), and applying it adds the finding to the review's applied findings
+  (`review_set_applied`), so it leaves the diff. On a PR card, `gs` posts it to
+  the PR as a draft GitHub comment on its lines: the finding's title and
+  description, then the suggestion block.
 - **Review aids**: a per-file "Viewed" checkbox collapses the file and counts
   toward "n of m viewed" at the top (scoped to the PR head, so a push resets
   it); lockfiles, vendored and generated files, and files with over 1,000
@@ -493,11 +532,13 @@ its PR is reviewed and its review findings and comments are handed to agents.
   diff). Clicking outside closes it too.
 - **Comment threads**: the changes view shows the PR's inline GitHub review
   comments under their lines, threaded with their replies, alongside the
-  board's own comments. Resolved threads stay in the diff, folded and dimmed,
-  with an Unresolve button (or `r`) to reopen them on GitHub; an open GitHub
-  thread has Resolve (`r`) beside Reply. Threads whose line the latest push
-  changed (outdated) are over and stay out of the diff unless you have an
-  unsent reply in one; the card panel's PR comments still list them. Reply in
+  board's own comments. An open GitHub thread has Resolve (`r`) beside Reply.
+  Resolved threads, and threads whose line the latest push changed
+  (outdated), leave the diff unless you have an unsent reply in one; the
+  summary bar counts them and the Comments view (`gc`) lists every thread,
+  an outdated one over the hunk GitHub stored for it (synced with each
+  comment's original lines), with Unresolve (`r`) to reopen a resolved one;
+  the card panel's PR comments still list them too. Reply in
   any thread, locally or on GitHub (GitHub replies need a thread that is an
   inline GitHub comment, or a GitHub draft that becomes one). Local replies in
   a GitHub thread reach the agent with the whole thread quoted, so "do what

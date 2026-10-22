@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useContext, useState, type KeyboardEvent } from "react";
 import { Markdown, experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { FindingEdit, FindingSeverity } from "../../types";
 import { Button, COMPACT } from "../ui/button";
@@ -7,6 +7,12 @@ import { cn } from "../utils";
 import { CHEVRON, FAST, OPACITY_TRANSITION, PRESS, enter, useOpenedSinceMount } from "../ui/motion";
 import { SEVERITY_DOT, SEVERITY_LABEL, type InlineFinding } from "./findings";
 import { useFindingControls, useIsFocused, useIsReading } from "../keys/review-keys-context";
+import { Badge } from "../ui/badge";
+import { SuggestionsContext } from "../suggestions/context";
+import { SuggestionDiff } from "../suggestions/suggestion-diff";
+import { findingSuggestionLabel } from "../suggestions/finding-suggestion";
+
+const SUGGESTION_BUTTON = cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS);
 
 const SEVERITY_BORDER: Record<FindingSeverity, string> = { critical: "border-red-500/70", important: "border-amber-500/70", minor: "border-border" };
 
@@ -37,6 +43,12 @@ export function FindingAnnotation({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<FindingEdit>({ title: finding.title, description: finding.description, fix: finding.fix });
   const [saving, setSaving] = useState(false);
+  const suggestions = useContext(SuggestionsContext);
+  const suggestion = suggestions.forFinding(item);
+  const applicable = suggestion?.item ?? null;
+  const inBatch = applicable !== null && suggestions.batch.some((entry) => entry.id === applicable.id);
+  const posted = suggestion !== null && suggestions.posted.has(suggestion.id);
+  const canPost = suggestions.post !== null && suggestion !== null && !suggestion.applied && !posted && suggestion.current !== null;
   const beginEdit = () => {
     setDraft({ title: finding.title, description: finding.description, fix: finding.fix });
     setEditing(true);
@@ -109,6 +121,36 @@ export function FindingAnnotation({
               <Markdown content={finding.fix} className="min-w-0 flex-1" />
             </div>
           ) : null}
+          {suggestion !== null ? (
+            <div className="flex flex-col gap-1">
+              <SuggestionDiff
+                expected={suggestion.current}
+                replacement={suggestion.replacement}
+                startLine={suggestion.suggestion.startLine}
+                label={`Suggested change · ${findingSuggestionLabel(suggestion.suggestion)}`}
+                badge={suggestion.applied ? <Badge tone="success">applied</Badge> : inBatch ? <Badge tone="accent">in batch</Badge> : posted ? <Badge tone="outline">draft on GitHub</Badge> : undefined}
+              />
+              {(applicable !== null && suggestions.apply !== null) || canPost ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {applicable !== null && suggestions.apply !== null ? (
+                    <>
+                      <button type="button" className={SUGGESTION_BUTTON} disabled={suggestions.busy} title="Apply this suggestion to the code now and mark the finding applied (A)" onClick={() => void suggestions.apply?.([applicable])}>
+                        Apply suggestion
+                      </button>
+                      <button type="button" aria-pressed={inBatch} className={cn(SUGGESTION_BUTTON, inBatch && "bg-state-active text-foreground")} title="Apply it with others in one go: Commit N suggestions above the diff, or gB (B)" onClick={() => suggestions.toggleBatch(applicable)}>
+                        {inBatch ? "Remove from batch" : "Add to batch"}
+                      </button>
+                    </>
+                  ) : null}
+                  {canPost ? (
+                    <button type="button" className={SUGGESTION_BUTTON} title="Post it to the pull request as a draft suggestion comment (gs)" onClick={() => void suggestions.post?.(item, suggestion)}>
+                      Post to PR
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {item.edited ? (
             <button type="button" className={cn("self-start text-xs text-muted-foreground hover:underline", PRESS)} onClick={() => void onEdit(null)}>
               Revert to the reviewer's wording
@@ -133,7 +175,17 @@ export function FindingAnnotation({
         </div>
       ) : null}
       <p className={cn("pb-1 font-mono text-[10px] text-muted-foreground", enter.fade, FAST, !focused && "hidden")}>
-        {[item.selected ? "x exclude" : "x include", editing ? null : "e edit", expanded ? "↩ fold" : "↩ unfold", "c next"].filter((hint) => hint !== null).join(" · ")}
+        {[
+          applicable !== null && suggestions.apply !== null ? "A apply suggestion" : null,
+          applicable !== null && suggestions.apply !== null ? (inBatch ? "B unbatch" : "B batch") : null,
+          canPost ? "gs post to PR" : null,
+          item.selected ? "x exclude" : "x include",
+          editing ? null : "e edit",
+          expanded ? "↩ fold" : "↩ unfold",
+          "c next",
+        ]
+          .filter((hint) => hint !== null)
+          .join(" · ")}
       </p>
     </div>
   );

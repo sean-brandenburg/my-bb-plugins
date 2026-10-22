@@ -9,14 +9,46 @@ import {
   hideVendoredFiles,
   isVendoredPath,
   localEnvironmentPath,
+  patchFromSides,
+  gitBlame,
   runDifftastic,
   structuralUnavailable,
+  checkedRange,
+  commitRangeKey,
+  environmentCommits,
+  environmentRangeDiff,
+  environmentRangeFileSides,
 } from "bb-diff-view/server";
+import { WORKTREE_SHA } from "bb-diff-view/types";
 import type { Ticket } from "../../shared/board";
-import type { StructuralDiff, SymbolLookup, SymbolUsages, TicketDiff } from "../../shared/diff";
+import type { BlameLine, CommitRange, DiffCommits, StructuralDiff, SymbolLookup, SymbolUsages, TicketDiff } from "../../shared/diff";
 import type { KanbanContext } from "../context";
-import { GITHUB_API, github, githubHeaders, githubPages, resolveToken, type GithubPull, type GithubPullFile } from "../github";
+import { GITHUB_API, github, githubBlame, githubHeaders, githubPages, resolveToken, type GithubPull, type GithubPullFile } from "../github";
+import { COMPARE_FILE_LIMIT, compareCommits, pullCommits, type GithubReview } from "../github";
+import { commitsFromGithub, reviewMarks } from "./commits";
 import { execFileAsync } from "../util";
+
+/** GitHub lists at most 3,000 files of a pull request: 30 pages of 100. */
+const PR_FILE_PAGES = 30;
+/** How long a PR's diff is kept, and an environment's range (its local git read). */
+const PR_DIFF_TTL_MS = 10 * 60_000;
+const ENVIRONMENT_RANGE_TTL_MS = 15_000;
+const DIFF_CACHE_LIMIT = 200;
+
+/** A file of a GitHub pull request or comparison as the diff view reads it. */
+function diffFileFromGithub(file: GithubPullFile): TicketDiff["files"][number] {
+  return {
+    path: file.filename,
+    previousPath: file.previous_filename ?? null,
+    status: file.status,
+    additions: file.additions,
+    deletions: file.deletions,
+    patch: file.patch ?? null,
+    vendored: isVendoredPath(file.filename),
+    // GitHub gives no binary flag. A file with neither a patch nor line counts is one, unless only its name or mode changed.
+    binary: file.patch === undefined && file.additions === 0 && file.deletions === 0 && ["added", "removed", "modified"].includes(file.status),
+  };
+}
 
 export async function containsCommit(dir: string, sha: string): Promise<boolean> {
   try {
@@ -33,48 +65,121 @@ export function createChanges(ctx: KanbanContext) {
 
   const diffCache = new Map<string, { key: string; diff: TicketDiff }>();
 
-  /** The card's changes, minus vendored files when the setting hides them. */
-  async function ticketDiff(ticket: Ticket, refresh: boolean): Promise<TicketDiff> {
-    const diff = await fullTicketDiff(ticket, refresh);
+  /** The card's changes (or a range of their commits), minus vendored files when the setting hides them. */
+  async function ticketDiff(ticket: Ticket, refresh: boolean, range: CommitRange | null = null): Promise<TicketDiff> {
+    const diff = range === null ? await fullTicketDiff(ticket, refresh) : await rangeDiff(ticket, checkedRange(range), refresh);
     return (await settings.get()).hideVendored ? hideVendoredFiles(diff) : diff;
+  }
+
+  /** Cached per card and range: a PR's until it updates, an environment range's for a few seconds. */
+  function cachedDiff(ticket: Ticket, range: CommitRange | null, refresh: boolean): TicketDiff | null {
+    const cached = diffCache.get(`${ticket.id}@${commitRangeKey(range)}`);
+    if (refresh || cached === undefined) return null;
+    const age = Date.now() - cached.diff.fetchedAt;
+    if (ticket.pr !== null) return cached.key === `pr:${ticket.pr.updatedAt}` && age < PR_DIFF_TTL_MS ? cached.diff : null;
+    return range !== null && age < ENVIRONMENT_RANGE_TTL_MS ? cached.diff : null;
+  }
+
+  function cacheDiff(ticket: Ticket, range: CommitRange | null, diff: TicketDiff): void {
+    const id = `${ticket.id}@${commitRangeKey(range)}`;
+    diffCache.delete(id);
+    if (diffCache.size >= DIFF_CACHE_LIMIT) diffCache.delete(diffCache.keys().next().value!);
+    diffCache.set(id, { key: ticket.pr === null ? "env" : `pr:${ticket.pr.updatedAt}`, diff });
+  }
+
+  /** The changes of part of the card's history: GitHub's compare for a PR, else the thread's local checkout. */
+  async function rangeDiff(ticket: Ticket, range: CommitRange, refresh: boolean): Promise<TicketDiff> {
+    const cached = cachedDiff(ticket, range, refresh);
+    if (cached !== null) return cached;
+    let diff: TicketDiff;
+    if (ticket.pr !== null) {
+      const auth = await resolveToken(settings);
+      if (auth === null) return emptyDiff("pr", "No GitHub token configured.");
+      const { mergeBase, files } = await compareCommits(ticket.pr.repo, range.from, range.to, auth.token);
+      const truncated = files.length >= COMPARE_FILE_LIMIT;
+      diff = {
+        source: "pr",
+        files: files.map(diffFileFromGithub),
+        baseRef: range.from.slice(0, 7),
+        // The comparison is three-dot, so the old side is the merge base: `from` itself for a commit of the PR.
+        baseSha: mergeBase ?? range.from,
+        headSha: range.to,
+        truncated,
+        truncatedNote: truncated ? `GitHub compares at most ${COMPARE_FILE_LIMIT} files, so these commits may change more than are shown. Pick fewer commits, or All changes, for the rest.` : null,
+        message: null,
+        fetchedAt: Date.now(),
+        hiddenVendored: null,
+        repo: ticket.pr.repo,
+        environmentId: null,
+      };
+    } else if (ticket.threadId !== null) {
+      const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
+      if (thread.environmentId === null) return emptyDiff("none", "The card's thread has no environment yet.");
+      diff = await environmentRangeDiff(bb.sdk, thread.environmentId, range);
+    } else {
+      return emptyDiff("none", "No pull request or thread to diff.");
+    }
+    cacheDiff(ticket, range, diff);
+    return diff;
+  }
+
+  /** The card's commits for the commit picker, with the review marks that are among them. */
+  async function ticketCommits(ticket: Ticket): Promise<DiffCommits> {
+    const lastReviewSha = ctx.stmts.latestCompletedReview.get(ticket.id)?.commit_sha ?? null;
+    if (ticket.pr !== null) {
+      const auth = await resolveToken(settings);
+      if (auth === null) return { commits: [], marks: [], base: null };
+      const [list, githubReviews, diff] = await Promise.all([
+        pullCommits(ticket.pr.repo, ticket.pr.number, auth.token),
+        githubPages<GithubReview>(`/repos/${ticket.pr.repo}/pulls/${ticket.pr.number}/reviews`, auth.token).catch(() => null),
+        fullTicketDiff(ticket, false),
+      ]);
+      const commits = commitsFromGithub(list);
+      return { commits, marks: reviewMarks(commits, lastReviewSha, githubReviews, ctx.sync.login), base: diff.baseSha };
+    }
+    if (ticket.threadId !== null) {
+      const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
+      if (thread.environmentId === null) return { commits: [], marks: [], base: null };
+      const found = await environmentCommits(bb.sdk, thread.environmentId, (await fullTicketDiff(ticket, false)).baseRef);
+      return { ...found, marks: reviewMarks(found.commits, lastReviewSha, null, null) };
+    }
+    return { commits: [], marks: [], base: null };
   }
 
   /** The card's changes: the PR's files from GitHub, else the thread environment's working diff. */
   async function fullTicketDiff(ticket: Ticket, refresh: boolean): Promise<TicketDiff> {
     const now = Date.now();
     if (ticket.pr !== null) {
-      const key = `pr:${ticket.pr.updatedAt}`;
-      const cached = diffCache.get(ticket.id);
-      if (!refresh && cached !== undefined && cached.key === key && now - cached.diff.fetchedAt < 10 * 60_000) return cached.diff;
+      const cached = cachedDiff(ticket, null, refresh);
+      if (cached !== null) return cached;
       const auth = await resolveToken(settings);
       if (auth === null) {
         return emptyDiff("pr", "No GitHub token configured.");
       }
       const [pull, files] = await Promise.all([
-        github<GithubPull & { base?: { ref?: string; sha?: string }; head?: { sha?: string } }>(`/repos/${ticket.pr.repo}/pulls/${ticket.pr.number}`, auth.token),
-        // GitHub lists at most 300 files for a PR.
-        githubPages<GithubPullFile>(`/repos/${ticket.pr.repo}/pulls/${ticket.pr.number}/files`, auth.token, undefined, 3),
+        github<GithubPull & { base?: { ref?: string; sha?: string }; head?: { sha?: string }; changed_files?: number }>(`/repos/${ticket.pr.repo}/pulls/${ticket.pr.number}`, auth.token),
+        githubPages<GithubPullFile>(`/repos/${ticket.pr.repo}/pulls/${ticket.pr.number}/files`, auth.token, undefined, PR_FILE_PAGES),
       ]);
+      const truncated = pull.changed_files !== undefined ? files.length < pull.changed_files : files.length >= PR_FILE_PAGES * 100;
       const diff: TicketDiff = {
         source: "pr",
-        files: files.map((file) => ({
-          path: file.filename,
-          previousPath: file.previous_filename ?? null,
-          status: file.status,
-          additions: file.additions,
-          deletions: file.deletions,
-          patch: file.patch ?? null,
-          vendored: isVendoredPath(file.filename),
-        })),
+        files: files.map(diffFileFromGithub),
         baseRef: pull.base?.ref ?? null,
         baseSha: pull.base?.sha ?? null,
         headSha: pull.head?.sha ?? null,
-        truncated: files.length >= 300,
+        truncated,
+        truncatedNote: truncated
+          ? pull.changed_files !== undefined
+            ? `Showing ${files.length.toLocaleString()} of this pull request's ${pull.changed_files.toLocaleString()} changed files: GitHub lists at most ${(PR_FILE_PAGES * 100).toLocaleString()}. Open it on GitHub, or review it from a local checkout, for the rest.`
+            : `GitHub lists at most ${(PR_FILE_PAGES * 100).toLocaleString()} files of a pull request; this one may have more.`
+          : null,
         message: null,
         fetchedAt: now,
         hiddenVendored: null,
+        repo: ticket.pr.repo,
+        environmentId: null,
       };
-      diffCache.set(ticket.id, { key, diff });
+      cacheDiff(ticket, null, diff);
       return diff;
     }
     if (ticket.threadId !== null) {
@@ -86,8 +191,8 @@ export function createChanges(ctx: KanbanContext) {
   }
 
   /** Both sides of one file in the card's diff, as text; null for a side that does not exist or is binary. */
-  async function fileSides(ticket: Ticket, path: string): Promise<{ old: string | null; new: string | null; headSha: string | null }> {
-    const diff = await ticketDiff(ticket, false);
+  async function fileSides(ticket: Ticket, path: string, range: CommitRange | null = null): Promise<{ old: string | null; new: string | null; headSha: string | null }> {
+    const diff = await ticketDiff(ticket, false, range);
     const file = diff.files.find((entry) => entry.path === path || entry.previousPath === path);
     if (file === undefined) throw new Error(`${path} is not in this card's diff`);
     if (ticket.pr !== null) {
@@ -111,17 +216,27 @@ export function createChanges(ctx: KanbanContext) {
     if (ticket.threadId !== null) {
       const thread = await bb.sdk.threads.get({ threadId: ticket.threadId });
       if (thread.environmentId === null) throw new Error("The card's thread has no environment yet.");
+      if (range !== null) return { ...(await environmentRangeFileSides(bb.sdk, thread.environmentId, range, file)), headSha: diff.headSha };
       return { ...(await environmentFileSides(bb.sdk, thread.environmentId, file, diff.baseRef)), headSha: null };
     }
     throw new Error("No pull request or thread to diff.");
   }
 
+  /** The text patch of a file the diff came without one for, made from its two sides. */
+  async function loadPatch(ticket: Ticket, path: string, range: CommitRange | null = null): Promise<string | null> {
+    const diff = await ticketDiff(ticket, false, range);
+    const file = diff.files.find((entry) => entry.path === path || entry.previousPath === path);
+    if (file === undefined) throw new Error(`${path} is not in this card's diff`);
+    const sides = await fileSides(ticket, path, range);
+    return patchFromSides(file.path, file.previousPath, sides.old, sides.new);
+  }
+
   const structuralCache = new Map<string, StructuralDiff>();
 
-  async function structuralDiff(ticket: Ticket, path: string): Promise<StructuralDiff> {
+  async function structuralDiff(ticket: Ticket, path: string, range: CommitRange | null = null): Promise<StructuralDiff> {
     if (isVendoredPath(path)) return structuralUnavailable("Vendored file; the structural diff skips these.");
-    const sides = await fileSides(ticket, path);
-    const cacheKey = `${ticket.id}:${path}:${sides.headSha ?? "env"}:${(sides.old ?? "").length}:${(sides.new ?? "").length}`;
+    const sides = await fileSides(ticket, path, range);
+    const cacheKey = `${ticket.id}:${commitRangeKey(range)}:${path}:${sides.headSha ?? "env"}:${(sides.old ?? "").length}:${(sides.new ?? "").length}`;
     const cached = structuralCache.get(cacheKey);
     if (cached !== undefined && sides.headSha !== null) return cached;
     const result = await runDifftastic((await settings.get()).difftPath, path, sides);
@@ -202,7 +317,31 @@ export function createChanges(ctx: KanbanContext) {
     return { startLine: start, lines: all.slice(start - 1, end), totalLines: all.length };
   }
 
-  return { ticketDiff, structuralDiff, symbolDefinitions, symbolUsages, peekFile };
+  /**
+   * Who last changed lines of one side of a file in the card's diff. A PR's sides are its head and base commits, read
+   * from a local checkout that has them, else GitHub's blame; an environment's are its working tree and merge base.
+   */
+  async function blame(ticket: Ticket, path: string, side: "LEFT" | "RIGHT", startLine: number, endLine: number, range: CommitRange | null = null): Promise<BlameLine[]> {
+    const diff = await ticketDiff(ticket, false, range);
+    const file = diff.files.find((entry) => entry.path === path || entry.previousPath === path);
+    if (file === undefined) throw new Error(`${path} is not in this card's diff`);
+    const filePath = side === "LEFT" ? (file.previousPath ?? file.path) : file.path;
+    const localDir = await localWorkspaceDir(ticket);
+    if (ticket.pr !== null) {
+      const rev = range !== null ? (side === "LEFT" ? range.from : range.to) : side === "LEFT" ? diff.baseSha : diff.headSha;
+      if (rev === null) throw new Error("The PR's commits aren't known yet; refresh the diff.");
+      if (localDir !== null && (await containsCommit(localDir.path, rev))) return gitBlame(localDir.path, rev, filePath, startLine, endLine);
+      const auth = await resolveToken(settings);
+      if (auth === null) throw new Error("No GitHub token configured.");
+      return githubBlame(ticket.pr.repo, rev, filePath, startLine, endLine, auth.token);
+    }
+    if (localDir === null) throw new Error("Blame needs a local checkout of the card's thread.");
+    if (range !== null) return gitBlame(localDir.path, side === "LEFT" ? range.from : range.to === WORKTREE_SHA ? null : range.to, filePath, startLine, endLine);
+    // A diff of uncommitted changes alone has no merge base; its old side is HEAD.
+    return side === "LEFT" ? gitBlame(localDir.path, diff.baseRef ?? "HEAD", filePath, startLine, endLine) : gitBlame(localDir.path, null, filePath, startLine, endLine);
+  }
+
+  return { ticketDiff, structuralDiff, symbolDefinitions, symbolUsages, peekFile, loadPatch, blame, ticketCommits };
 }
 
 export type Changes = ReturnType<typeof createChanges>;

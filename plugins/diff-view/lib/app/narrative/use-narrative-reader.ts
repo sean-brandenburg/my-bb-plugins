@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NarrativeStory } from "../../types";
-import { readPreference, writePreference } from "../state";
+import { readPreference, useDiffPreferences, writePreference } from "../state";
 import { affectedAddress, buildChapters, initialAddress, moveChapter, movePage, narratedFiles, pages, searchSteps, type NarrativeChapter, type StepAddress } from "./chapters";
 import { stepExcerpts, type StepExcerpt } from "./excerpts";
 
@@ -48,7 +48,8 @@ export function useNarrativeReader({ story, instanceKey, currentPaths, viewed }:
 
   const chapter: NarrativeChapter | null = address === null ? null : (chapters[address.chapter] ?? null);
   const step = chapter === null || address === null || address.step < 0 ? null : (chapter.steps[address.step] ?? null);
-  const excerpts: StepExcerpt[] = useMemo(() => (step === null || chapter === null ? [] : stepExcerpts(step.refs, chapter.files)), [step, chapter]);
+  const { hideWhitespace } = useDiffPreferences();
+  const excerpts: StepExcerpt[] = useMemo(() => (step === null || chapter === null ? [] : stepExcerpts(step.refs, chapter.files, hideWhitespace)), [step, chapter, hideWhitespace]);
 
   const go = (next: StepAddress | null, where: "start" | "end" = "start"): boolean => {
     if (next === null || address === null || (next.chapter === address.chapter && next.step === address.step)) return false;

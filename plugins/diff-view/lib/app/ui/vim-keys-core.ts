@@ -6,4 +6,6 @@ export {
   type ListMotion,
   mapKeymap,
   ROW_KEYS,
+  compileSearch,
+  matchOffsets,
 } from "../../../../vim-mode/lib/index.ts";

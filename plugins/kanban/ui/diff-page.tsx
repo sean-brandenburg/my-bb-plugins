@@ -51,8 +51,8 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boo
   const planTicketId = plan ? (ticket?.id ?? null) : null;
   return useMemo<DiffSource>(
     () => ({
-      getDiff: (refresh) => rpc.call("diff_get", { ticketId: subjectId, refresh }),
-      getStructural: (path) => rpc.call("diff_structural", { ticketId: subjectId, path }),
+      getDiff: (refresh, range) => rpc.call("diff_get", { ticketId: subjectId, refresh, range: range ?? null }),
+      getStructural: (path, range) => rpc.call("diff_structural", { ticketId: subjectId, path, range: range ?? null }),
       symbolDefinitions: (symbol) => rpc.call("symbol_definitions", { ticketId: subjectId, symbol }),
       symbolUsages: (symbol) => rpc.call("symbol_usages", { ticketId: subjectId, symbol }),
       peekFile: (path, startLine, endLine) => rpc.call("symbol_peek_file", { ticketId: subjectId, path, startLine, endLine }),
@@ -100,6 +100,7 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boo
                 return { cardId: card.id, title: card.title, created };
               },
               openCard: (cardId) => openTicket.current(cardId),
+              setApplied: (reviewId, findingId, applied) => rpc.call("review_set_applied", { reviewId, findingId, applied }),
             },
           }),
       delta: async () => (await rpc.call("diff_delta", { ticketId: subjectId })).delta,
@@ -117,6 +118,17 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boo
         list: async () => (await rpc.call("hunk_explanations_list", { ticketId: subjectId })).explanations,
         explain: (path, side, startLine, endLine) => rpc.call("hunk_explain", { ticketId: subjectId, path, side, startLine, endLine }),
       },
+      loadPatch: async (path, range) => (await rpc.call("diff_load_patch", { ticketId: subjectId, path, range: range ?? null })).patch,
+      blame: async (path, side, startLine, endLine, range) => (await rpc.call("diff_blame", { ticketId: subjectId, path, side, startLine, endLine, range: range ?? null })).lines,
+      suggestions: {
+        apply: async (items, message) => {
+          const result = await rpc.call("suggestions_apply", { ticketId: subjectId, items, message });
+          // Resolving the applied threads changes the board's comment counts.
+          refetch();
+          return result;
+        },
+      },
+      commits: () => rpc.call("diff_commits", { ticketId: subjectId }),
     }),
     [rpc, subjectId, prTicketId, reviewSubjectId, canPostToGithub, defaultCommentTarget, planTicketId, refetch],
   );

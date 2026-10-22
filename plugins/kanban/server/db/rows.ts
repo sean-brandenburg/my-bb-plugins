@@ -157,6 +157,9 @@ export interface PrCommentRow {
   updated_at: string;
   selected: number | null;
   addressed_at: number | null;
+  diff_hunk: string | null;
+  original_line: number | null;
+  original_start_line: number | null;
 }
 
 export interface DiffCommentRow {
@@ -309,6 +312,9 @@ export function rowToComment(row: PrCommentRow): PrComment {
     selected: row.selected === null ? commentSelectedByDefault(row) : row.selected === 1,
     selectionOverride: row.selected === null ? null : row.selected === 1,
     addressedAt: row.addressed_at,
+    diffHunk: row.diff_hunk,
+    originalLine: row.original_line,
+    originalStartLine: row.original_start_line,
   };
 }
 

@@ -6,6 +6,7 @@ import { cn } from "../utils";
 import { FAST, OPACITY_TRANSITION, PRESS, SHIMMER, enter } from "../ui/motion";
 import { errorMessage } from "../format";
 import { useDiffSource } from "../source";
+import { useDiffPreferences } from "../state";
 import { useHostThemeName } from "../theme";
 import { rangesOverlap } from "../ranges";
 import type { PatchAnnotationProps } from "../patch-annotations";
@@ -23,16 +24,15 @@ import { visualRange, type NavRow } from "../keys/nav";
 import { useFileSelection, usePublishNavModel, type FileNavModel } from "../keys/review-keys-context";
 import { enclosingDefinition } from "./enclosing-definition";
 import { detectMoves } from "./moves";
-import { CONTEXT_LINES, hunkSpan, structuralRows, visibleRows, type StructuralRow } from "./rows";
+import { CONTEXT_LINES, hunkSpan, structuralRows, visibleRows } from "./rows";
 import { IDENTIFIER } from "./structural-line";
-import { EXPAND_STEP_LINES, GapRow, StructuralRowView, type RowContext } from "./structural-row";
+import { EXPAND_STEP_LINES, GapRow, StructuralRowView, UnifiedRowView, type RowContext } from "./structural-row";
 import { shikiLangFor, useShikiTokens } from "./syntax";
-
-/** One row the keyboard cursor can stand on: a shown line or a fold of unchanged lines. */
-type NavEntry = { kind: "row"; row: StructuralRow } | { kind: "gap"; from: number; to: number };
+import { tableEntries, unifiedRows } from "./unified-rows";
+import { CommitRangeContext } from "../commits/commit-picker";
 
 /** The hidden row whose lines a fold's cursor takes: the one next to the code the fold opens toward. */
-function foldCursorIndex(entry: NavEntry & { kind: "gap" }): number {
+function foldCursorIndex(entry: { from: number; to: number }): number {
   return entry.from === 0 ? entry.to - 1 : entry.from;
 }
 
@@ -65,6 +65,8 @@ export function StructuralPatch({
   changedRanges,
   fallback,
   fallbackNote,
+  unchangedNote,
+  searchLine = null,
 }: PatchAnnotationProps & {
   /** The file's text diff, shown instead when difftastic cannot diff it. */
   fallback: ReactNode;
@@ -76,13 +78,19 @@ export function StructuralPatch({
   onExplain: ((side: "old" | "new", startLine: number, endLine: number) => void) | null;
   semantics: SemanticChange[];
   changedRanges: Array<[number, number]>;
+  /** Shows the fallback, under this line, when difftastic finds no change (it ignores formatting the line diff has). */
+  unchangedNote?: string;
+  /** The patch line a search took the cursor to, unfolded when it sits in a fold. */
+  searchLine?: { left: number | null; right: number | null } | null;
 }) {
   const { onOpenThread } = useContext(DiffCommentsContext);
   const { source } = useDiffSource();
+  const range = useContext(CommitRangeContext);
   const [diff, setDiff] = useState<StructuralDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
   const [drag, setDrag] = useState<LineDrag | null>(null);
+  const { layout } = useDiffPreferences();
   const tableRef = useRef<HTMLTableElement | null>(null);
   const themeName = useHostThemeName();
   const shikiLang = shikiLangFor(path);
@@ -93,7 +101,7 @@ export function StructuralPatch({
     setDiff(null);
     setError(null);
     setRevealed(new Set());
-    source.getStructural(path).then(
+    source.getStructural(path, range).then(
       (result) => {
         if (!cancelled) setDiff(result);
       },
@@ -104,7 +112,8 @@ export function StructuralPatch({
     return () => {
       cancelled = true;
     };
-  }, [source, path]);
+  }, [source, path, range]);
+  const unchangedFallback = unchangedNote !== undefined && diff !== null && diff.available && diff.status === "unchanged";
   const symbols = useSymbolNavigation(source);
   const latestSymbols = useRef(symbols);
   latestSymbols.current = symbols;
@@ -117,6 +126,7 @@ export function StructuralPatch({
   }, []);
   // GitHub-style hunks: changed rows plus a few lines of context stay visible; everything else collapses behind expanders.
   const allRows = useMemo(() => (diff === null || !diff.available ? null : structuralRows(diff)), [diff]);
+  const drawnRows = useMemo(() => (allRows === null ? null : layout === "unified" ? unifiedRows(allRows) : allRows), [allRows, layout]);
   const text = useMemo(() => {
     if (diff === null || allRows === null) return null;
     const oldLines = diff.oldText.split("\n");
@@ -130,45 +140,29 @@ export function StructuralPatch({
     };
   }, [diff, allRows]);
   const shape = useMemo(() => {
-    if (diff === null || allRows === null) return null;
+    if (diff === null || allRows === null || drawnRows === null) return null;
     const rows = allRows;
     const visible = visibleRows(rows, { revealed, findingLines: findings.map((entry) => entry.line), threads });
     // The cursor's rows in display order: shown lines, and the folds between them, which the cursor can stop on.
-    const entries: NavEntry[] = [];
-    const nav: NavRow[] = [];
-    let hunk = -1;
-    let gapStart: number | null = null;
-    const pushFold = (entry: NavEntry & { kind: "gap" }) => {
+    const entries = tableEntries(drawnRows, visible);
+    const nav: NavRow[] = entries.map((entry) => {
+      if (entry.kind === "row") return { left: entry.row.lhs, right: entry.row.rhs, hunk: entry.hunk, changed: entry.row.changed };
       const at = rows[foldCursorIndex(entry)]!;
-      entries.push(entry);
-      nav.push({ left: at.lhs, right: at.rhs, hunk, changed: false, expander: true });
-    };
-    for (const row of rows) {
-      if (!visible.has(row.index)) {
-        gapStart ??= row.index;
-        continue;
-      }
-      if (gapStart !== null) {
-        pushFold({ kind: "gap", from: gapStart, to: row.index });
-        gapStart = null;
-      }
-      if (row.index === 0 || !visible.has(row.index - 1)) hunk += 1;
-      entries.push({ kind: "row", row });
-      nav.push({ left: row.lhs, right: row.rhs, hunk, changed: row.changed });
-    }
-    if (gapStart !== null) pushFold({ kind: "gap", from: gapStart, to: rows.length });
+      return { left: at.lhs, right: at.rhs, hunk: entry.hunk, changed: false, expander: true };
+    });
     return { rows, visible, entries, nav };
-  }, [diff, allRows, revealed, findings, threads]);
+  }, [diff, allRows, drawnRows, revealed, findings, threads]);
   const navModel = useMemo<FileNavModel | null>(() => {
     // The fallback text diff publishes its own rows.
-    if (error !== null || (diff !== null && !diff.available)) return null;
+    if (error !== null || (diff !== null && !diff.available) || unchangedFallback) return null;
     if (shape === null || text === null) return null;
     const { entries, nav, visible, rows } = shape;
     const sideLines = { LEFT: text.oldLines, RIGHT: text.newLines };
     const rowElement = (row: number) => {
       const entry = entries[row];
       if (entry === undefined) return null;
-      const selector = entry.kind === "row" ? `[data-row="${entry.row.index}"]` : `[data-gap="${entry.from}"]`;
+      const half = layout === "unified" && entry.kind === "row" && (entry.row.lhs === null || entry.row.rhs === null) ? `[data-side="${entry.row.rhs === null ? "LEFT" : "RIGHT"}"]` : "";
+      const selector = entry.kind === "row" ? `[data-row="${entry.row.index}"]${half}` : `[data-gap="${entry.from}"]`;
       return tableRef.current?.querySelector(selector) ?? null;
     };
     const linesOf = (index: number) => ({ left: rows[index]!.lhs, right: rows[index]!.rhs });
@@ -223,8 +217,16 @@ export function StructuralPatch({
         },
       },
     };
-  }, [error, diff, shape, text, reveal]);
+  }, [error, diff, shape, text, reveal, unchangedFallback, layout]);
   usePublishNavModel(path, navModel);
+  const searchLeft = searchLine?.left ?? null;
+  const searchRight = searchLine?.right ?? null;
+  useEffect(() => {
+    if (shape === null || (searchLeft === null && searchRight === null)) return;
+    const row = shape.rows.find((entry) => (searchRight !== null ? entry.rhs === searchRight : entry.lhs === searchLeft));
+    if (row === undefined || shape.visible.has(row.index)) return;
+    reveal(Math.max(0, row.index - CONTEXT_LINES), Math.min(shape.rows.length, row.index + CONTEXT_LINES + 1));
+  }, [shape, searchLeft, searchRight, reveal]);
   const fileSelection = useFileSelection(path);
   // Rows read handlers through this, so their context stays stable while the composer and the hosts' callbacks change.
   const latest = useRef({ composer, onStartComment, rows: allRows });
@@ -293,11 +295,11 @@ export function StructuralPatch({
       document.removeEventListener("pointercancel", cancel);
     };
   }, [drag, onStartComment]);
-  if (error !== null || (diff !== null && !diff.available)) {
+  if (error !== null || (diff !== null && !diff.available) || unchangedFallback) {
     return (
       <>
         <p className="px-3 pt-1.5 text-[11px] text-muted-foreground" title={error ?? diff?.reason ?? undefined}>
-          {fallbackNote ?? "Shown as a line diff: difftastic could not diff this file"}
+          {unchangedFallback ? unchangedNote : (fallbackNote ?? "Shown as a line diff: difftastic could not diff this file")}
         </p>
         {fallback}
       </>
@@ -306,6 +308,8 @@ export function StructuralPatch({
   if (diff === null || shape === null || text === null || rowContext === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   const { oldLines, newLines } = text;
   const { rows, visible } = shape;
+  const unified = layout === "unified";
+  const columns = unified ? 3 : 4;
   const visualSelection = fileSelection?.visual != null ? visualRange(shape.nav, fileSelection.visual, fileSelection.cursor, false) : null;
   const selected = (side: DiffSide, line: number): boolean => {
     if (drag !== null) return side === drag.side && line >= Math.min(drag.anchor, drag.current) && line <= Math.max(drag.anchor, drag.current);
@@ -323,7 +327,7 @@ export function StructuralPatch({
     if (list.length === 0 && !composing && lineFindings.length === 0) return null;
     return (
       <tr key={`${side}-${line}-notes`}>
-        <td colSpan={4} className="px-3 py-1">
+        <td colSpan={columns} className="px-3 py-1">
           {list.map((thread) => (
             <DiffThreadView key={thread.id} thread={thread} />
           ))}
@@ -350,7 +354,7 @@ export function StructuralPatch({
     return (
       <Fragment key={`hunk-${index}`}>
         <tr className="group/hunk bg-muted/30 text-[11px] text-muted-foreground">
-          <td colSpan={4} className="px-3 py-0.5">
+          <td colSpan={columns} className="px-3 py-0.5">
             <div className="flex items-center gap-2">
               <code className="min-w-0 truncate text-muted-foreground/80" title={enclosing ?? undefined}>
                 @@ {span.side === "new" ? "" : "old "}{span.start}–{span.stop}
@@ -389,7 +393,7 @@ export function StructuralPatch({
         </tr>
         {explanation !== null && explanation.status === "completed" && explanation.body !== null ? (
           <tr key={`explain-${index}`}>
-            <td colSpan={4} className="px-3 py-1">
+            <td colSpan={columns} className="px-3 py-1">
               <ExplanationStrip explanation={explanation} />
             </td>
           </tr>
@@ -398,26 +402,25 @@ export function StructuralPatch({
     );
   };
   const gapRow = (from: number, to: number) => (
-    <GapRow key={`gap-${from}`} path={path} from={from} to={to} total={rows.length} first={rows[from]!} last={rows[to - 1]!} at={rows[foldCursorIndex({ kind: "gap", from, to })]!} onReveal={reveal} />
+    <GapRow key={`gap-${from}`} path={path} from={from} to={to} total={rows.length} first={rows[from]!} last={rows[to - 1]!} at={rows[foldCursorIndex({ from, to })]!} onReveal={reveal} columns={columns} />
   );
   const body: ReactNode[] = [];
-  let gapStart: number | null = null;
-  for (const row of rows) {
-    if (!visible.has(row.index)) {
-      gapStart ??= row.index;
+  for (const entry of shape.entries) {
+    if (entry.kind === "gap") {
+      body.push(gapRow(entry.from, entry.to));
       continue;
     }
-    if (gapStart !== null) {
-      body.push(gapRow(gapStart, row.index));
-      gapStart = null;
-    }
-    const startsHunk = row.index === 0 || !visible.has(row.index - 1);
+    const { row } = entry;
     // Only rows the reader unfolded fade in; a row stays in `revealed` for good, so the class never re-triggers.
     const unfolded = revealed.has(row.index);
-    if (startsHunk) body.push(hunkHeader(row.index));
+    if (entry.hunkStart !== null) body.push(hunkHeader(entry.hunkStart));
+    const RowView = unified ? UnifiedRowView : StructuralRowView;
+    // Both halves of a modified pair in unified share the aligned row; the peek opens under one, the new half where there is one.
+    const half = unified && (row.lhs === null || row.rhs === null) ? (row.rhs === null ? "LEFT" : "RIGHT") : null;
+    const peekHere = half !== "LEFT" || rows[row.index]!.rhs === null;
     body.push(
-      <Fragment key={row.index}>
-        <StructuralRowView
+      <Fragment key={half === null ? row.index : `${row.index}:${half}`}>
+        <RowView
           row={row}
           context={rowContext}
           selectedLeft={row.lhs !== null && selected("LEFT", row.lhs)}
@@ -427,9 +430,9 @@ export function StructuralPatch({
         />
         {row.lhs !== null ? annotationRow("LEFT", row.lhs) : null}
         {row.rhs !== null ? annotationRow("RIGHT", row.rhs) : null}
-        {symbols.peek !== null && symbols.peek.rowIndex === row.index ? (
+        {symbols.peek !== null && symbols.peek.rowIndex === row.index && peekHere ? (
           <tr key={`peek-${row.index}`}>
-            <td colSpan={4} className="px-3 py-1">
+            <td colSpan={columns} className="px-3 py-1">
               <SymbolPeek
                 trail={symbols.peek.trail}
                 data={symbols.symbolData(symbols.peek.trail.at(-1)!)}
@@ -445,7 +448,6 @@ export function StructuralPatch({
       </Fragment>,
     );
   }
-  if (gapStart !== null) body.push(gapRow(gapStart, rows.length));
   const hasChanges = rows.some((row) => row.changed);
   return (
     <div className={cn("relative", enter.fade, FAST, symbols.symbolMode && "symbol-mode")}>
@@ -457,16 +459,24 @@ export function StructuralPatch({
         onCancel={onCancelComposer}
       />
       {!hasChanges ? <p className="px-3 py-2 text-sm text-muted-foreground">No structural changes.</p> : null}
-      {/* Two equal halves at any width, never a sideways scroll: long lines wrap at spaces under their own indentation. */}
+      {/* Two equal halves (or, unified, one code column) at any width, never a sideways scroll: long lines wrap at spaces under their own indentation. */}
       <div>
         <table ref={tableRef} className="w-full table-fixed border-collapse font-mono text-[12px] leading-5 [tab-size:4]">
           {/* table-fixed sizes columns from the first row, where an empty side is one colSpan=2 cell; pin the gutters here instead. */}
-          <colgroup>
-            <col className="w-12" />
-            <col />
-            <col className="w-12" />
-            <col />
-          </colgroup>
+          {unified ? (
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-12" />
+              <col />
+            </colgroup>
+          ) : (
+            <colgroup>
+              <col className="w-12" />
+              <col />
+              <col className="w-12" />
+              <col />
+            </colgroup>
+          )}
           <tbody>{body}</tbody>
         </table>
       </div>

@@ -2,7 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { TICKET_TITLE_MAX_LENGTH, boardSchema, columnSchema, dueDateSchema, sourceSchema, syncStatusSchema, tagSchema, ticketSchema } from "./shared/board";
 import { commentApplySchema, diffCommentSchema, diffCommentTargetSchema, pendingReviewStateSchema, prCommentSchema, reviewEventSchema } from "./shared/comments";
-import { diffDeltaSchema, diffSideSchema, structuralDiffSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
+import { blameLineSchema, commitRangeSchema, diffCommitsSchema, diffDeltaSchema, diffSideSchema, structuralDiffSchema, suggestionItemSchema, symbolLookupSchema, symbolUsagesSchema, ticketDiffSchema } from "./shared/diff";
 import { dumpSchema, proposedTicketSchema } from "./shared/dump";
 import { PLAN_MAX_LENGTH, attentionLevelSchema, levelOverrideSchema, loopGatesSchema, pathRuleSchema, projectSettingsSchema } from "./shared/loop";
 import { readingPlanSchema } from "./shared/reading-plan";
@@ -167,11 +167,11 @@ export const rpcContract = defineRpcContract({
     output: projectSettingsSchema,
   },
   diff_get: {
-    input: z.object({ ticketId: z.string(), refresh: z.boolean().default(false) }).strict(),
+    input: z.object({ ticketId: z.string(), refresh: z.boolean().default(false), range: commitRangeSchema.nullable().default(null) }).strict(),
     output: ticketDiffSchema,
   },
   diff_structural: {
-    input: z.object({ ticketId: z.string(), path: z.string().min(1) }).strict(),
+    input: z.object({ ticketId: z.string(), path: z.string().min(1), range: commitRangeSchema.nullable().default(null) }).strict(),
     output: structuralDiffSchema,
   },
   symbol_definitions: {
@@ -387,4 +387,27 @@ export const rpcContract = defineRpcContract({
     output: z.object({ columns: z.array(columnSchema) }),
   },
   sync_now: { input: z.null(), output: syncStatusSchema },
+  /** The text patch of a file the diff came without one for (GitHub leaves big files' patches out), made from its two sides. */
+  diff_load_patch: {
+    input: z.object({ ticketId: z.string(), path: z.string().min(1), range: commitRangeSchema.nullable().default(null) }).strict(),
+    output: z.object({ patch: z.string().nullable() }),
+  },
+  /** Who last changed lines of one side of a file in the card's diff. */
+  diff_blame: {
+    input: z.object({ ticketId: z.string(), path: z.string().min(1), side: diffSideSchema, startLine: z.number().int().min(1), endLine: z.number().int().min(1), range: commitRangeSchema.nullable().default(null) }).strict(),
+    output: z.object({ lines: z.array(blameLineSchema) }),
+  },
+  /**
+   * Applies suggested changes: one commit on a PR card's head branch (then its applied GitHub threads resolve), else
+   * the card thread's checkout, uncommitted. Refused whole when any item's lines moved.
+   */
+  suggestions_apply: {
+    input: z.object({ ticketId: z.string(), items: z.array(suggestionItemSchema).min(1).max(200), message: z.string().trim().min(1).max(2_000).nullable().default(null) }).strict(),
+    output: z.object({ applied: z.number().int(), commitUrl: z.string().nullable() }),
+  },
+  /** The diff's commits (the PR's, or the local checkout's with uncommitted changes last) and review marks, for `gr`. */
+  diff_commits: {
+    input: z.object({ ticketId: z.string() }).strict(),
+    output: diffCommitsSchema,
+  },
 });

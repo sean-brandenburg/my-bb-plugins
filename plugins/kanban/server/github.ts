@@ -1,4 +1,5 @@
 import type { PullRequest, SyncStatus } from "../shared/board";
+import type { BlameLine } from "../shared/diff";
 import type { KanbanSettings } from "./settings";
 import { USER_AGENT, execFileAsync } from "./util";
 
@@ -56,6 +57,7 @@ export interface GithubReviewComment extends GithubIssueComment {
   original_start_line?: number | null;
   start_side?: "LEFT" | "RIGHT" | null;
   in_reply_to_id?: number;
+  diff_hunk?: string;
 }
 export interface GithubReview {
   id: number;
@@ -65,6 +67,8 @@ export interface GithubReview {
   state: string;
   html_url: string;
   submitted_at?: string;
+  /** The commit the review was left on. */
+  commit_id?: string | null;
 }
 
 export interface GithubPullFile {
@@ -92,15 +96,7 @@ export function repoFromRepositoryUrl(url: string): string {
   return url.replace(/^https:\/\/api\.github\.com\/repos\//u, "").toLowerCase();
 }
 
-/** `git@github.com:owner/repo.git` and friends → `owner/repo`, or null. */
-export function githubRepoFromRemote(remote: string | null): string | null {
-  if (remote === null) return null;
-  const match = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/iu.exec(
-    remote.trim(),
-  );
-  if (match === null) return null;
-  return `${match[1]}/${match[2]}`.toLowerCase();
-}
+export { githubRepoFromRemote } from "bb-diff-view/server";
 
 /** `repo#number`, how thread titles name a PR. */
 export function prShortName(pr: { repo: string; number: number }): string {
@@ -440,4 +436,66 @@ export async function searchPulls(query: string, token: string, signal?: AbortSi
     if (result.items.length < 100 || items.length >= result.total_count) break;
   }
   return items;
+}
+
+/** One range of GitHub's GraphQL blame: the lines one commit last changed. */
+export interface GithubBlameRange {
+  startingLine: number;
+  endingLine: number;
+  commit: { oid: string; messageHeadline: string; authoredDate: string; author: { name: string | null; user: { login: string } | null } | null };
+}
+
+/** GitHub's blame ranges as one entry per line of `start`–`end`. */
+export function blameLinesFromRanges(ranges: readonly GithubBlameRange[], start: number, end: number): BlameLine[] {
+  const lines: BlameLine[] = [];
+  for (const range of ranges) {
+    const author = range.commit.author?.user?.login ?? range.commit.author?.name ?? "unknown";
+    const time = Date.parse(range.commit.authoredDate);
+    for (let line = Math.max(start, range.startingLine); line <= Math.min(end, range.endingLine); line++) {
+      lines.push({ line, sha: range.commit.oid, author, time: Number.isNaN(time) ? 0 : time, summary: range.commit.messageHeadline });
+    }
+  }
+  return lines.sort((a, b) => a.line - b.line);
+}
+
+const BLAME_QUERY = `query($owner: String!, $name: String!, $expression: String!, $path: String!) {
+  repository(owner: $owner, name: $name) {
+    object(expression: $expression) {
+      ... on Commit {
+        blame(path: $path) {
+          ranges { startingLine endingLine commit { oid messageHeadline authoredDate author { name user { login } } } }
+        }
+      }
+    }
+  }
+}`;
+
+/** Who last changed lines `start`–`end` of `path` at commit `sha`, from GitHub's GraphQL blame. */
+export async function githubBlame(repo: string, sha: string, path: string, start: number, end: number, token: string, signal?: AbortSignal): Promise<BlameLine[]> {
+  const [owner, name] = repo.split("/");
+  const data = await githubGraphql<{ repository: { object: { blame?: { ranges: GithubBlameRange[] } } | null } | null }>(BLAME_QUERY, { owner, name, expression: sha, path }, token, signal);
+  const ranges = data.repository?.object?.blame?.ranges;
+  if (ranges === undefined) throw new Error(`GitHub has no blame for ${path} at ${sha.slice(0, 7)}`);
+  return blameLinesFromRanges(ranges, start, end);
+}
+
+/** One entry of `/pulls/{n}/commits`. */
+export interface GithubPullCommit {
+  sha: string;
+  commit: { message: string; author: { name?: string | null; date?: string | null } | null };
+  author: { login: string } | null;
+}
+
+/** A pull request's commits, oldest first; GitHub lists at most 250. */
+export async function pullCommits(repo: string, number: number, token: string, signal?: AbortSignal): Promise<GithubPullCommit[]> {
+  return githubPages<GithubPullCommit>(`/repos/${repo}/pulls/${number}/commits`, token, signal, 3);
+}
+
+/** GitHub lists at most this many files of a comparison. */
+export const COMPARE_FILE_LIMIT = 300;
+
+/** The changes from `from` to `to` (three-dot: from their merge base), as GitHub compares them. */
+export async function compareCommits(repo: string, from: string, to: string, token: string, signal?: AbortSignal): Promise<{ mergeBase: string | null; files: GithubPullFile[] }> {
+  const result = await github<{ merge_base_commit?: { sha?: string } | null; files?: GithubPullFile[] }>(`/repos/${repo}/compare/${from}...${to}`, token, signal);
+  return { mergeBase: result.merge_base_commit?.sha ?? null, files: result.files ?? [] };
 }

@@ -3,10 +3,12 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { DiffFile, DiffResult, FileSlice, StructuralDiff, SymbolDefinition, SymbolUsages } from "./types";
+import { applySuggestionsToText, suggestionsByPath } from "./suggestions";
+import type { BlameLine, DiffFile, DiffResult, FileSlice, StructuralDiff, SuggestionItem, SuggestionsApplied, SymbolDefinition, SymbolUsages } from "./types";
+import { WORKTREE_SHA, type CommitRange, type DiffCommit, type DiffCommits } from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,8 +43,10 @@ export function splitUnifiedDiff(diff: string): DiffFile[] {
       if (line.startsWith("+") && !line.startsWith("+++")) additions += 1;
       else if (line.startsWith("-") && !line.startsWith("---")) deletions += 1;
     }
-    const binary = /^Binary files /mu.test(chunk) || !/^@@/mu.test(chunk);
-    files.push({ path, previousPath, status, additions, deletions, patch: binary ? null : chunk, vendored: isVendoredPath(path) });
+    // `git diff --binary` (which bb's SDK runs) writes a "GIT binary patch" instead of the "Binary files" line.
+    const binary = /^(Binary files |GIT binary patch)/mu.test(chunk);
+    const noText = binary || !/^@@/mu.test(chunk);
+    files.push({ path, previousPath, status, additions, deletions, patch: noText ? null : chunk, vendored: isVendoredPath(path), binary });
   }
   return files;
 }
@@ -63,7 +67,7 @@ export function hideVendoredFiles(diff: DiffResult): DiffResult {
 }
 
 export function emptyDiff(source: DiffResult["source"], message: string): DiffResult {
-  return { source, files: [], baseRef: null, baseSha: null, headSha: null, truncated: false, message, fetchedAt: Date.now(), hiddenVendored: null };
+  return { source, files: [], baseRef: null, baseSha: null, headSha: null, truncated: false, message, fetchedAt: Date.now(), hiddenVendored: null, repo: null, environmentId: null };
 }
 
 /** Everything on the environment's branch since it diverged when the merge base is known, else just the working tree. */
@@ -77,7 +81,7 @@ export async function environmentDiff(sdk: Sdk, environmentId: string): Promise<
   if (result.outcome !== "available") {
     return emptyDiff("environment", result.outcome === "not_applicable" ? result.message : result.failure.message);
   }
-  return {
+  const diff: DiffResult = {
     source: "environment",
     files: splitUnifiedDiff(result.diff.diff),
     baseRef: result.diff.mergeBaseRef,
@@ -87,7 +91,143 @@ export async function environmentDiff(sdk: Sdk, environmentId: string): Promise<
     message: null,
     fetchedAt: Date.now(),
     hiddenVendored: null,
+    repo: await environmentRepo(sdk, environmentId),
+    environmentId,
   };
+  if (!diff.truncated) return diff;
+  const local = await localEnvironmentDiff(sdk, environmentId, result.diff.mergeBaseRef).catch(() => null);
+  if (local !== null) return { ...diff, files: local, truncated: false };
+  return withUnlistedFiles(diff, result.diff.files);
+}
+
+const LOCAL_DIFF_MAX_BUFFER = 256 * 1024 * 1024;
+const LOCAL_DIFF_TIMEOUT_MS = 120_000;
+const UNTRACKED_DIFF_CONCURRENCY = 8;
+
+/**
+ * The same diff as bb's SDK gives (against the merge base, or HEAD for uncommitted changes, untracked files included)
+ * read straight from a checkout on this machine, without the SDK's size cap; null when the checkout is elsewhere.
+ */
+export async function localEnvironmentDiff(sdk: Sdk, environmentId: string, mergeBaseRef: string | null): Promise<DiffFile[] | null> {
+  const dir = await localEnvironmentPath(sdk, environmentId);
+  if (dir === null) return null;
+  return checkoutDiff(dir, mergeBaseRef ?? "HEAD", null);
+}
+
+/** `git diff from to` in a checkout; a null `to` is the working tree, untracked files included. */
+async function checkoutDiff(dir: string, from: string, to: string | null): Promise<DiffFile[]> {
+  const options = { cwd: dir, maxBuffer: LOCAL_DIFF_MAX_BUFFER, timeout: LOCAL_DIFF_TIMEOUT_MS };
+  if (to !== null) return splitUnifiedDiff((await execFileAsync("git", ["-c", "core.quotepath=off", "diff", "--no-color", "--no-ext-diff", "-M", from, to, "--"], options)).stdout);
+  const [{ stdout: tracked }, { stdout: untrackedList }] = await Promise.all([
+    execFileAsync("git", ["-c", "core.quotepath=off", "diff", "--no-color", "--no-ext-diff", "-M", from, "--"], options),
+    execFileAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], options),
+  ]);
+  const untracked = untrackedList.split("\0").filter((path) => path !== "");
+  const patches: string[] = [];
+  for (let start = 0; start < untracked.length; start += UNTRACKED_DIFF_CONCURRENCY) {
+    const batch = untracked.slice(start, start + UNTRACKED_DIFF_CONCURRENCY);
+    patches.push(...(await Promise.all(batch.map((path) => gitDiffNoIndex(["/dev/null", path], dir).catch(() => "")))));
+  }
+  return splitUnifiedDiff([tracked, ...patches].join("\n"));
+}
+
+/**
+ * A truncated SDK diff with the files its `--name-status` list names but its cut-off text left out, each without a
+ * patch so the view offers to load it, and a note saying what is missing.
+ */
+export function withUnlistedFiles(diff: DiffResult, nameStatus: string): DiffResult {
+  const listed = parseNameStatus(nameStatus);
+  const present = new Set(diff.files.map((file) => file.path));
+  const unlisted = listed.filter((file) => !present.has(file.path));
+  if (unlisted.length === 0) {
+    return { ...diff, truncatedNote: "bb cut this diff at its size limit, and there is no local checkout to read the whole diff from; some changes may be missing." };
+  }
+  // The text stops partway through its last file.
+  const files = diff.files.map((file, index) => (index === diff.files.length - 1 ? { ...file, patch: null } : file));
+  const missing = unlisted.length + (diff.files.length > 0 ? 1 : 0);
+  return {
+    ...diff,
+    files: [...files, ...unlisted],
+    truncatedNote: `bb cut this diff at its size limit, and there is no local checkout to read the whole diff from: ${missing} of ${files.length + unlisted.length} files came without their changes. Load each one's diff from its section.`,
+  };
+}
+
+const NAME_STATUS: Record<string, string> = { A: "added", D: "removed", R: "renamed", C: "copied" };
+
+/** `git diff --name-status` output (not `-z`) as patchless files. */
+function parseNameStatus(text: string): DiffFile[] {
+  const unquote = (path: string) => (path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path);
+  return text
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .filter((fields) => fields.length >= 2 && /^[A-Z]/u.test(fields[0]!))
+    .map((fields) => {
+      const renamed = fields.length >= 3;
+      const path = unquote(renamed ? fields[2]! : fields[1]!);
+      return { path, previousPath: renamed ? unquote(fields[1]!) : null, status: NAME_STATUS[fields[0]![0]!] ?? "modified", additions: 0, deletions: 0, patch: null, vendored: isVendoredPath(path) };
+    });
+}
+
+/** `git diff --no-index` output, which exits 1 when the files differ. */
+async function gitDiffNoIndex(paths: [string, string], cwd: string): Promise<string> {
+  try {
+    return (await execFileAsync("git", ["-c", "core.quotepath=off", "diff", "--no-index", "--no-color", "--no-ext-diff", "--", ...paths], { cwd, maxBuffer: LOCAL_DIFF_MAX_BUFFER, timeout: LOCAL_DIFF_TIMEOUT_MS })).stdout;
+  } catch (error) {
+    const failed = error as { code?: number; stdout?: unknown };
+    if (failed.code === 1 && typeof failed.stdout === "string") return failed.stdout;
+    throw error;
+  }
+}
+
+/**
+ * One file's unified patch made from its two sides (null: the file does not exist on that side), headed with its real
+ * paths as `git diff` would write them; null when the sides are the same or git finds them binary.
+ */
+export async function patchFromSides(path: string, previousPath: string | null, oldText: string | null, newText: string | null): Promise<string | null> {
+  const dir = await mkdtemp(join(tmpdir(), "diff-view-patch-"));
+  try {
+    await writeFile(join(dir, "old"), oldText ?? "");
+    await writeFile(join(dir, "new"), newText ?? "");
+    const output = await gitDiffNoIndex(["old", "new"], dir);
+    const hunks = output.search(/^@@/mu);
+    if (hunks === -1) return null;
+    const from = previousPath ?? path;
+    const header = [`diff --git a/${from} b/${path}`];
+    if (oldText === null) header.push("new file mode 100644");
+    else if (newText === null) header.push("deleted file mode 100644");
+    else if (from !== path) header.push(`rename from ${from}`, `rename to ${path}`);
+    header.push(oldText === null ? "--- /dev/null" : `--- a/${from}`, newText === null ? "+++ /dev/null" : `+++ b/${path}`);
+    return `${header.join("\n")}\n${output.slice(hunks)}`;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/** `git@github.com:owner/repo.git`, `https://github.com/owner/repo` and friends → `owner/repo` (lowercased), or null. */
+export function githubRepoFromRemote(remote: string | null): string | null {
+  if (remote === null) return null;
+  const match = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/iu.exec(remote.trim());
+  return match === null ? null : `${match[1]}/${match[2]}`.toLowerCase();
+}
+
+/** The GitHub repository a checkout's `origin` remote points at, or null. */
+export async function checkoutGithubRepo(dir: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["remote", "get-url", "origin"], { cwd: dir, timeout: 10_000 });
+    return githubRepoFromRemote(stdout);
+  } catch {
+    return null;
+  }
+}
+
+/** The GitHub repository of an environment whose checkout is on this machine; null for any other. */
+async function environmentRepo(sdk: Sdk, environmentId: string): Promise<string | null> {
+  try {
+    const dir = await localEnvironmentPath(sdk, environmentId);
+    return dir === null ? null : await checkoutGithubRepo(dir);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -286,4 +426,202 @@ export async function grepUsages(dir: string, symbol: string): Promise<Pick<Symb
 function parseGrepLine(line: string): GrepHit | null {
   const match = /^(.+?):(\d+):(.*)$/u.exec(line);
   return match === null ? null : { path: match[1]!, line: Number.parseInt(match[2]!, 10), snippet: match[3]!.trim().slice(0, 200) };
+}
+
+/** The all-zero sha `git blame` gives a line not committed yet. */
+export const UNCOMMITTED_SHA = "0".repeat(40);
+
+/** `git blame --porcelain` (or `--line-porcelain`) output as one entry per line; a commit's details come with its first line only. */
+export function parseBlamePorcelain(output: string): BlameLine[] {
+  const commits = new Map<string, { author: string; time: number; summary: string }>();
+  const lines: BlameLine[] = [];
+  let current: { sha: string; line: number } | null = null;
+  for (const text of output.split("\n")) {
+    if (current === null) {
+      const header = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/u.exec(text);
+      if (header === null) continue;
+      current = { sha: header[1]!, line: Number.parseInt(header[2]!, 10) };
+      if (!commits.has(current.sha)) commits.set(current.sha, { author: "", time: 0, summary: "" });
+      continue;
+    }
+    if (text.startsWith("\t")) {
+      const commit = commits.get(current.sha)!;
+      lines.push({ line: current.line, sha: current.sha, author: commit.author, time: commit.time, summary: commit.summary });
+      current = null;
+      continue;
+    }
+    const space = text.indexOf(" ");
+    const key = space === -1 ? text : text.slice(0, space);
+    const value = space === -1 ? "" : text.slice(space + 1);
+    const commit = commits.get(current.sha)!;
+    if (key === "author") commit.author = value;
+    else if (key === "author-time") commit.time = Number.parseInt(value, 10) * 1000;
+    else if (key === "summary") commit.summary = value;
+  }
+  return lines;
+}
+
+/**
+ * Who last changed lines `start`–`end` of `path` in a checkout: at `rev`, or in the working tree (uncommitted lines
+ * included) when `rev` is null.
+ */
+export async function gitBlame(dir: string, rev: string | null, path: string, start: number, end: number): Promise<BlameLine[]> {
+  if (path.startsWith("/") || path.split("/").includes("..")) throw new Error("Invalid path");
+  const from = Math.max(1, Math.min(start, end));
+  const to = Math.max(from, start, end);
+  const args = ["blame", "--porcelain", "-L", `${from},${to}`, ...(rev === null ? [] : [rev]), "--", path];
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd: dir, timeout: GIT_GREP_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+    return parseBlamePorcelain(stdout);
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr?.trim();
+    throw new Error(`git blame failed: ${stderr !== undefined && stderr !== "" ? stderr.split("\n")[0] : error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Applies suggestions to the files of a checkout, uncommitted. Every file is read and checked before any is written,
+ * so a batch with one stale item changes nothing.
+ */
+export async function applySuggestionsInCheckout(dir: string, items: readonly SuggestionItem[]): Promise<SuggestionsApplied> {
+  const root = resolve(dir);
+  const writes: Array<{ file: string; text: string }> = [];
+  for (const [path, fileItems] of suggestionsByPath(items)) {
+    const file = resolve(root, path);
+    if (!file.startsWith(root + sep)) throw new Error(`Invalid path ${path}`);
+    let text: string;
+    try {
+      text = await readFile(file, "utf8");
+    } catch {
+      throw new Error(`Not applied: ${path} is not in the checkout`);
+    }
+    writes.push({ file, text: applySuggestionsToText(text, fileItems) });
+  }
+  for (const { file, text } of writes) await writeFile(file, text, "utf8");
+  return { applied: items.length, commitUrl: null };
+}
+
+/** A commit sha as a range end may name one: abbreviated or full, lowercase hex. */
+export const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/u;
+
+/** Throws unless both ends are shas (or `to` is the working tree), so nothing else reaches git or a GitHub URL. */
+export function checkedRange(range: CommitRange): CommitRange {
+  if (!COMMIT_SHA_PATTERN.test(range.from) || (range.to !== WORKTREE_SHA && !COMMIT_SHA_PATTERN.test(range.to))) throw new Error("Invalid commit range");
+  return range;
+}
+
+export function commitRangeKey(range: CommitRange | null): string {
+  return range === null ? "all" : `${range.from}..${range.to}`;
+}
+
+const LOG_FORMAT = "%H%x1f%an%x1f%aI%x1f%s";
+
+/** `git log --format=<LOG_FORMAT>` output as commits, in the order given. */
+export function parseGitLog(output: string): DiffCommit[] {
+  return output
+    .split("\n")
+    .map((line) => line.split("\x1f"))
+    .filter((fields) => fields.length >= 4 && COMMIT_SHA_PATTERN.test(fields[0]!))
+    .map(([sha, author, date, ...summary]) => ({ sha: sha!, author: author!, date: date!, summary: summary.join("\x1f") }));
+}
+
+/** The commits on a checkout's HEAD since `base`, oldest first, and uncommitted changes as a last pseudo-commit. */
+export async function localCommits(dir: string, base: string): Promise<DiffCommit[]> {
+  const options = { cwd: dir, maxBuffer: LOCAL_DIFF_MAX_BUFFER, timeout: LOCAL_DIFF_TIMEOUT_MS };
+  const [{ stdout: log }, { stdout: status }] = await Promise.all([
+    execFileAsync("git", ["log", "--reverse", `--format=${LOG_FORMAT}`, `${base}..HEAD`, "--"], options),
+    execFileAsync("git", ["status", "--porcelain"], options),
+  ]);
+  const commits = parseGitLog(log);
+  if (status.trim() !== "") commits.push({ sha: WORKTREE_SHA, summary: "Uncommitted changes", author: "", date: new Date().toISOString() });
+  return commits;
+}
+
+/** An environment's commits since `base` (its diff's merge base; null for a diff of uncommitted changes alone); none without a local checkout. */
+export async function environmentCommits(sdk: Sdk, environmentId: string, base: string | null): Promise<DiffCommits> {
+  const dir = await localEnvironmentPath(sdk, environmentId);
+  if (dir === null) return { commits: [], marks: [], base: null };
+  try {
+    // Resolved to a full sha, since a range's ends must be shas.
+    const from = (await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${base ?? "HEAD"}^{commit}`], { cwd: dir, timeout: 10_000 })).stdout.trim();
+    return { commits: await localCommits(dir, from), marks: [], base: from };
+  } catch {
+    return { commits: [], marks: [], base: null };
+  }
+}
+
+/** One file at a commit of a checkout; null when it is not there. */
+async function gitShow(dir: string, rev: string, path: string): Promise<string | null> {
+  try {
+    return (await execFileAsync("git", ["show", `${rev}:${path}`], { cwd: dir, maxBuffer: LOCAL_DIFF_MAX_BUFFER, timeout: LOCAL_DIFF_TIMEOUT_MS })).stdout;
+  } catch {
+    return null;
+  }
+}
+
+/** Both sides of one file of a range of a checkout's history: at `from`, and at `to` (the working tree for `WORKTREE`). */
+export async function localRangeFileSides(dir: string, range: CommitRange, file: DiffFile): Promise<{ old: string | null; new: string | null }> {
+  const { from, to } = checkedRange(range);
+  const readNew = async () => {
+    if (to !== WORKTREE_SHA) return gitShow(dir, to, file.path);
+    if (file.path.startsWith("/") || file.path.split("/").includes("..")) return null;
+    return readFile(join(dir, file.path), "utf8").catch(() => null);
+  };
+  return {
+    old: file.status === "added" ? null : await gitShow(dir, from, file.previousPath ?? file.path),
+    new: file.status === "removed" ? null : await readNew(),
+  };
+}
+
+const NO_CHECKOUT_FOR_RANGE = "Reading one commit or a range needs a local checkout of this environment.";
+
+/** The changes of part of an environment's history, read from its local checkout. */
+export async function environmentRangeDiff(sdk: Sdk, environmentId: string, range: CommitRange): Promise<DiffResult> {
+  const dir = await localEnvironmentPath(sdk, environmentId);
+  if (dir === null) return { ...emptyDiff("environment", NO_CHECKOUT_FOR_RANGE), environmentId };
+  const { from, to } = checkedRange(range);
+  return {
+    source: "environment",
+    files: await checkoutDiff(dir, from, to === WORKTREE_SHA ? null : to),
+    baseRef: from,
+    baseSha: from,
+    headSha: to === WORKTREE_SHA ? null : to,
+    truncated: false,
+    message: null,
+    fetchedAt: Date.now(),
+    hiddenVendored: null,
+    repo: await checkoutGithubRepo(dir),
+    environmentId,
+  };
+}
+
+export async function environmentRangeFileSides(sdk: Sdk, environmentId: string, range: CommitRange, file: DiffFile): Promise<{ old: string | null; new: string | null }> {
+  const dir = await localEnvironmentPath(sdk, environmentId);
+  if (dir === null) throw new Error(NO_CHECKOUT_FOR_RANGE);
+  return localRangeFileSides(dir, range, file);
+}
+
+/**
+ * Values that are costly to make (a diff read through git or GitHub) kept for a short while, so the calls one view makes
+ * at once (a structural diff per file, the viewed marks) share one read. Pending loads are shared too; a failed one is
+ * dropped so the next call retries.
+ */
+export function createExpiringCache<T>(ttlMs: number, limit = 50) {
+  const entries = new Map<string, { at: number; value: Promise<T> }>();
+  return {
+    get(key: string, load: () => Promise<T>, fresh = false): Promise<T> {
+      const hit = entries.get(key);
+      if (!fresh && hit !== undefined && Date.now() - hit.at < ttlMs) return hit.value;
+      const value = load();
+      entries.delete(key);
+      if (entries.size >= limit) entries.delete(entries.keys().next().value!);
+      const entry = { at: Date.now(), value };
+      entries.set(key, entry);
+      value.catch(() => {
+        if (entries.get(key) === entry) entries.delete(key);
+      });
+      return value;
+    },
+    clear: () => entries.clear(),
+  };
 }

@@ -33,6 +33,11 @@ export const prCommentSchema = z.object({
   /** Set when the user toggled the checkbox, overriding the default. */
   selectionOverride: z.boolean().nullable(),
   addressedAt: z.number().nullable(),
+  /** GitHub's `diff_hunk`: the hunk an inline comment was left on, ending at its line, as GitHub stored it. */
+  diffHunk: z.string().nullable(),
+  /** The line (and a range's first line) the comment was left on, which an outdated comment keeps. */
+  originalLine: z.number().int().nullable(),
+  originalStartLine: z.number().int().nullable(),
 });
 export type PrComment = z.infer<typeof prCommentSchema>;
 

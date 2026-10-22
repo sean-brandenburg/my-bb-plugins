@@ -39,6 +39,8 @@ export const VERIFIED_REPORT_VERSION = 2;
 export const NOT_COVERED_REPORT_VERSION = 3;
 /** The first report version whose verified, introduced findings were triaged; older ones keep the score heuristic. */
 export const TRIAGED_REPORT_VERSION = 4;
+/** The first report version whose findings may carry a `suggestion`, the fix as an exact edit of new-side lines. */
+export const SUGGESTION_REPORT_VERSION = 6;
 
 /**
  * Which finders a review runs: Quick has correctness, CLAUDE.md compliance, scope and style; Standard adds testing and
@@ -67,7 +69,16 @@ export const disputeSchema = z.object({
 });
 export type Dispute = z.infer<typeof disputeSchema>;
 
-export const findingSchema = z.object({
+/**
+ * A finding's fix as an exact edit: inclusive 1-based new-side lines of `file`, and their new text joined by `\n` with
+ * no trailing newline ("" deletes them). Not a range of lines in one of the finding's files makes it null.
+ */
+export const findingSuggestionSchema = z
+  .object({ file: z.string().min(1), startLine: z.number().int().min(1), endLine: z.number().int().min(1), replacement: z.string() })
+  .refine((suggestion) => suggestion.endLine >= suggestion.startLine);
+export type FindingSuggestion = z.infer<typeof findingSuggestionSchema>;
+
+const findingFieldsSchema = z.object({
   id: z.string(),
   severity: findingSeveritySchema,
   title: z.string(),
@@ -106,7 +117,13 @@ export const findingSchema = z.object({
   triage: triageSchema.nullable().default(null),
   /** Set by a re-review on a finding the card's thread disputed, and kept while it is carried forward. */
   dispute: disputeSchema.nullable().default(null),
+  /** Absent before report version 6; a malformed one is dropped rather than failing the whole report. */
+  suggestion: findingSuggestionSchema.nullable().catch(null).default(null),
 });
+
+export const findingSchema = findingFieldsSchema.transform((finding) =>
+  finding.suggestion === null || finding.locations.some((location) => location.file === finding.suggestion!.file) ? finding : { ...finding, suggestion: null },
+);
 export type Finding = z.infer<typeof findingSchema>;
 
 export const selectionSchema = z.record(z.string(), z.boolean());

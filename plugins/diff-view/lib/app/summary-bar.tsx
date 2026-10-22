@@ -5,6 +5,7 @@ import { useDiffSource } from "./source";
 import { setDiffPreferences } from "./state";
 import { FINDING_FILTER_LABEL, nextFindingFilter, type FindingFilter } from "./findings/findings";
 import { PRESS, TRANSFORM_TRANSITION, enter } from "./ui/motion";
+import { CommitsButton } from "./commits/commit-picker";
 
 /** Totals, with what the diff is against and what it leaves out in the tooltip. */
 function DiffStats({ diff }: { diff: DiffResult }) {
@@ -50,10 +51,10 @@ function CommentTargetSwitch({ target, onChange }: { target: DiffCommentTarget; 
   );
 }
 
-export type DiffViewMode = "files" | "narrative";
+export type DiffViewMode = "files" | "narrative" | "comments";
 
-/** Files or the narrative review: the two ways of reading the same change, with the same keys. */
-function ModeSwitch({ mode, stale, onChange }: { mode: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void }) {
+/** Files, the narrative review or every comment thread: the ways of reading the same change, with the same keys. */
+function ModeSwitch({ mode, stale, onChange, narrative = true, comments = false }: { mode: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void; narrative?: boolean; comments?: boolean }) {
   const option = (value: DiffViewMode, label: string, title: string) => (
     <button
       type="button"
@@ -70,14 +71,16 @@ function ModeSwitch({ mode, stale, onChange }: { mode: DiffViewMode; stale: bool
   return (
     <span role="radiogroup" aria-label="How to read the change" className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5 text-[11px]">
       {option("files", "Files", "Every changed file in one scroll (S switches)")}
-      {option("narrative", "Narrative", stale ? "The agent's step-by-step walk through the change; the code moved since it was written (S switches)" : "The agent's step-by-step walk through the change, the same keys on each step's lines (S switches)")}
+      {narrative ? option("narrative", "Narrative", stale ? "The agent's step-by-step walk through the change; the code moved since it was written (S switches)" : "The agent's step-by-step walk through the change, the same keys on each step's lines (S switches)") : null}
+      {comments ? option("comments", "Comments", "Every comment thread, resolved and outdated ones too, over its code (gc switches)") : null}
     </span>
   );
 }
 
 /**
- * The strip above a non-empty diff: the files / narrative switch where the source has a narrative, totals (what the
- * diff is against in their tooltip), where comments go, the findings filter, and progress: files viewed, and in the
+ * The strip above a non-empty diff: the files / narrative / comments switch where the source has a narrative or any
+ * thread, totals (what the diff is against in their tooltip), where comments go, the findings filter, the threads
+ * left out of the diff, and progress: files viewed, and in the
  * narrative the step reached. The keys themselves are on `?`, named in the view's corner label.
  */
 export function SummaryBar({
@@ -89,6 +92,13 @@ export function SummaryBar({
   commentTarget,
   mode,
   progress,
+  whitespace,
+  threads = null,
+  suggestions = null,
+  search = null,
+  layout,
+  commits = null,
+  fileFilter = null,
 }: {
   diff: DiffResult;
   viewed: ReadonlySet<string>;
@@ -98,15 +108,29 @@ export function SummaryBar({
   /** Null unless comments can go to GitHub. */
   commentTarget: { target: DiffCommentTarget; onChange: (target: DiffCommentTarget) => void } | null;
   /** Null when the source has no narrative review to switch to. */
-  mode: { value: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void } | null;
+  mode: { value: DiffViewMode; stale: boolean; onChange: (mode: DiffViewMode) => void; narrative?: boolean; comments?: boolean } | null;
   /** The narrative's page reached, while it is showing. */
   progress: { position: number; total: number } | null;
+  whitespace: { hidden: boolean; onToggle: () => void };
+  /** The threads left out of the diff (resolved, outdated, or all of them by `H`); null in the comments view. */
+  threads?: { resolved: number; outdated: number; hidden: boolean; onOpen: () => void; onShow: () => void } | null;
+  /** The batch of suggestions `B` built; null while it is empty. */
+  suggestions?: { count: number; busy: boolean; onCommit: () => void } | null;
+  /** The `/` search while its matches are highlighted: what was searched and "k of N". */
+  search?: { query: string; count: string; onClear: () => void } | null;
+  /** Split or unified, for the files view's diffs or the narrative's excerpts, whichever is showing. */
+  layout: { value: "split" | "unified"; onToggle: () => void };
+  /** Which commits the diff shows; null when the source lists none. */
+  commits?: { label: string; partial: boolean; onOpen: () => void } | null;
+  /** The file filter while it leaves files out. */
+  fileFilter?: { shown: number; total: number; onClear: () => void } | null;
 }) {
   const viewedCount = diff.files.filter((entry) => viewed.has(entry.path)).length;
   return (
     <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground", enter.fade)}>
-      {mode !== null ? <ModeSwitch mode={mode.value} stale={mode.stale} onChange={mode.onChange} /> : null}
+      {mode !== null ? <ModeSwitch {...mode} mode={mode.value} /> : null}
       <DiffStats diff={diff} />
+      {commits !== null ? <CommitsButton {...commits} /> : null}
       {commentTarget !== null ? <CommentTargetSwitch {...commentTarget} /> : null}
       {findingTotal > 0 ? (
         <button
@@ -120,6 +144,65 @@ export function SummaryBar({
             : findingShown === findingTotal
               ? `${findingTotal} finding${findingTotal === 1 ? "" : "s"}`
               : `${findingShown} of ${findingTotal} findings · ${FINDING_FILTER_LABEL[findingFilter]}`}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        aria-pressed={whitespace.hidden}
+        className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS, whitespace.hidden && "bg-state-active text-foreground")}
+        title={whitespace.hidden ? "Whitespace-only changes are drawn as unchanged lines, and files with nothing else changed are folded. Click (or W) to show them." : "Whitespace changes are drawn like any other. Click (or W) to hide them."}
+        onClick={whitespace.onToggle}
+      >
+        {whitespace.hidden ? "Whitespace hidden" : "Whitespace shown"}
+      </button>
+      {threads !== null && threads.hidden ? (
+        <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS)} title="Comment threads are hidden in the diff. Click or H to show them." onClick={threads.onShow}>
+          threads hidden
+        </button>
+      ) : null}
+      {threads !== null && threads.resolved + threads.outdated > 0 ? (
+        <button type="button" className={cn("rounded px-1.5 py-0.5 text-xs tabular-nums hover:bg-state-hover hover:text-foreground", PRESS)} title="Threads left out of the diff. Click or gc for the comments view, which lists every thread." onClick={threads.onOpen}>
+          {[threads.resolved > 0 ? `${threads.resolved} resolved` : null, threads.outdated > 0 ? `${threads.outdated} outdated` : null].filter((part) => part !== null).join(" · ")}
+        </button>
+      ) : null}
+      {suggestions !== null ? (
+        <button
+          type="button"
+          className={cn("rounded border border-primary/50 bg-primary/10 px-1.5 py-0.5 text-xs tabular-nums text-foreground hover:bg-primary/20 disabled:opacity-50", PRESS)}
+          disabled={suggestions.busy}
+          title="Apply every suggestion in the batch at once: one commit on a pull request, else the checkout's files (gB). B on a thread adds or removes one."
+          onClick={suggestions.onCommit}
+        >
+          Commit {suggestions.count} suggestion{suggestions.count === 1 ? "" : "s"}
+        </button>
+      ) : null}
+      {search !== null ? (
+        <button
+          type="button"
+          className={cn("inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-xs text-foreground hover:bg-amber-500/20", PRESS)}
+          title={`Searching the diff for “${search.query}”: n / N step through the matches. Click (or Esc in the diff) to clear the highlights.`}
+          onClick={search.onClear}
+        >
+          <span className="min-w-0 truncate font-mono">/{search.query}</span>
+          <span className="shrink-0 tabular-nums text-muted-foreground">{search.count}</span>
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className={cn("rounded border border-border px-1.5 py-0.5 text-xs hover:bg-state-hover", PRESS)}
+        title={`${layout.value === "split" ? "Old and new side by side" : "One column, deleted lines above added ones"}. Click (or gl) for ${layout.value === "split" ? "unified" : "split"}.`}
+        onClick={layout.onToggle}
+      >
+        {layout.value === "split" ? "Split" : "Unified"}
+      </button>
+      {fileFilter !== null ? (
+        <button
+          type="button"
+          className={cn("rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-xs tabular-nums text-foreground hover:bg-primary/20", PRESS)}
+          title="The file filter leaves the other files out of the list, the scroll, the keys and search. Click to clear it (gf changes it)."
+          onClick={fileFilter.onClear}
+        >
+          Showing {fileFilter.shown} of {fileFilter.total} files
         </button>
       ) : null}
       <span className="ml-auto inline-flex items-center gap-2 tabular-nums">

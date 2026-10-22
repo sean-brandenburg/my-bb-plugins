@@ -40,6 +40,11 @@ export function isUnsent(entry: ThreadEntry): boolean {
  * one is still unsent here; resolved ones stay, folded, so they can be reopened.
  */
 export function buildDiffThreads(local: readonly DiffComment[], github: readonly GithubComment[]): DiffThread[] {
+  return allDiffThreads(local, github).filter((thread) => !thread.outdated || thread.entries.some(isUnsent));
+}
+
+/** Every thread `buildDiffThreads` merges, outdated ones included (with a null line), for the comments view. */
+export function allDiffThreads(local: readonly DiffComment[], github: readonly GithubComment[]): DiffThread[] {
   const synced = new Set(github.filter((comment) => comment.kind === "review-comment").map((comment) => comment.id));
   // Only an inline synced copy replaces a posted draft; drafts that went into a review body have no inline copy to show.
   const visible = local.filter((comment) => comment.githubCommentId === null || !synced.has(comment.githubCommentId));
@@ -90,7 +95,7 @@ export function buildDiffThreads(local: readonly DiffComment[], github: readonly
     replies.sort((a, b) => entryTime(a) - entryTime(b));
     thread.entries = [root!, ...replies];
   }
-  return [...threads.values()].filter((thread) => !thread.outdated || thread.entries.some(isUnsent));
+  return [...threads.values()];
 }
 
 export function threadIsOpen(thread: DiffThread): boolean {

@@ -25,6 +25,8 @@ export interface DiffFile {
   patch: string | null;
   /** Under a vendored tree (vendor/, node_modules/, third_party/, …): never given a structural diff. */
   vendored: boolean;
+  /** Known to be binary (git's "Binary files" line; a GitHub file with no patch and no line counts); absent when unknown. */
+  binary?: boolean;
 }
 
 export interface DiffResult {
@@ -39,6 +41,12 @@ export interface DiffResult {
   fetchedAt: number;
   /** Vendored files left out of `files`; null when nothing was hidden. */
   hiddenVendored: { files: number; additions: number; deletions: number } | null;
+  /** What a truncated diff is missing, for the banner above it; absent or null leaves a generic one. */
+  truncatedNote?: string | null;
+  /** The GitHub repository (`owner/name`) the code lives in, for links at `headSha` and `baseSha`; null when unknown. */
+  repo: string | null;
+  /** The bb environment holding the changes, whose files open in bb's file preview; null for a PR's diff. */
+  environmentId: string | null;
 }
 
 export interface StructuralLineChanges {
@@ -144,6 +152,11 @@ export interface GithubComment {
   url: string;
   createdAt: string;
   addressedAt: number | null;
+  /** GitHub's `diff_hunk`: the hunk the comment was left on, ending at its line; absent where the host has none. */
+  diffHunk?: string | null;
+  /** The line (and a range's first line) the comment was left on, which an outdated comment keeps. */
+  originalLine?: number | null;
+  originalStartLine?: number | null;
 }
 
 export type FindingSeverity = "critical" | "important" | "minor";
@@ -167,6 +180,16 @@ export interface Finding {
   verification?: string | null;
   /** The kind of mistake, so one fix covers it everywhere; `locations` lists every instance. */
   class?: string | null;
+  /** The fix as an exact edit, when it is one contiguous run of new-side lines; absent before report version 6. */
+  suggestion?: FindingSuggestion | null;
+}
+
+/** Inclusive 1-based new-side lines of `file` and their new text joined by `\n` (no trailing newline; "" deletes them). */
+export interface FindingSuggestion {
+  file: string;
+  startLine: number;
+  endLine: number;
+  replacement: string;
 }
 
 export interface FindingEdit {
@@ -271,4 +294,60 @@ export interface HunkExplanation {
   threadId: string;
   status: "running" | "completed" | "failed";
   body: string | null;
+}
+
+/** Who last changed one line, from `git blame` or GitHub's. A line not yet committed has an all-zero `sha`. */
+export interface BlameLine {
+  line: number;
+  sha: string;
+  author: string;
+  /** When the commit was authored, in epoch milliseconds. */
+  time: number;
+  summary: string;
+}
+
+/**
+ * One suggested change to apply: new-side lines `startLine`–`endLine` of `path`, which read `expected` when it was
+ * made, become `replacement` (empty deletes them). `id` names where it came from: the comment (`review-comment:<n>`
+ * for a synced GitHub one) or a finding.
+ */
+export interface SuggestionItem {
+  id: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  expected: string[];
+  replacement: string[];
+}
+
+/** What applying suggestions did: how many, and the commit they went into where the host commits them. */
+export interface SuggestionsApplied {
+  applied: number;
+  commitUrl: string | null;
+}
+
+/** The pseudo-commit standing for a checkout's uncommitted changes, last in an environment's commit list. */
+export const WORKTREE_SHA = "WORKTREE";
+
+/** Part of a diff's history: the changes after `from` (exclusive) up to and including `to`. */
+export interface CommitRange {
+  from: string;
+  to: string;
+}
+
+export interface DiffCommit {
+  sha: string;
+  /** The commit message's first line. */
+  summary: string;
+  author: string;
+  /** ISO 8601. */
+  date: string;
+}
+
+/** A diff's commits, oldest first, and named points to read on from: a mark's range runs from its sha to the head. */
+export interface DiffCommits {
+  commits: DiffCommit[];
+  marks: Array<{ sha: string; label: string }>;
+  /** Where the first commit's range starts (the merge base); null when unknown. */
+  base: string | null;
 }

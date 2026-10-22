@@ -19,8 +19,20 @@ import { DiffErrorBoundary } from "./text/diff-error-boundary";
 import { CURSOR_RING, CURSOR_SHOWN, useCursorOnHeader, usePublishNavModel, type FileNavModel } from "./keys/review-keys-context";
 import { FileGlyph } from "./file-marks";
 import { useNerdFont } from "./ui/nerd-font";
+import { PatchPlaceholder } from "./large-diff";
+import { FileHeaderMenu } from "./file-actions";
 
 const NO_ROWS: FileNavModel = { rows: [], cutToHunk: false, element: () => null };
+
+/** A file's text diff as the view draws it, after the whitespace preference. */
+export interface ShownPatch {
+  /** Whitespace pairs made context while whitespace is hidden; null when nothing is left to draw. */
+  patch: string | null;
+  /** Every change is whitespace, and whitespace is hidden. */
+  onlyWhitespace: boolean;
+  /** The drawn patch adds or deletes lines. */
+  changed: boolean;
+}
 
 /** A file with no diff to step through still tells the keyboard it has loaded, so the cursor moves past it. */
 export function NoRows({ path }: { path: string }) {
@@ -48,6 +60,10 @@ export function FileSection({
   onExplain,
   semantics,
   changedRanges,
+  shown,
+  loadedPatch,
+  onPatchLoaded,
+  searchLine = null,
 }: {
   file: DiffFile;
   /** Position in the file list, for the entrance cascade. */
@@ -65,6 +81,12 @@ export function FileSection({
   onExplain: ((side: "old" | "new", startLine: number, endLine: number) => void) | null;
   semantics: SemanticChange[];
   changedRanges: Array<[number, number]>;
+  shown: ShownPatch;
+  /** The patch "Load diff" fetched for a file the diff came without one for. */
+  loadedPatch: string | null;
+  onPatchLoaded: (patch: string) => void;
+  /** The patch line a search took the cursor to in this file, for a structural diff to unfold. */
+  searchLine?: { left: number | null; right: number | null } | null;
 }) {
   const { layout } = useDiffPreferences();
   const onHeader = useCursorOnHeader(file.path);
@@ -73,6 +95,8 @@ export function FileSection({
   // Sections past the cap are below the fold when the list mounts; animating hundreds of full diffs at once costs a
   // compositor layer each for nothing. Decided at mount, so a refresh that moves a shown file up the list leaves it be.
   const [entrance] = useState(() => (index <= STAGGER_CAP ? { className: cn(enter.fade, STAGGER), style: stagger(index) } : null));
+  const patch = file.patch ?? loadedPatch;
+  const drawn = shown.patch;
   return (
     <section ref={sectionRef} className={cn("border-b border-border", entrance?.className)} style={entrance?.style}>
       <div className={cn("group/header sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
@@ -94,6 +118,11 @@ export function FileSection({
             large
           </span>
         ) : null}
+        {shown.onlyWhitespace ? (
+          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="Every change in this file is whitespace, which is hidden; collapsed by default (W shows whitespace changes)">
+            Only whitespace changed
+          </span>
+        ) : null}
         <span className="text-xs tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
         <span className="text-xs tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
         <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && `${CURSOR_SHOWN}opacity-100`)}>
@@ -101,6 +130,7 @@ export function FileSection({
             <Icon name="MessageSquare" className="size-3.5" />
           </Button>
         </span>
+        <FileHeaderMenu file={file} />
         <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground">
           <Checkbox checked={viewed} onCheckedChange={onMarkViewed} aria-label={`Mark ${file.path} as viewed`} />
           Viewed
@@ -120,7 +150,18 @@ export function FileSection({
           {() => {
             // GitHub leaves the patch out of a very large file; difftastic reads the checkout, so it still gets a structural diff.
             const textDiff =
-              file.patch === null ? (
+              patch === null ? (
+                <>
+                  <FileLevelComments
+                    path={file.path}
+                    threads={annotations.threads}
+                    composing={annotations.composer !== null}
+                    onSubmit={annotations.onSubmitComposer}
+                    onCancel={annotations.onCancelComposer}
+                  />
+                  <PatchPlaceholder file={file} onLoaded={onPatchLoaded} />
+                </>
+              ) : drawn === null ? (
                 <>
                   <NoRows path={file.path} />
                   <FileLevelComments
@@ -130,19 +171,20 @@ export function FileSection({
                     onSubmit={annotations.onSubmitComposer}
                     onCancel={annotations.onCancelComposer}
                   />
-                  <p className="p-4 text-sm text-muted-foreground">No text diff for this file (binary or too large).</p>
+                  <p className="p-4 text-sm text-muted-foreground">Only whitespace changed (W shows whitespace changes).</p>
                 </>
               ) : (
                 <DiffErrorBoundary key={file.path} fallback={
                     <>
                       <NoRows path={file.path} />
-                      <Diff patch={file.patch} path={file.path} view={layout} className="text-xs" />
+                      <Diff patch={drawn} path={file.path} view={layout} className="text-xs" />
                     </>
                   }>
-                  <AnnotatedPatch key={file.path} {...annotations} patch={file.patch} />
+                  <AnnotatedPatch key={file.path} {...annotations} patch={drawn} />
                 </DiffErrorBoundary>
               );
-            return !file.vendored ? (
+            // difftastic ignores whitespace already, so a file with nothing else changed skips it while whitespace is hidden.
+            return !file.vendored && file.binary !== true && !shown.onlyWhitespace ? (
               <StructuralPatch
                 key={`structural-${file.path}`}
                 {...annotations}
@@ -153,6 +195,8 @@ export function FileSection({
                 changedRanges={changedRanges}
                 fallback={textDiff}
                 fallbackNote={file.patch === null ? "difftastic could not diff this file" : undefined}
+                unchangedNote={shown.changed ? "Shown as a line diff: difftastic finds no change beyond formatting" : undefined}
+                searchLine={searchLine}
               />
             ) : (
               textDiff

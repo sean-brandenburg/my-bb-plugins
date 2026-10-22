@@ -86,7 +86,7 @@ function stubGithub(options: {
   codeSearch?: Array<{ path: string; fragment: string }>;
   comments?: {
     issue?: Array<{ id: number; login: string; body: string }>;
-    review?: Array<{ id: number; login: string; body: string; path: string; line: number | null; side?: "LEFT" | "RIGHT"; startLine?: number; replyTo?: number }>;
+    review?: Array<{ id: number; login: string; body: string; path: string; line: number | null; side?: "LEFT" | "RIGHT"; startLine?: number; replyTo?: number; hunk?: string }>;
     reviews?: Array<{ id: number; login: string; body: string; state: string; submitted?: boolean }>;
   };
   /** Root review-comment ids of resolved threads, answered from the GraphQL reviewThreads query. */
@@ -307,6 +307,7 @@ function stubGithub(options: {
         ...(options.comments?.review ?? []).map((comment) => ({
           id: comment.id, user: { login: comment.login }, body: comment.body, path: comment.path, line: comment.line, original_line: comment.line ?? 1, side: comment.side ?? "RIGHT",
           ...(comment.replyTo === undefined ? {} : { in_reply_to_id: comment.replyTo }),
+          ...(comment.hunk === undefined ? {} : { diff_hunk: comment.hunk }),
           ...(comment.startLine === undefined
             ? { start_line: null, original_start_line: null, start_side: null }
             : { start_line: comment.line === null ? null : comment.startLine, original_start_line: comment.startLine, start_side: comment.side ?? "RIGHT" }),
@@ -3206,7 +3207,7 @@ describe("diff comment threads", () => {
     { id: 10, login: "bob", body: "Rename this to `provisionAll`", path: "a.go", line: 12 },
     { id: 11, login: "sean", body: "Good call", path: "a.go", line: 12, replyTo: 10 },
     { id: 20, login: "bob", body: "Old side nit", path: "a.go", line: 4, side: "LEFT" as const },
-    { id: 30, login: "carol", body: "This moved", path: "b.go", line: null },
+    { id: 30, login: "carol", body: "This moved", path: "b.go", line: null, hunk: "@@ -1,2 +1,2 @@\n-old\n+new" },
   ];
   const ctx = (threadId: string) => ({ threadId, signal: new AbortController().signal });
 
@@ -3225,7 +3226,8 @@ describe("diff comment threads", () => {
     expect(byId.get("review-comment:10")).toMatchObject({ side: "RIGHT", outdated: false, resolved: false });
     expect(byId.get("review-comment:11")).toMatchObject({ inReplyTo: "review-comment:10", resolved: false });
     expect(byId.get("review-comment:20")).toMatchObject({ side: "LEFT", resolved: true });
-    expect(byId.get("review-comment:30")).toMatchObject({ outdated: true, line: 1 });
+    expect(byId.get("review-comment:30")).toMatchObject({ outdated: true, line: 1, diffHunk: "@@ -1,2 +1,2 @@\n-old\n+new", originalLine: 1 });
+    expect(byId.get("review-comment:10")).toMatchObject({ diffHunk: null, originalLine: 12 });
   });
 
   it("resolves and reopens a GitHub review thread from any of its comments, marking the whole thread here", async () => {

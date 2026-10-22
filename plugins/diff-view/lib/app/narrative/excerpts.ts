@@ -4,6 +4,7 @@ import type { DiffThread } from "../comments/threads";
 import type { PlacedFinding } from "../findings/findings";
 import type { ComposerAnchor } from "../patch-annotations";
 import { patchRows } from "../text/patch-rows";
+import { ignoreWhitespacePatch } from "../text/whitespace";
 
 /** A step's refs to one file, in the order the step first names each file. */
 export interface StepExcerpt {
@@ -13,7 +14,11 @@ export interface StepExcerpt {
   patch: string | null;
 }
 
-export function stepExcerpts(refs: readonly NarrativeRef[], files: readonly NarrativePatchFile[]): StepExcerpt[] {
+/**
+ * With `hideWhitespace`, each file's whitespace pairs become context before the step's lines are cut, as cutting first
+ * can split a pair. A hunk holding a line the step names is kept even when only its whitespace changed.
+ */
+export function stepExcerpts(refs: readonly NarrativeRef[], files: readonly NarrativePatchFile[], hideWhitespace = false): StepExcerpt[] {
   // Keyed by the file a ref resolves to, so a renamed file's old and new names make one excerpt.
   const byPath = new Map<string, { file: NarrativePatchFile | null; refs: NarrativeRef[] }>();
   for (const ref of refs) {
@@ -21,7 +26,16 @@ export function stepExcerpts(refs: readonly NarrativeRef[], files: readonly Narr
     const key = file?.path ?? ref.path;
     byPath.set(key, { file, refs: [...(byPath.get(key)?.refs ?? []), ref] });
   }
-  return [...byPath].map(([path, { file, refs: mine }]) => ({ path, refs: mine, file, patch: file?.patch == null ? null : excerptPatch(file.patch, mine) }));
+  const shown = (patch: string, mine: readonly NarrativeRef[]) => {
+    if (!hideWhitespace) return patch;
+    const named = (side: "LEFT" | "RIGHT", line: number) =>
+      mine.some((ref) => ref.startLine === null || ((ref.side === "old") === (side === "LEFT") && line >= Math.min(ref.startLine, ref.endLine ?? ref.startLine) && line <= Math.max(ref.startLine, ref.endLine ?? ref.startLine)));
+    return ignoreWhitespacePatch(patch, named);
+  };
+  return [...byPath].map(([path, { file, refs: mine }]) => {
+    const patch = file?.patch == null ? null : shown(file.patch, mine);
+    return { path, refs: mine, file, patch: patch === null ? null : excerptPatch(patch, mine) };
+  });
 }
 
 /**

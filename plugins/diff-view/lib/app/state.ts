@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { parseFindingFilter, type FindingFilter } from "./findings/findings";
 
 /** Every preference the view keeps in localStorage, under `diff-view:<name>`. */
-export type PreferenceName = "findingFilter" | "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth" | "viewMode" | "narrativeOutline" | "narrativeLayout" | `narrativeAt:${string}` | `narrativeRead:${string}`;
+export type PreferenceName = "findingFilter" | "showFindings" | "tourOpen" | "fileTreeOpen" | "fileTreeWidth" | "viewMode" | "narrativeOutline" | "narrativeLayout" | `narrativeAt:${string}` | `narrativeRead:${string}` | "hideWhitespace" | "hideThreads" | "layout";
 
 /** Reads a preference, falling back to the key kanban stored it under before the diff view became its own plugin. */
 export function readPreference(name: PreferenceName): string | null {
@@ -22,7 +22,7 @@ export function writePreference(name: PreferenceName, value: string): void {
 }
 
 export interface DiffPreferences {
-  /** Layout of files shown as a line diff, the fallback where difftastic cannot diff a file. */
+  /** Layout of the files view's diffs, structural and line alike. */
   layout: "unified" | "split";
   /** Layout of the narrative's excerpts, kept apart from the files' so each view reads as the reader likes. */
   narrativeLayout: "unified" | "split";
@@ -30,6 +30,10 @@ export interface DiffPreferences {
   findingFilter: FindingFilter;
   /** The file list beside the diff, where the view is wide enough for one. */
   fileTreeOpen: boolean;
+  /** Text diffs show whitespace-only changes as unchanged lines, as `git diff -w` does. */
+  hideWhitespace: boolean;
+  /** Comment threads are left out of the files and narrative views (the comments view still lists them). */
+  hideThreads: boolean;
 }
 
 function createStore<T>(initial: T) {
@@ -49,10 +53,12 @@ function createStore<T>(initial: T) {
 }
 
 const preferences = createStore<DiffPreferences>({
-  layout: "split",
+  layout: readPreference("layout") === "unified" ? "unified" : "split",
   narrativeLayout: readPreference("narrativeLayout") === "unified" ? "unified" : "split",
   findingFilter: parseFindingFilter(readPreference("findingFilter"), readPreference("showFindings")),
   fileTreeOpen: readPreference("fileTreeOpen") !== "false",
+  hideWhitespace: readPreference("hideWhitespace") !== "false",
+  hideThreads: readPreference("hideThreads") === "true",
 });
 
 export function setDiffPreferences(patch: Partial<DiffPreferences>): void {
@@ -60,6 +66,9 @@ export function setDiffPreferences(patch: Partial<DiffPreferences>): void {
   if (patch.findingFilter !== undefined) writePreference("findingFilter", patch.findingFilter);
   if (patch.narrativeLayout !== undefined) writePreference("narrativeLayout", patch.narrativeLayout);
   if (patch.fileTreeOpen !== undefined) writePreference("fileTreeOpen", String(patch.fileTreeOpen));
+  if (patch.hideWhitespace !== undefined) writePreference("hideWhitespace", String(patch.hideWhitespace));
+  if (patch.hideThreads !== undefined) writePreference("hideThreads", String(patch.hideThreads));
+  if (patch.layout !== undefined) writePreference("layout", patch.layout);
 }
 
 export function useDiffPreferences(): DiffPreferences {

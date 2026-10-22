@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { DiffFile } from "../../types";
 import { cn } from "../utils";
 import { FAST, enter } from "../ui/motion";
-import { KeyHelp, type Keymap, useKeyHandler, usePickerKeys } from "../ui/vim-keys";
+import { KeyHelp, type Keymap, useKeyHandler, usePickerKeys, useSearchBoxKeys } from "../ui/vim-keys";
 import type { KeyHelpSection } from "../ui/vim-keys-core";
 import { KEY_HELP } from "./keymap";
 import { rankFiles } from "./rank-files";
@@ -135,4 +135,56 @@ export function fileItems(files: readonly DiffFile[], query: string): PickerItem
       </>
     ),
   }));
+}
+
+/** The box `/` opens over the diff: the matches highlight as you type; Enter goes to the first, Escape drops the search. */
+export function SearchBox({
+  initialQuery,
+  count,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  initialQuery: string;
+  /** "k of N", or why there is none. */
+  count: string;
+  onChange: (query: string) => void;
+  onCommit: (query: string) => void;
+  onCancel: () => void;
+}) {
+  const [query, setQuery] = useState(initialQuery);
+  const onKeyDown = useSearchBoxKeys({
+    commit: () => onCommit(query),
+    cancel: () => {
+      onCancel();
+      return true;
+    },
+    cancelOnEmptyBackspace: true,
+  });
+  return (
+    <div role="search" className={cn("absolute inset-x-3 top-3 z-20 flex items-center gap-2 rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-lg", enter.drop, FAST)}>
+      <span aria-hidden="true" className="font-mono text-sm text-muted-foreground">
+        /
+      </span>
+      <input
+        autoFocus
+        // Vim keys would take Escape; this box has its own.
+        data-vim-ignore=""
+        value={query}
+        placeholder="Search the diff (a regex; capitals match case)…"
+        aria-label="Search the diff"
+        className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground"
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          onChange(event.target.value);
+        }}
+        onBlur={onCancel}
+        onKeyDown={onKeyDown}
+      />
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+        {count}
+      </span>
+    </div>
+  );
 }

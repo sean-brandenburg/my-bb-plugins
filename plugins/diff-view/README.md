@@ -14,11 +14,27 @@ plugins embed.
 - The view: every changed file in one scroll with sticky headers, a resizable
   file tree once the container is at least 48rem wide (hidden in a narrow side
   panel), structural (difftastic) diffs, with a text (Pierre) diff for any file
-  difftastic cannot diff (`gl` switches those between split, the default, and
-  unified), two equal halves at any width with long lines wrapped at spaces
+  difftastic cannot diff, split (the default) or unified for every file (`gl`
+  or the summary bar's Split / Unified button, remembered across sessions),
+  split as two equal halves at any width with long lines wrapped at spaces
   under their own indentation (never a sideways scroll), viewed marks, and
   ⌘-hover and ⌘-click symbol peeks in the thread's checkout. A structural
   hunk header (`@@`) is left out when the hunk is the whole file.
+- **Unified structural**: one code column under old and new line numbers,
+  wrapped the same way. An unchanged line shows once with both numbers; in
+  each change block the deleted lines come before the added ones, so a
+  modified line is a deletion then an addition, as on GitHub, with
+  difftastic's token highlights kept. `j`/`k` step through that order and
+  `h`/`l` pick the old or new number on an unchanged line; comments (a line
+  number, a drag, `i`, `V`), findings, folds, moved-block labels and symbol
+  peeks work as in split.
+- **Large diffs**: a text file that came without a patch (too large) and that
+  difftastic cannot diff shows "Load diff (N lines changed)"; the button, or
+  Enter on the file's header, makes its patch from the two sides and shows it
+  as a text diff. A binary file says so. When bb's diff of the thread is cut
+  at its size limit, the view reads the whole diff from the local checkout
+  instead; with no local checkout, a banner above the diff says how many files
+  came without their changes (each can still be loaded).
 - **File marks**: with a Nerd Font (see the nerd-font plugin), each file in the
   tree and on its header leads with one muted icon: a diff glyph when it was
   added, deleted, renamed or copied, its file type otherwise. Without one, the
@@ -30,6 +46,35 @@ plugins embed.
   comment to the thread's agent as one message. Hosts whose comments can go to
   GitHub (kanban's PR cards) get a "→ Local / → GitHub PR" button above the
   diff (`T`) that applies to every new comment and reply.
+  Resolved and outdated threads leave the diff (a resolved or outdated one
+  with an unsent reply stays); the summary bar says how many there are, and
+  `H` hides every thread from the diff (kept across sessions, and said in the
+  summary bar).
+- **Suggested changes**: a ```` ```suggestion ```` block in any comment
+  (local or GitHub, threads and drafts) shows as a small diff: the commented
+  new-side lines as they read today, removed, and the suggestion, added. `I`
+  on a line or a `V` selection opens a comment holding those lines in a
+  suggestion block with the caret inside it; in any comment box the
+  "Suggest" button, or ⌘⇧S, inserts one for its lines. On a thread whose
+  suggestion can still apply (not outdated or resolved, its lines in the
+  diff), "Apply suggestion" or `A` applies it now, and "Add to batch" or `B`
+  puts it in the batch (outlined, "in batch"); "Commit N suggestions" in the
+  summary bar, or `gB`, applies the batch. Hosts with a checkout write its
+  files (the diff-view plugin; kanban's thread cards); kanban's PR cards
+  commit to the PR branch and resolve the applied threads. A suggestion
+  whose lines changed since is refused (nothing in the batch is applied),
+  an applied one says "applied", and the diff refreshes. Comments with a
+  suggestion reach the agent with a line saying the block is the exact
+  replacement for the lines.
+- **Comments view**: a third reading mode beside Files (and Narrative), shown
+  once there is a thread, or `gc` (again to return where you were). It lists
+  every thread grouped by file in diff order (open, resolved, outdated,
+  local and GitHub), each over its code: the commented lines of today's diff,
+  or for an outdated GitHub thread the hunk GitHub stored when it was left; a
+  thread with neither sits under its file's name. Chips (or `F` there) filter
+  open, resolved, outdated or all. The files view's cursor and thread keys
+  work on it (`j`/`k`, `c`, Enter, `a`, `r`, `e`, `dd`, `M`, `gx`, `go`), and
+  `gf` (or a file name) opens the files view at the thread's line.
 - **Review findings** (hosts with reviews, such as kanban) show as one line
   each under their line: severity, title and the apply-round checkbox. A
   finding opens to its description, fix and scores on click, Enter, or while
@@ -43,9 +88,38 @@ plugins embed.
   the diff, each folded under its count, the pre-existing ones with "Make a
   card" when the host can make cards. A finding's scores (importance, scope
   fit, verifier confidence, bug class) are in its id's tooltip once it is
-  open.
+  open. A finding whose fix is an exact edit (the review report's
+  `suggestion`, version 6) shows it under the fix as the same suggestion diff,
+  labelled with its file and lines: "Apply suggestion" or `A` applies it now
+  and "Add to batch" or `B` batches it, as for a comment's, and applying it
+  marks the finding applied (the host's `reviews.setApplied`), so it leaves
+  the diff. On a host whose comments can go to GitHub, "Post to PR" or `gs`
+  posts it as a draft GitHub comment on its lines: the finding's title and
+  description, then the suggestion block (`s` submits the review).
 - **Viewed marks** remember the file's patch; a mark lapses once the file
   changes again.
+- **Whitespace** changes are hidden by default, as `git diff -w` hides them:
+  in text diffs (and the narrative's excerpts), lines that differ only in
+  whitespace show as unchanged, with every line number kept, and a hunk with
+  nothing else changed is left out unless a comment or finding sits on it. A
+  file whose only changes are whitespace says "Only whitespace changed" and
+  starts collapsed. The "Whitespace hidden / shown" chip in the summary bar,
+  or `W`, switches it, remembered across sessions; with whitespace shown, a
+  file difftastic finds unchanged is drawn as a text diff, so its whitespace
+  changes show. The summary bar's totals are always the raw counts.
+- **Commits**: the summary bar's "Commits: All changes" control, or `gr`,
+  opens a picker of All changes, the host's review marks ("Since last
+  review"), then every commit, oldest first: `j`/`k` move, Enter (or a click)
+  picks one, Space or `x` (or a shift-click) on a commit starts a range and
+  Enter on another picks every commit between them, Escape closes. The diff
+  then shows only that part of the history and the control names it (`abc1234`,
+  "3 commits", a mark). A partial range is for reading: comments and viewed
+  marks work only when it ends at the head, and only on new-side lines, where
+  existing threads and findings still show; otherwise `i` and `v` say to switch
+  back to All changes. The "since you last looked" strip and the narrative wait
+  for All changes. A thread's commits come from its local checkout (`git log`
+  since the merge base, uncommitted changes as a last "Uncommitted" entry);
+  without one there are none.
 - **Keyboard**: the whole review runs on vim-style keys, sent to the view that
   last had the pointer or focus, never while typing in a text box. "Changes:
   review with the keyboard" (⌘⇧D by default, rebindable in bb's keyboard
@@ -61,9 +135,21 @@ plugins embed.
   list), `]c`/`[c` changes, `}`/`{` hunks, `]f`/`[f` files, `c`/`C`
   comment threads and review findings (one at a time when several share a
   line), `]d`/`[d` findings only, `gg`/`G`, Ctrl-D/U/F/B, and `zz`/`zt`/`zb`.
-  `/` searches file names and `n`/`N` step through the files it matched.
+  `/` searches the diff's text: every file's old and new lines as drawn (with
+  whitespace hidden, a whitespace-only change never matches), collapsed,
+  viewed and not-yet-scrolled-to files included. It is a regex with smartcase
+  (a capital matches case), and the matches on screen highlight as you type,
+  in structural and line diffs alike; Enter goes to the first match at or
+  after the cursor and Escape drops the search. `n`/`N` move the cursor to
+  the next / previous match (a count skips several), opening a collapsed file
+  or a fold of unchanged lines to reach it and wrapping past either end, as
+  in vim. The box, and the summary bar while matches are highlighted, shows
+  "k of N"; Escape in the diff (with nothing else to close) or a click on the
+  summary bar's search chip clears the highlights, and `n` brings them back.
+  `f` finds a file by name and jumps to it.
   `i` comments on the cursor's line, or on the file from its header; `V`
-  selects lines for a range comment; `O` comments on the file. The comment or
+  selects lines for a range comment; `O` comments on the file. Enter on the
+  header of a file shown as "Load diff" loads its diff. The comment or
   finding under the cursor is outlined and lists the keys it takes: Enter (or
   `za`) opens or closes it, `a` replies to a thread, `r` resolves or reopens
   a GitHub thread, `e` edits your unsent comment or a finding's wording, `dd` deletes your unsent comment, `x`
@@ -84,18 +170,46 @@ plugins embed.
   opens one or makes a card, Escape returns),
   `K` asks for an explanation of the hunk, `S` switches to the narrative
   review where the host has one (see below),
-  `gd` peeks at a symbol on the line (Escape closes it), `gl` switches line-diff files between
-  split and unified, `R` refreshes, and
-  `?` lists every key (`/` in that list searches it).
+  `gd` peeks at a symbol on the line (Escape closes it), `gl` switches every file between
+  split and unified, `W` hides or shows whitespace changes, `R` refreshes,
+  `gc` opens the comments view (see above), `H` hides or shows the threads in
+  the diff, `I` suggests a change to the line or selection, `A` applies the
+  suggestion in the thread or review finding under the cursor, `B` adds it to
+  the batch (or takes it out) and `gB` applies the batch (see Suggested
+  changes), `gs` posts a finding's suggestion to the PR as a draft (see
+  Review findings), and
+  `?` lists every key (`/` in that list searches it). `gr` picks the commits shown (see Commits above).
+  `yp` copies the file's path and `yl` a link to the line or the `V`
+  selection: a GitHub permalink at the head (the base for old-side lines)
+  where the repository and commit are known, as on a PR, else
+  `path:L10-14`. `gO` opens the file at the line in bb's file preview for a
+  checkout, else on GitHub. `gb` shows who last changed the line or
+  selection, one row per commit (short sha, author, age, summary): `j`/`k`
+  move, Enter opens the commit on GitHub, Escape closes. A thread's blame
+  reads its checkout: the working tree for new lines, the merge base for old.
+  Each file header's "…" menu does the same by mouse for the whole file
+  (Copy path, Copy link, Open file, and Blame of its first hunk).
   `t` shows or hides the file list. In it, `j`/`k` move (a count repeats),
   `h`/`l` close and open folders (`h` on a file goes to its folder), `gg`/`G`
   and Ctrl-D/U jump, Enter, `o` or `l` jumps to the file with the cursor on its
   header, and Escape returns to the diff. `?`, `/` and `t` keep working there;
-  the help, search, refresh, layout and file-list keys work before a diff has
+  the help, search, refresh, layout, whitespace and file-list keys work before a diff has
   loaded.
+  `gf` (or the funnel on the file list's header) opens "Filter files", as on
+  GitHub: a tick per file extension present (with counts; "No extension" for
+  Makefiles and dotfiles), per change type (added, modified, renamed,
+  deleted), "Hide viewed files", "Only files with comments" (any thread,
+  resolved and outdated too), "Only files with findings" (where the view has
+  findings) and "Clear filters"; `j`/`k` move, Space or Enter ticks, Escape
+  closes. Filtered files leave the file list, the scroll, the cursor's motions
+  (`]f`/`[f`, `j`/`k` past a file, `gg`/`G`), `f` and `/`; the summary bar
+  says "Showing 12 of 40 files" (a click clears the filter). Going to a
+  filtered file from elsewhere (the delta strip, the narrative, the comments
+  view) clears the filter. Each view keeps its filter for the session.
 
 - **Narrative review** (hosts whose source serves a story, such as kanban): a
-  **Files | Narrative** switch at the left of the summary bar, or `S`, swaps
+  **Files | Narrative** switch (with Comments once there is a thread) at the
+  left of the summary bar, or `S`, swaps
   the file list for the agent's walk through the change. Each page is one
   step: its explanation over just the lines it covers, as excerpts of the
   diff drawn by the same renderer as the files view, so the cursor, comments
@@ -114,7 +228,8 @@ plugins embed.
   excerpts, `gf` opens the files view at the cursor's line (an excerpt's
   header too), `ga` follows a revision step to the step it led to, `gv`
   marks viewed the files every one of whose steps has been read, `/` and
-  `n`/`N` search steps, `gl` switches the excerpts between split (the
+  `n`/`N` search steps, `f` finds a file by name and opens it in the files
+  view, `gl` switches the excerpts between split (the
   default) and unified, `U` writes a narrative (or an update once the code
   moved, which the switch flags with a dot), `S` returns to the files with
   the cursor where it was. Steps of an earlier narrative or a revision show
@@ -144,11 +259,32 @@ dependency:
   drafts, review findings, the delta since the last look, a tour, hunk
   explanations); each optional group turns on its part of the UI. A tour
   group with `story()` adds the narrative review and its switch (`S`).
+  `loadPatch(path)` adds "Load diff" to files that came without a patch.
+  `commits()` adds the commit picker (`gr`); `getDiff`, `getStructural` and
+  `loadPatch` then take a `CommitRange { from, to }` (`from` exclusive, `to`
+  possibly `WORKTREE`).
+  `DiffResult.truncatedNote` is the banner's text for a truncated diff, and
+  `DiffFile.binary` labels a file as binary. `suggestions.apply(items,
+  message)` lights up `A`, `B` and `gB`: each `SuggestionItem` carries the
+  lines it expects, and the host refuses the call when any moved. A finding's
+  item has the id `finding:<reviewId>/<findingId>`; after it applies, the view
+  calls `reviews.setApplied(reviewId, findingId, true)` when the source has it.
+- `bb-diff-view/suggestions`: finding suggestion blocks in a comment body,
+  writing one, the new-side lines a patch shows, and applying items to a
+  file's text with the expected-line check. `SuggestionDiff`
+  (`bb-diff-view/app/suggestions/suggestion-diff`) draws one.
 - `bb-diff-view/narrative`: changed-line coverage of a narrative's steps and
   the excerpt patch for a step's lines, shared by servers that check an
   agent's narrative and the view that renders it.
 - `bb-diff-view/app/icons`: call `registerDiffViewIcons(app)` in
   `definePluginApp`.
-- `bb-diff-view/server`: unified-diff parsing, an environment's diff and file
-  sides, difftastic, and `git grep` symbol search.
+- `bb-diff-view/server`: unified-diff parsing, an environment's diff (read
+  from the local checkout when bb's is truncated, with its checkout's GitHub
+  repository) and file sides, `patchFromSides` (a file's patch from its two
+  sides, for `loadPatch`), difftastic, `git grep` symbol search,
+  `git blame`, and `applySuggestionsInCheckout`. A source with `blame` lights up `gb`; a diff's `repo` and shas
+  make `yl` links GitHub permalinks. For commit ranges: `environmentCommits`,
+  `environmentRangeDiff` and `environmentRangeFileSides` (local git),
+  `checkedRange` (only shas reach git), and `createExpiringCache`, which the
+  plugin uses so one view's per-file calls share one diff read for 15 seconds.
 - `bb-diff-view/types`: the data shapes.

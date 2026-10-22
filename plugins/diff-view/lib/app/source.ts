@@ -1,9 +1,13 @@
 import { createContext, useContext } from "react";
 import type {
+  BlameLine,
+  CommitRange,
+  DiffCommits,
   DiffComment,
   DiffCommentTarget,
   DiffDelta,
   DiffResult,
+  DiffSide,
   FileSlice,
   FindingEdit,
   GithubComment,
@@ -13,6 +17,8 @@ import type {
   NarrativeStory,
   Review,
   StructuralDiff,
+  SuggestionItem,
+  SuggestionsApplied,
   SymbolLookup,
   SymbolUsages,
   TourState,
@@ -23,8 +29,9 @@ import type {
  * review findings, the tour and hunk explanations. Keep the object stable (memoize it): the view refetches when it changes.
  */
 export interface DiffSource {
-  getDiff(refresh: boolean): Promise<DiffResult>;
-  getStructural(path: string): Promise<StructuralDiff>;
+  /** `range` limits the diff to part of its history (see `commits`); null or absent is all the changes. */
+  getDiff(refresh: boolean, range?: CommitRange | null): Promise<DiffResult>;
+  getStructural(path: string, range?: CommitRange | null): Promise<StructuralDiff>;
   symbolDefinitions(symbol: string): Promise<SymbolLookup>;
   symbolUsages(symbol: string): Promise<SymbolUsages>;
   peekFile(path: string, startLine: number, endLine: number): Promise<FileSlice>;
@@ -49,6 +56,8 @@ export interface DiffSource {
     makeCard?(reviewId: string, findingId: string): Promise<{ cardId: string; title: string; created: boolean }>;
     /** Shows a card `makeCard` returned. */
     openCard?(cardId: string): void;
+    /** Marks a finding fixed (or not), so the diff leaves it out; applying a finding's suggestion marks it. */
+    setApplied?(reviewId: string, findingId: string, applied: boolean): Promise<Review>;
   };
   /** What changed since the head the reviewer last looked at. */
   delta?(): Promise<DiffDelta | null>;
@@ -58,6 +67,17 @@ export interface DiffSource {
     list(): Promise<HunkExplanation[]>;
     explain(path: string, side: "old" | "new", startLine: number, endLine: number): Promise<HunkExplanation>;
   };
+  /** The text patch of a file the diff came without one for (too large), made from its two sides; null when there is none. */
+  loadPatch?(path: string, range?: CommitRange | null): Promise<string | null>;
+  /** Who last changed lines `startLine`–`endLine` of one side of a file in the diff; lights up `gb`. */
+  blame?(path: string, side: DiffSide, startLine: number, endLine: number, range?: CommitRange | null): Promise<BlameLine[]>;
+  /**
+   * Applies suggested changes, one or a batch, refusing them all when any item's `expected` lines moved; a null
+   * message is the host's default. Lights up `A`, `B` and `gB`, for comments' and findings' suggestions.
+   */
+  suggestions?: { apply(items: SuggestionItem[], message: string | null): Promise<SuggestionsApplied> };
+  /** The diff's commits and review marks, for reading one commit or a range of them; lights up `gr`. */
+  commits?(): Promise<DiffCommits>;
 }
 
 /** Copy that names where comments live, so each host can speak in its own terms. */

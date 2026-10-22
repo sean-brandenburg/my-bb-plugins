@@ -10,7 +10,7 @@ import { useKeyScope } from "./ui/vim-keys";
  * The file list, the narrative outline and the findings listed above the diff take their own keys first; of the
  * diff's, only these work from them. The rest are swallowed rather than left to bb, as all are part of the diff.
  */
-const PAST_OWN_LISTS: ReadonlySet<string> = new Set(["help", "findFile"] satisfies ReviewCommand["kind"][]);
+const PAST_OWN_LISTS: ReadonlySet<string> = new Set(["help", "findFile", "searchText"] satisfies ReviewCommand["kind"][]);
 const OWN_LISTS = `[data-file-tree], ${NARRATIVE_OUTLINE}, ${OUTSIDE_FINDINGS}`;
 const MAX_COUNT = 9999;
 

@@ -42,7 +42,27 @@ export type ReviewCommand =
   | { kind: "narrative" }
   | { kind: "escape" }
   /** No key: the reader scrolled by hand, and the cursor moves to the line now in the middle. */
-  | { kind: "follow" };
+  | { kind: "follow" }
+  | { kind: "whitespace" }
+  | { kind: "copyPath" }
+  | { kind: "copyLink" }
+  | { kind: "openFile" }
+  | { kind: "blame" }
+  /** The comments view, from the files or the narrative; again, back where the reader was. */
+  | { kind: "commentsView" }
+  | { kind: "hideThreads" }
+  /** A comment on the line or selection holding its text in a suggestion block. */
+  | { kind: "suggest" }
+  | { kind: "applySuggestion" }
+  | { kind: "batchSuggestion" }
+  | { kind: "commitSuggestions" }
+  /** `/`: search the diff's text; `n`/`N` step through what it matched. */
+  | { kind: "searchText" }
+  | { kind: "commits" }
+  /** The "Filter files" menu: extensions, change types, viewed, with comments, with findings. */
+  | { kind: "fileFilter" }
+  /** A finding's suggestion to the pull request as a draft suggestion comment. */
+  | { kind: "postSuggestion" };
 
 /** Review commands by key sequence; a count typed before one repeats it. */
 export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
@@ -101,13 +121,28 @@ export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   gl: { kind: "layout" },
   R: { kind: "refresh" },
   s: { kind: "send" },
-  "/": { kind: "findFile" },
+  "/": { kind: "searchText" },
   n: { kind: "searchNext", direction: 1 },
   N: { kind: "searchNext", direction: -1 },
   gd: { kind: "peek" },
   S: { kind: "narrative" },
   "?": { kind: "help" },
   "<Esc>": { kind: "escape" },
+  W: { kind: "whitespace" },
+  yp: { kind: "copyPath" },
+  yl: { kind: "copyLink" },
+  gO: { kind: "openFile" },
+  gb: { kind: "blame" },
+  gc: { kind: "commentsView" },
+  H: { kind: "hideThreads" },
+  I: { kind: "suggest" },
+  A: { kind: "applySuggestion" },
+  B: { kind: "batchSuggestion" },
+  gB: { kind: "commitSuggestions" },
+  f: { kind: "findFile" },
+  gr: { kind: "commits" },
+  gf: { kind: "fileFilter" },
+  gs: { kind: "postSuggestion" },
 };
 
 export type FileTreeCommand = { kind: "list"; motion: ListMotion } | { kind: "scroll"; step: 1 | -1 } | { kind: "leave" } | { kind: "hide" };
@@ -144,8 +179,9 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["gg", "G"], action: "First / last line" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page down / up (Ctrl-f / Ctrl-b a whole page)" },
       { keys: ["zz", "zt", "zb"], action: "Scroll the cursor to the middle / top / bottom" },
-      { keys: ["/"], action: "Search file names and jump to one" },
-      { keys: ["n", "N"], action: "Next / previous file matching the search" },
+      { keys: ["/"], action: "Search the diff's text, every file's old and new lines (a regex; capitals match case); Enter goes to the first match, Esc in the diff clears the highlights" },
+      { keys: ["n", "N"], action: "Next / previous match of the search, into collapsed files and folds, wrapping (a count repeats: 3n)" },
+      { keys: ["f"], action: "Find a file by name and jump to it" },
     ],
   },
   {
@@ -156,7 +192,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["O"], action: "Comment on the file" },
       { keys: ["a"], action: "Reply to the comment thread under the cursor" },
       { keys: ["r"], action: "Resolve or reopen that thread on GitHub" },
-      { keys: ["Enter", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file)" },
+      { keys: ["Enter", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file); Enter on a large file's header loads its diff" },
       { keys: ["e"], action: "Edit your unsent comment in that thread, or the finding's wording" },
       { keys: ["dd"], action: "Delete your unsent comment in that thread" },
       { keys: ["M"], action: "Move that comment between local and the GitHub PR" },
@@ -165,6 +201,8 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["s"], action: "Go to the send bar (Enter or i opens its review box: type a comment, j / k pick how the review concludes, ⌘↩ submits, Esc closes; Esc on the bar goes back)" },
       { keys: ["⌘↩"], action: "In a comment box: add it; editing a finding: save" },
       { keys: ["Esc"], action: "In a comment box: back to the diff (an empty one closes); editing a comment or finding: cancel the edit" },
+      { keys: ["gc"], action: "Every comment thread, resolved and outdated ones too, over its code (gc again comes back)" },
+      { keys: ["H"], action: "Hide or show the comment threads in the diff" },
     ],
   },
   {
@@ -177,6 +215,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a list down / up" },
       { keys: ["Enter", "o", "l"], action: "Jump to the file (Enter on a folder opens or closes it)" },
       { keys: ["Esc"], action: "Back to the diff" },
+      { keys: ["gf"], action: "Filter files by extension, change type, viewed, comments or findings (j / k move, Space or Enter ticks, Esc closes); filtered files leave the list, the scroll, the motions and search" },
     ],
   },
   {
@@ -192,11 +231,41 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["gp"], action: "Go to the findings listed above the diff: pre-existing and filtered (j / k move, h / l across a row, Enter opens one or makes a card, Esc back)" },
       { keys: ["K"], action: "Ask an agent to explain the hunk" },
       { keys: ["gd"], action: "Peek a symbol on the line: its definition and uses (structural)" },
-      { keys: ["gl"], action: "Split or unified, for files shown as a line diff" },
+      { keys: ["gl"], action: "Split or unified, for every file (structural and line diffs; remembered)" },
       { keys: ["S"], action: "Switch to the narrative review, where the same keys work over each step's code (S there comes back)" },
       { keys: ["R"], action: "Refresh the diff" },
       { keys: ["Esc"], action: "Close a symbol peek, or leave line selection" },
       { keys: ["?"], action: "This sheet" },
+      { keys: ["W"], action: "Hide or show whitespace changes in line diffs (hidden at first: only-whitespace files fold away)" },
+      { keys: ["gr"], action: "Pick commits: all changes, since a review, one commit or a range (j / k move, Enter picks, Space or x starts a range, Esc closes)" },
+    ],
+  },
+  {
+    title: "Copy and open",
+    keys: [
+      { keys: ["yp"], action: "Copy the file's path" },
+      { keys: ["yl"], action: "Copy a link to the line (or the selected lines): a GitHub permalink where the commit is known, else path:L10-14" },
+      { keys: ["gO"], action: "Open the file at the line: bb's file preview for a checkout, else GitHub" },
+      { keys: ["gb"], action: "Blame the line (or the selected lines): j / k move, Enter opens the commit on GitHub, Esc closes" },
+    ],
+  },
+  {
+    title: "Suggested changes",
+    keys: [
+      { keys: ["I"], action: "Suggest a change to the line (or the selected new-side lines): a comment holding their text in a suggestion block to edit (⌘⇧S in any comment box inserts one)" },
+      { keys: ["A"], action: "Apply the suggestion under the cursor now: a comment thread's, or a review finding's (which marks the finding applied)" },
+      { keys: ["B"], action: "Add that suggestion to the batch, or take it out" },
+      { keys: ["gB"], action: "Apply the batch: every suggestion in it at once (one commit on a pull request)" },
+      { keys: ["gs"], action: "Post the review finding's suggestion to the pull request as a draft suggestion comment (s submits the review)" },
     ],
   },
 ];
+
+export type FilePopoverCommand = { kind: "list"; motion: ListMotion } | { kind: "close" };
+
+/** The blame popover's and a file header menu's keys: j / k over their rows, Enter picks one, Escape (or q) closes. */
+export const FILE_POPOVER_KEYMAP: Keymap<FilePopoverCommand> = {
+  ...mapKeymap(ROW_KEYS, (motion): FilePopoverCommand => ({ kind: "list", motion })),
+  "<Esc>": { kind: "close" },
+  q: { kind: "close" },
+};

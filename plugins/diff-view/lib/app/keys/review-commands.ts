@@ -1,8 +1,12 @@
-import type { DiffCommentTarget, LineRange } from "../../types";
+import type { DiffCommentTarget, LineRange, SuggestionItem } from "../../types";
 import { checkedLineRange } from "../../line-range";
 import { threadKeyActions, type DiffThread } from "../comments/threads";
 import { FINDING_FILTER_LABEL, nextFindingFilter, type FindingFilter, type InlineFinding } from "../findings/findings";
-import { WHOLE_FILE } from "../patch-annotations";
+import { cursorSpan, type LineSpan } from "../links";
+import { WHOLE_FILE, type ComposerAnchor } from "../patch-annotations";
+import { suggestionBlock, suggestionLines } from "../../suggestions";
+import type { SuggestionActions } from "../suggestions/actions";
+import type { TextSearchEnv } from "../search/use-diff-search";
 import type { ReviewCommand } from "./keymap";
 import {
   anchorsAtCursor,
@@ -49,7 +53,8 @@ export interface ReviewEnv {
   /** Closes the new-comment box when it holds no text; false when there is none or it has a draft. */
   closeEmptyComposer: () => boolean;
   setCollapsed: (paths: readonly string[], collapsed: boolean) => void;
-  markViewed: (path: string, viewed: boolean) => void;
+  /** False when the view refused the mark (a commit range that doesn't end at the head). */
+  markViewed: (path: string, viewed: boolean) => boolean;
   deleteComment: (id: string) => void;
   canPostToGithub: boolean;
   moveComment: (id: string, target: DiffCommentTarget) => void;
@@ -74,13 +79,30 @@ export interface ReviewEnv {
   focusSendBar: () => boolean;
   /** Hands the keyboard from the send bar back to the diff; false when focus is not in the bar. */
   leaveSendBar: () => boolean;
-  openOverlay: (overlay: "help" | "files") => void;
-  /** The last `/` search, and the files it matches. */
-  search: { query: string; matches: ReadonlySet<string> } | null;
+  openOverlay: (overlay: "help" | "files" | "search" | "fileFilter") => void;
+  /** The last `/` search of the diff's text; null before one. */
+  search: TextSearchEnv | null;
   /** Expands a file and puts the cursor on its header. */
   jump: (path: string) => void;
   pickSymbol: (names: string[], onPick: (name: string) => void) => void;
   notify: (message: string) => void;
+  toggleWhitespace: () => void;
+  /** Copies, opens and blames a file's lines; a null span is the whole file. */
+  fileActions: FileActions;
+  /** Hides or shows every comment thread inline; returns whether they are hidden now. */
+  toggleThreadsHidden: () => boolean;
+  /** The lines `I` puts in a suggestion block, and the suggestions `A`, `B` and `gB` apply. */
+  suggestions: SuggestionActions;
+  /** Opens the commit picker; null when the source lists no commits. */
+  openCommits?: (() => void) | null;
+}
+
+export interface FileActions {
+  copyPath: (path: string) => void;
+  copyLink: (path: string, span: LineSpan | null) => void;
+  open: (path: string, span: LineSpan | null) => void;
+  /** Null when the source has no blame. */
+  blame: ((path: string, span: LineSpan) => void) | null;
 }
 
 type Annotation = { kind: "thread"; thread: DiffThread } | { kind: "finding"; finding: FindingAnchor };
@@ -196,7 +218,32 @@ function runViewCommand(command: ReviewCommand, env: ReviewEnv): boolean {
       // One thing per Escape, the one on top first: a peek, the send bar, the line selection, an empty comment box.
       if (closePeeks(env) || env.leaveSendBar()) return true;
       if (env.keys.get().visual !== null) env.keys.set({ visual: null });
-      else env.closeEmptyComposer();
+      else if (!env.closeEmptyComposer()) env.search?.clear();
+      return true;
+    case "whitespace":
+      env.toggleWhitespace();
+      return true;
+    case "hideThreads":
+      env.notify(env.toggleThreadsHidden() ? "Comment threads hidden (H shows them, gc lists them)" : "Comment threads shown");
+      return true;
+    case "commitSuggestions": {
+      const { apply, batch, busy } = env.suggestions;
+      if (apply === null) env.notify("This view can't apply suggestions");
+      else if (batch.length === 0) env.notify("No suggestions in the batch (B adds the one under the cursor)");
+      else if (busy) env.notify("Already applying suggestions");
+      else void apply([...batch]);
+      return true;
+    }
+    case "searchText":
+      if (env.files.length === 0) env.notify("No changes to search");
+      else env.openOverlay("search");
+      return true;
+    case "commits":
+      if (env.openCommits == null) env.notify("No commits to pick from here (they need a pull request or a local checkout)");
+      else env.openCommits();
+      return true;
+    case "fileFilter":
+      env.openOverlay("fileFilter");
       return true;
     default:
       return false;
@@ -348,6 +395,11 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
           }
           // Enter folds a file only from its header; on a code line it would be an easy accident.
           if (command.action === "annotation" && cursor.line !== null) return;
+          // On a file the diff came without a patch for, Enter loads it instead.
+          if (command.action === "annotation" && model?.loadPatch !== undefined && files.find((file) => file.path === cursor.path)?.collapsed !== true) {
+            model.loadPatch();
+            return;
+          }
           const collapsed = files.find((file) => file.path === cursor.path)?.collapsed === true;
           env.setCollapsed([cursor.path], !collapsed);
           if (!collapsed) go(env, header);
@@ -480,8 +532,7 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     }
     case "viewed": {
       const nowViewed = !env.viewed.has(cursor.path);
-      env.markViewed(cursor.path, nowViewed);
-      if (!nowViewed) return;
+      if (!env.markViewed(cursor.path, nowViewed) || !nowViewed) return;
       // Marking a file viewed folds it away, so the review carries on at the next file.
       const folded = files.map((file) => (file.path === cursor.path ? { ...file, collapsed: true } : file));
       go(env, moveFile(folded, { ...cursor, line: null }, 1, 1));
@@ -489,17 +540,19 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     }
     case "searchNext": {
       if (env.search === null) {
-        env.notify("Search file names with / first");
+        env.notify("Search the diff with / first");
         return;
       }
-      const { query, matches } = env.search;
-      const here = files.findIndex((file) => file.path === cursor.path);
-      // Wraps past the end, as vim's search does.
-      const order = command.direction === 1 ? [...files.slice(here + 1), ...files.slice(0, here + 1)] : [...files.slice(0, Math.max(0, here)).reverse(), ...files.slice(Math.max(0, here)).reverse()];
-      const hits = order.filter((file) => matches.has(file.path));
-      const target = hits[Math.min(count, hits.length) - 1];
-      if (target === undefined) env.notify(`No file matches “${query}”`);
-      else env.jump(target.path);
+      const reached = env.search.step(cursor, command.direction, count);
+      if (reached === null) {
+        env.notify(`Nothing in the diff matches “${env.search.query}”`);
+        return;
+      }
+      const next = reached.cursor;
+      if (files.find((file) => file.path === next.path)?.collapsed === true) env.setCollapsed([next.path], false);
+      if (reached.wrapped) env.notify(command.direction === 1 ? "Search hit the bottom, continuing at the top" : "Search hit the top, continuing at the bottom");
+      env.keys.set({ visual: null });
+      go(env, next, { block: "center" });
       return;
     }
     case "peek": {
@@ -517,5 +570,110 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
     // The view switches modes before a command reaches here.
     case "narrative":
       return;
+    case "copyPath":
+      env.fileActions.copyPath(cursor.path);
+      return;
+    case "copyLink":
+    case "openFile":
+    case "blame": {
+      const span = cursorSpan(model?.rows ?? null, cursor, state.visual);
+      if (command.kind === "blame") {
+        if (env.fileActions.blame === null) env.notify("This view has no blame");
+        else if (span === null) env.notify("Move onto a line to blame it");
+        else env.fileActions.blame(cursor.path, span);
+        return;
+      }
+      // Like vim's y, a yank ends the selection.
+      if (state.visual !== null) env.keys.set({ visual: null });
+      if (command.kind === "copyLink") env.fileActions.copyLink(cursor.path, span);
+      else env.fileActions.open(cursor.path, span);
+      return;
+    }
+    case "commentsView":
+      return;
+    case "suggest": {
+      if (env.focusComposer()) return;
+      if (model !== null && row !== -1 && model.rows[row]?.expander === true) {
+        env.notify("Open the fold first (Enter), then suggest on a line");
+        return;
+      }
+      if (cursor.line === null) {
+        env.notify("Move onto a line (or V to select some) to suggest a change");
+        return;
+      }
+      const { visual } = env.keys.get();
+      const range = (visual !== null && model !== null ? visualRange(model.rows, visual, cursor, model.cutToHunk) : null) ?? checkedLineRange({ line: cursor.line, side: cursor.side });
+      const lines = suggestionLines(range);
+      if (lines === null) {
+        env.notify("Suggestions replace new-side lines; l moves to the new side");
+        return;
+      }
+      const text = env.suggestions.linesAt(cursor.path, lines.startLine, lines.endLine);
+      if (text === null) {
+        env.notify("The diff doesn't show all of those lines; suggest on changed lines or their context");
+        return;
+      }
+      env.keys.set({ visual: null });
+      const anchor: ComposerAnchor = { ...range, initialBody: suggestionBlock(text) };
+      env.startComment(cursor.path, anchor);
+      return;
+    }
+    case "applySuggestion":
+    case "batchSuggestion": {
+      const annotation = focusedAnnotation(env, cursor);
+      if (annotation?.kind === "finding") {
+        const state = env.suggestions.forFinding(annotation.finding.item);
+        if (state === null) env.notify("This finding has no suggested change");
+        else runSuggestion(env, command.kind, state.item, state.reason);
+        return;
+      }
+      const thread = annotation?.kind === "thread" ? annotation.thread : null;
+      const suggestion = thread === null ? null : env.suggestions.forThread(thread);
+      if (thread === null || suggestion === null) {
+        env.notify(thread === null ? "No comment thread or review finding on this line" : "No suggested change in this thread");
+        return;
+      }
+      if (suggestion.item === null) {
+        env.notify(suggestion.reason ?? "This suggestion can't be applied");
+        return;
+      }
+      runSuggestion(env, command.kind, suggestion.item, null);
+      return;
+    }
+    case "postSuggestion": {
+      const annotation = focusedAnnotation(env, cursor);
+      const finding = annotation?.kind === "finding" ? annotation.finding : anchorsAtCursor(files, cursor, env.findings)[0];
+      if (finding === undefined) {
+        env.notify("No review finding on this line");
+        return;
+      }
+      const state = env.suggestions.forFinding(finding.item);
+      if (env.suggestions.post === null) env.notify("Suggestions post to a pull request, and this view has none");
+      else if (state === null) env.notify("This finding has no suggested change");
+      else if (state.applied) env.notify("Already applied");
+      else if (env.suggestions.posted.has(state.id)) env.notify("Already posted as a draft on the pull request");
+      else if (state.current === null) env.notify("The diff doesn't show all of the suggestion's lines, so GitHub can't take a comment on them");
+      else {
+        env.keys.set({ focused: { kind: "finding", id: finding.id } });
+        void env.suggestions.post(finding.item, state);
+      }
+      return;
+    }
   }
+}
+
+/** `A` applies a suggestion now, `B` adds it to the batch or takes it out. */
+function runSuggestion(env: ReviewEnv, kind: "applySuggestion" | "batchSuggestion", item: SuggestionItem | null, reason: string | null): void {
+  if (item === null) {
+    env.notify(reason ?? "This suggestion can't be applied");
+    return;
+  }
+  const { apply, busy, toggleBatch } = env.suggestions;
+  if (apply === null) env.notify("This view can't apply suggestions");
+  else if (kind === "batchSuggestion") {
+    const added = toggleBatch(item);
+    const count = env.suggestions.batch.length + (added ? 1 : -1);
+    env.notify(added ? `Added to the batch (${count}; gB applies it)` : "Taken out of the batch");
+  } else if (busy) env.notify("Already applying suggestions");
+  else void apply([item]);
 }

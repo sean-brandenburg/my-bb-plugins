@@ -44,19 +44,52 @@ function semanticAt(semantics: SemanticChange[], side: DiffSide, line: number): 
   );
 }
 
-function LineCells({ context, line, side, rowChanged, movedRow, selected, atCursor }: { context: RowContext; line: number | null; side: DiffSide; rowChanged: boolean; movedRow: MovedRow | null; selected: boolean; atCursor: boolean }) {
-  if (line === null) {
-    return <td className="bg-muted/30" colSpan={2} />;
-  }
+/** How one side's line is tinted: its code, its line number, and whether it changed since the reader last looked. */
+function lineLook(context: RowContext, side: DiffSide, line: number, rowChanged: boolean, movedRow: MovedRow | null, selected: boolean) {
+  const semantic = rowChanged && movedRow === null ? semanticAt(context.semantics, side, line) : null;
+  const neutral = movedRow !== null || semantic !== null;
+  return {
+    tint: selected ? "bg-amber-400/20" : neutral ? "bg-violet-500/10" : rowChanged && (side === "LEFT" ? "bg-red-500/10" : "bg-emerald-500/10"),
+    gutterTint: selected ? "bg-amber-400/35" : neutral ? "bg-violet-500/20" : rowChanged && (side === "LEFT" ? "bg-red-500/20" : "bg-emerald-500/20"),
+    changedSince: side === "RIGHT" && rangesOverlap(line, line, context.changedRanges),
+  };
+}
+
+function LineNumberCell({ context, line, side, gutterTint, changedSince, atCursor }: { context: RowContext; line: number; side: DiffSide; gutterTint: string | false; changedSince: boolean; atCursor: boolean }) {
+  return (
+    <td
+      className={cn("group/ln select-none border-r border-border/60 pl-3 pr-2 text-right align-top text-muted-foreground/70", gutterTint, changedSince && "shadow-[inset_2px_0_0_0_theme(colors.sky.500)]", atCursor && CURSOR_GUTTER)}
+      title={changedSince ? "Changed since you last looked" : undefined}
+    >
+      <button
+        type="button"
+        className="relative w-full touch-none text-right tabular-nums hover:text-foreground"
+        title="Comment on this line; drag or shift-click for several"
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          // Keeps the drag from selecting text.
+          event.preventDefault();
+          context.onLinePress(side, line, event.shiftKey);
+        }}
+        onClick={(event) => {
+          // Pointer clicks start from pointerdown; this is the keyboard's Enter or Space.
+          if (event.detail === 0) context.onLineActivate(side, line);
+        }}
+      >
+        {line}
+        <span aria-hidden="true" className="absolute -left-2.5 top-0 hidden text-primary group-hover/ln:inline">
+          +
+        </span>
+      </button>
+    </td>
+  );
+}
+
+function CodeCell({ context, line, side, movedRow, tint, atCursor, bothSides = false }: { context: RowContext; line: number; side: DiffSide; movedRow: MovedRow | null; tint: string | false; atCursor: boolean; bothSides?: boolean }) {
   const lines = side === "LEFT" ? context.oldLines : context.newLines;
   const sideLine = movedRow !== null ? null : ((side === "LEFT" ? context.oldChanges : context.newChanges).get(line) ?? null);
   const text = lines[line - 1] ?? "";
   const lineTokens = (side === "LEFT" ? context.oldTokens : context.newTokens)?.[line - 1] ?? null;
-  const semantic = rowChanged && movedRow === null ? semanticAt(context.semantics, side, line) : null;
-  const neutral = movedRow !== null || semantic !== null;
-  const tint = selected ? "bg-amber-400/20" : neutral ? "bg-violet-500/10" : rowChanged && (side === "LEFT" ? "bg-red-500/10" : "bg-emerald-500/10");
-  const gutterTint = selected ? "bg-amber-400/35" : neutral ? "bg-violet-500/20" : rowChanged && (side === "LEFT" ? "bg-red-500/20" : "bg-emerald-500/20");
-  const changedSince = side === "RIGHT" && rangesOverlap(line, line, context.changedRanges);
   // A wrapped line continues under its own first character, not at the margin, as an editor wraps; tabs count four.
   const indent = (/^[ \t]*/u.exec(text)?.[0] ?? "").replace(/\t/gu, "    ").length;
   const movedLabel =
@@ -71,38 +104,24 @@ function LineCells({ context, line, side, rowChanged, movedRow, selected, atCurs
       </button>
     ) : null;
   return (
+    <td className={cn("whitespace-pre-wrap pl-2 pr-3 align-top", tint, atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
+      {movedLabel}
+      <span className="block" data-line-text={bothSides ? "LEFT RIGHT" : side} style={indent > 0 ? { paddingLeft: `${indent}ch`, textIndent: `-${indent}ch` } : undefined}>
+        <StructuralLine text={text} changes={sideLine} tokens={lineTokens} side={side} onSymbol={context.onSymbol} onSymbolHover={context.onSymbolHover} />
+      </span>
+    </td>
+  );
+}
+
+function LineCells({ context, line, side, rowChanged, movedRow, selected, atCursor }: { context: RowContext; line: number | null; side: DiffSide; rowChanged: boolean; movedRow: MovedRow | null; selected: boolean; atCursor: boolean }) {
+  if (line === null) {
+    return <td className="bg-muted/30" colSpan={2} />;
+  }
+  const { tint, gutterTint, changedSince } = lineLook(context, side, line, rowChanged, movedRow, selected);
+  return (
     <>
-      <td
-        className={cn("group/ln select-none border-r border-border/60 pl-3 pr-2 text-right align-top text-muted-foreground/70", gutterTint, changedSince && "shadow-[inset_2px_0_0_0_theme(colors.sky.500)]", atCursor && CURSOR_GUTTER)}
-        title={changedSince ? "Changed since you last looked" : undefined}
-      >
-        <button
-          type="button"
-          className="relative w-full touch-none text-right tabular-nums hover:text-foreground"
-          title="Comment on this line; drag or shift-click for several"
-          onPointerDown={(event) => {
-            if (event.button !== 0) return;
-            // Keeps the drag from selecting text.
-            event.preventDefault();
-            context.onLinePress(side, line, event.shiftKey);
-          }}
-          onClick={(event) => {
-            // Pointer clicks start from pointerdown; this is the keyboard's Enter or Space.
-            if (event.detail === 0) context.onLineActivate(side, line);
-          }}
-        >
-          {line}
-          <span aria-hidden="true" className="absolute -left-2.5 top-0 hidden text-primary group-hover/ln:inline">
-            +
-          </span>
-        </button>
-      </td>
-      <td className={cn("whitespace-pre-wrap pl-2 pr-3 align-top", tint, atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
-        {movedLabel}
-        <span className="block" style={indent > 0 ? { paddingLeft: `${indent}ch`, textIndent: `-${indent}ch` } : undefined}>
-          <StructuralLine text={text} changes={sideLine} tokens={lineTokens} side={side} onSymbol={context.onSymbol} onSymbolHover={context.onSymbolHover} />
-        </span>
-      </td>
+      <LineNumberCell context={context} line={line} side={side} gutterTint={gutterTint} changedSince={changedSince} atCursor={atCursor} />
+      <CodeCell context={context} line={line} side={side} movedRow={movedRow} tint={tint} atCursor={atCursor} />
     </>
   );
 }
@@ -134,6 +153,50 @@ export const StructuralRowView = memo(function StructuralRowView({
   );
 });
 
+/**
+ * One row of the unified table: the old and new line numbers, then one line of code, the old text on a deleted half
+ * and the new text otherwise. A half of a modified pair shares its aligned row's `data-row`, so it also carries `data-side`.
+ */
+export const UnifiedRowView = memo(function UnifiedRowView({
+  row,
+  context,
+  selectedLeft,
+  selectedRight,
+  unfolded,
+  dragging,
+}: {
+  row: StructuralRow;
+  context: RowContext;
+  selectedLeft: boolean;
+  selectedRight: boolean;
+  unfolded: boolean;
+  dragging: boolean;
+}) {
+  const cursorSide = useCursorSide(context.path, row.lhs, row.rhs);
+  const movedRow = context.moved.get(row.index) ?? null;
+  const side: DiffSide = row.rhs === null ? "LEFT" : "RIGHT";
+  const line = (side === "LEFT" ? row.lhs : row.rhs)!;
+  const { tint, gutterTint, changedSince } = lineLook(context, side, line, row.changed, movedRow, selectedLeft || selectedRight);
+  const gutter = (gutterSide: DiffSide, number: number | null) =>
+    number === null ? (
+      <td className={cn("border-r border-border/60", gutterTint)} />
+    ) : (
+      <LineNumberCell context={context} line={number} side={gutterSide} gutterTint={gutterTint} changedSince={gutterSide === "RIGHT" && changedSince} atCursor={cursorSide === gutterSide} />
+    );
+  return (
+    <tr
+      className={cn("hover:bg-state-hover/40", unfolded && [enter.fade, FAST])}
+      data-row={row.index}
+      data-side={row.lhs === null || row.rhs === null ? side : undefined}
+      onPointerEnter={dragging ? () => context.onDragOver(row) : undefined}
+    >
+      {gutter("LEFT", row.lhs)}
+      {gutter("RIGHT", row.rhs)}
+      <CodeCell context={context} line={line} side={side} movedRow={movedRow} tint={tint} atCursor={cursorSide !== null} bothSides={row.lhs !== null && row.rhs !== null} />
+    </tr>
+  );
+});
+
 /** Folded runs up to this long expand in one click; longer ones expand this many lines per click. */
 export const EXPAND_STEP_LINES = 20;
 
@@ -146,7 +209,7 @@ function ExpanderButton({ label, title, onClick }: { label: string; title: strin
 }
 
 /** A fold of unchanged rows `from` up to `to`; `at` is the hidden row whose lines the cursor takes on it. */
-export const GapRow = memo(function GapRow({ path, from, to, total, first, last, at, onReveal }: { path: string; from: number; to: number; total: number; first: StructuralRow; last: StructuralRow; at: StructuralRow; onReveal: (from: number, to: number) => void }) {
+export const GapRow = memo(function GapRow({ path, from, to, total, first, last, at, onReveal, columns = 4 }: { path: string; from: number; to: number; total: number; first: StructuralRow; last: StructuralRow; at: StructuralRow; onReveal: (from: number, to: number) => void; columns?: number }) {
   const atCursor = useCursorSide(path, at.lhs, at.rhs) !== null;
   const count = to - from;
   const leading = from === 0;
@@ -154,7 +217,7 @@ export const GapRow = memo(function GapRow({ path, from, to, total, first, last,
   const range = `${first.rhs ?? first.lhs}–${last.rhs ?? last.lhs}`;
   return (
     <tr data-gap={from} className="bg-sky-500/10 text-[11px] text-muted-foreground">
-      <td colSpan={4} className={cn("px-2 py-0.5", atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
+      <td colSpan={columns} className={cn("px-2 py-0.5", atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
         <div className="flex items-center gap-1">
           {count <= EXPAND_STEP_LINES ? (
             <ExpanderButton label="↕" title={`Show ${count} unchanged lines`} onClick={() => onReveal(from, to)} />

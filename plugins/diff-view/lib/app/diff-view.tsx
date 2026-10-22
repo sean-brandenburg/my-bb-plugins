@@ -6,11 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { DiffComment, SemanticChange, SymbolLookup } from "../types";
+import type { DiffComment, DiffFile, SemanticChange, SymbolLookup } from "../types";
 import { readPreference, requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences, writePreference } from "./state";
 import { DEFAULT_LABELS, DiffSourceContext, type DiffSource, type DiffViewLabels } from "./source";
 import { DeltaStrip, useDelta } from "./delta-strip";
-import { FileSection } from "./file-section";
+import { FileSection, type ShownPatch } from "./file-section";
+import { ignoreWhitespacePatch, onlyWhitespaceChanged, patchHasChanges } from "./text/whitespace";
+import { BlamePopover, FileActionsContext, fileActionsFor, type FileMenuActions } from "./file-actions";
+import type { LineSpan } from "./links";
 import { WHOLE_FILE, type ComposerAnchor, type PatchAnnotationProps } from "./patch-annotations";
 import { riskByPath } from "./risk";
 import { STICKY_HEADER_PX, cursorLineY } from "./scroll";
@@ -37,16 +40,28 @@ import { useNarrativeReader } from "./narrative/use-narrative-reader";
 import { useNarrativeStory } from "./narrative/use-narrative-story";
 import { cursorAt, cursorPosition, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
 import { KEY_HELP, REVIEW_KEYMAP, type ReviewCommand } from "./keys/keymap";
-import { KeysOverlay, Picker, fileItems } from "./keys/overlays";
-import { rankFiles } from "./keys/rank-files";
+import { KeysOverlay, Picker, SearchBox, fileItems } from "./keys/overlays";
 import { focusAt, runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
 import { ReviewKeysContext, createReviewKeys, useReviewKeysState } from "./keys/review-keys-context";
 import { useCursorReveal } from "./keys/use-cursor-reveal";
+import { CommentsView } from "./comments/comments-view";
+import { COMMENTS_KEY_HELP, COMMENTS_KEYMAP, type CommentsCommand } from "./comments/comments-keymap";
+import { THREAD_FILTER_LABEL, commentSections, nextThreadFilter, threadCounts, type CommentSection, type ThreadFilter } from "./comments/comment-sections";
 import { errorMessage } from "./format";
 import { cn } from "./utils";
 import { enter } from "./ui/motion";
 import { focusRow, focusWhenShown, type Keymap } from "./ui/vim-keys";
 import { SkeletonLines } from "./ui/skeleton";
+import { TruncationBanner } from "./large-diff";
+import { SuggestionsContext } from "./suggestions/context";
+import { useSuggestions } from "./suggestions/use-suggestions";
+import type { CommitRange } from "../types";
+import { CommitPicker, CommitRangeContext, CommitsButton, useDiffCommits } from "./commits/commit-picker";
+import { rangeEndsAtHead, rangeKey, rangeLabel } from "./commits/commit-range";
+import { SearchHighlightCss, useDiffSearch } from "./search/use-diff-search";
+import type { SearchedFile } from "./search/diff-search";
+import { NO_FILE_FILTER, fileFilterActive, fileShown, filterFiles, pruneFileFilter, readFileFilter, subscribeFileFilters, writeFileFilter, type FileFilter, type FileMarks } from "./file-filter";
+import { FILE_FILTER_BUTTON, FileFilterMenu } from "./file-tree/file-filter-menu";
 
 export type { DiffSource, DiffViewLabels } from "./source";
 export { DiffRefreshButton } from "./toolbar";
@@ -83,6 +98,7 @@ const NO_PLACED_FINDINGS: PlacedFinding[] = [];
 const NO_THREADS: DiffThread[] = [];
 const NO_SEMANTICS: SemanticChange[] = [];
 const NO_RANGES: Array<[number, number]> = [];
+const NO_PATCH: ShownPatch = { patch: null, onlyWhitespace: false, changed: false };
 /** How long a focus request (the "Review changes with the keyboard" command) stays good for a view that is still mounting. */
 const FOCUS_REQUEST_TTL_MS = 5_000;
 /** Approximate height of one diff line, for turning a page scroll into cursor rows, and a `j` over prose into a scroll. */
@@ -146,32 +162,42 @@ const samePlace = (a: Cursor | null, b: Cursor | null) => a === b || (a !== null
  * both. Narrow containers (a side panel) drop the file tree and the outline; wide ones show them beside the diff.
  */
 export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, labels: labelOverrides, renderSubmitBar, deltaActions, toolbar }: DiffViewProps) {
-  const { diff, error } = useDiffResult(source, instanceKey);
+  // The part of the history shown; null is all the changes. A partial range is for reading: see `atHead`.
+  const [range, setRange] = useState<CommitRange | null>(null);
+  const { diff, error } = useDiffResult(source, instanceKey, range);
+  const commits = useDiffCommits(source, instanceKey);
+  // Comments, viewed marks, threads and findings sit on the head's new-side lines, which only a range ending there shows.
+  const atHead = rangeEndsAtHead(range, commits);
   const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelOverrides }), [labelOverrides]);
   const comments = useComments(source, refreshSignal);
-  const { reviews, toggleFinding, editFinding } = useReviews(source, refreshSignal);
+  const { reviews, toggleFinding, editFinding, markApplied: markFindingsApplied } = useReviews(source, refreshSignal);
   const { explanations, explainHunk } = useExplanations(source, refreshSignal);
   const { tour, busy: tourBusy, generate: generateTour } = useTour(source, refreshSignal);
-  const narrativeAvailable = source.tour?.story !== undefined;
+  // The narrative walks all the changes, so a partial range reads in the files view.
+  const narrativeAvailable = source.tour?.story !== undefined && range === null;
+  // The comments view draws each thread over today's lines of the diff, which a partial range doesn't show.
+  const commentsAvailable = comments.allThreads.length > 0 && range === null;
   const [chosenMode, setChosenMode] = useState<DiffViewMode>(() => (readPreference("viewMode") === "narrative" ? "narrative" : "files"));
-  const mode: DiffViewMode = narrativeAvailable ? chosenMode : "files";
+  const mode: DiffViewMode = chosenMode === "comments" ? (commentsAvailable ? "comments" : "files") : narrativeAvailable ? chosenMode : "files";
   // Read by closures that outlive a render: a reveal queued for after a mode switch, the key scope's keymap.
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const setMode = (next: DiffViewMode) => {
     setChosenMode(next);
-    writePreference("viewMode", next);
+    // Threads load after the view mounts, so a comments view restored on open would flip in late; it is not kept.
+    if (next !== "comments") writePreference("viewMode", next);
   };
   // The tour reloads on every refresh signal, so the story follows it.
   const narrative = useNarrativeStory(source, tour, mode === "narrative");
   const delta = useDelta(source, diff?.headSha ?? null);
   const preferences = useDiffPreferences();
-  const { findingFilter } = preferences;
-  const { viewed, collapsed, markViewed, toggleCollapsed, expand, setCollapsedPaths } = useFileMarks(source, diff);
+  const { findingFilter, hideWhitespace } = preferences;
+  const whitespaceOnly = useMemo(() => new Set((diff?.files ?? []).filter((file) => onlyWhitespaceChanged(file.patch)).map((file) => file.path)), [diff]);
+  const { viewed, collapsed, markViewed: markFileViewed, toggleCollapsed, expand, setCollapsedPaths } = useFileMarks(source, diff, (file) => hideWhitespace && whitespaceOnly.has(file.path));
   const currentPaths = useMemo(() => new Set(diff?.files.map((file) => file.path) ?? []), [diff]);
   const reader = useNarrativeReader({ story: narrative.story, instanceKey, currentPaths, viewed });
   const [keys] = useState(createReviewKeys);
-  const [overlay, setOverlay] = useState<{ kind: "help" } | { kind: "files" } | { kind: "steps" } | { kind: "symbols"; names: string[]; pick: (name: string) => void } | null>(null);
+  const [overlay, setOverlay] = useState<{ kind: "help" } | { kind: "files" } | { kind: "steps" } | { kind: "symbols"; names: string[]; pick: (name: string) => void } | { kind: "blame"; path: string; span: LineSpan; anchor: DOMRect | null } | { kind: "commits" } | { kind: "search" } | { kind: "fileFilter"; anchor: DOMRect } | null>(null);
   const [lastSearch, setLastSearch] = useState<string | null>(null);
   const [active] = useState(createActivePath);
   const [composer, setComposer] = useState<({ path: string } & ComposerAnchor) | null>(null);
@@ -192,6 +218,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
   const excerptRefs = useRef(new Map<string, HTMLElement>());
+  const commentsScrollRef = useRef<HTMLDivElement | null>(null);
+  const commentSectionRefs = useRef(new Map<string, HTMLElement>());
   const navigate = useBbNavigate();
 
   const openDefinition = (lookup: SymbolLookup, definition: SymbolLookup["definitions"][number]) => {
@@ -212,21 +240,98 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const allFindingsByPath = useMemo(() => inlineFindingsByPath(reviews, delta), [reviews, delta]);
   const outsideFindings = useMemo(() => findingsOutsideDiff(reviews), [reviews]);
   const [filteredOpen, setFilteredOpen] = useState(false);
-  const findingsByPath = useMemo(() => filterFindings(allFindingsByPath, findingFilter), [allFindingsByPath, findingFilter]);
+  const findingsByPath = useMemo(() => (range !== null && !atHead ? new Map<string, PlacedFinding[]>() : filterFindings(allFindingsByPath, findingFilter)), [allFindingsByPath, findingFilter, range, atHead]);
   const allFindings = useMemo(() => distinctFindings([...allFindingsByPath.values()].flat()), [allFindingsByPath]);
   const shownFindingCount = useMemo(() => distinctFindings([...findingsByPath.values()].flat()).length, [findingsByPath]);
   const newFindings = allFindings.filter((item) => item.isNew);
   const touchedFindings = allFindings.filter((item) => item.touched);
   const semanticsByPath = useMemo(() => tourSemanticsByPath(tour), [tour]);
   const risk = useMemo(() => riskByPath(tour, allFindingsByPath), [tour, allFindingsByPath]);
-  const changedRangesByPath = useMemo(() => new Map((delta?.files ?? []).map((file) => [file.path, file.ranges] as const)), [delta]);
+  const changedRangesByPath = useMemo(() => new Map((range === null ? (delta?.files ?? []) : []).map((file) => [file.path, file.ranges] as const)), [delta, range]);
+  const shownThreads = useMemo(() => (range === null ? comments.threads : atHead ? comments.threads.filter((thread) => thread.side === "RIGHT") : NO_THREADS), [comments.threads, range, atHead]);
+  // `H` leaves every thread out of the files and the narrative; the comments view still lists them.
+  const inlineThreads = preferences.hideThreads ? NO_THREADS : shownThreads;
   // Stable per file, so a re-render of the view (scrolling moves the active file) leaves each file's diff untouched.
   const threadsByPath = useMemo(() => {
     const byPath = new Map<string, DiffThread[]>();
-    for (const thread of comments.threads) byPath.set(thread.path, [...(byPath.get(thread.path) ?? []), thread]);
+    for (const thread of inlineThreads) byPath.set(thread.path, [...(byPath.get(thread.path) ?? []), thread]);
     return byPath;
-  }, [comments.threads]);
+  }, [inlineThreads]);
   const forPath = (path: string) => threadsByPath.get(path) ?? NO_THREADS;
+  // Kept here rather than in the file's section so search and the whitespace preference see them; a refresh that shows
+  // the file changed again drops one.
+  const [loadedPatches, setLoadedPatches] = useState<ReadonlyMap<string, { changeKey: string; patch: string }>>(() => new Map());
+  const loadedKey = (path: string) => `${rangeKey(range)}:${path}`;
+  const changeKeyOf = (file: DiffFile) => `${file.status}:${file.additions}:${file.deletions}`;
+  const loadedPatchOf = (file: DiffFile): string | null => {
+    const entry = loadedPatches.get(loadedKey(file.path));
+    return entry !== undefined && entry.changeKey === changeKeyOf(file) ? entry.patch : null;
+  };
+  const rememberLoadedPatch = (file: DiffFile, patch: string) =>
+    setLoadedPatches((current) => new Map(current).set(loadedKey(file.path), { changeKey: changeKeyOf(file), patch }));
+  // A hunk whose changes are all whitespace still shows while a comment or finding sits on one of its lines.
+  const shownPatches = useMemo(() => {
+    const byPath = new Map<string, ShownPatch>();
+    for (const file of diff?.files ?? []) {
+      const raw = file.patch ?? loadedPatchOf(file);
+      if (raw === null) continue;
+      if (!hideWhitespace) {
+        byPath.set(file.path, { patch: raw, onlyWhitespace: false, changed: patchHasChanges(raw) });
+        continue;
+      }
+      const marked = new Set([
+        ...(threadsByPath.get(file.path) ?? []).flatMap((thread) => (thread.line === null ? [] : [`${thread.side}:${thread.line}`])),
+        ...(findingsByPath.get(file.path) ?? []).flatMap((entry) => (entry.line === null ? [] : [`RIGHT:${entry.line}`])),
+      ]);
+      const patch = ignoreWhitespacePatch(raw, (side, line) => marked.has(`${side}:${line}`));
+      byPath.set(file.path, { patch, onlyWhitespace: whitespaceOnly.has(file.path), changed: patch !== null && patchHasChanges(patch) });
+    }
+    return byPath;
+  }, [diff, hideWhitespace, whitespaceOnly, threadsByPath, findingsByPath, loadedPatches, range]);
+  const storedFileFilter = useSyncExternalStore(subscribeFileFilters, () => readFileFilter(instanceKey));
+  const fileFilter = useMemo(() => pruneFileFilter(storedFileFilter, diff?.files ?? []), [storedFileFilter, diff]);
+  const setFileFilter = (filter: FileFilter) => writeFileFilter(instanceKey, filter);
+  const fileFiltered = fileFilterActive(fileFilter);
+  const fileMarks = useMemo(
+    (): FileMarks => ({
+      viewed,
+      withComments: new Set(comments.allThreads.map((thread) => thread.path)),
+      withFindings: new Set([...findingsByPath].filter(([, list]) => list.length > 0).map(([path]) => path)),
+    }),
+    [viewed, comments.allThreads, findingsByPath],
+  );
+  // The files the filter leaves in: the tree, the scroll, the cursor's motions, `f` and `/` all go by these.
+  const shownFiles = useMemo(() => filterFiles(diff?.files ?? [], fileFilter, fileMarks), [diff, fileFilter, fileMarks]);
+  // What `/` searches: each file's patch as drawn, so hidden whitespace changes never match.
+  const searchFiles = useMemo((): SearchedFile[] => shownFiles.map((file) => ({ path: file.path, patch: shownPatches.get(file.path)?.patch ?? null })), [shownFiles, shownPatches]);
+  const textSearch = useDiffSearch({ keys, files: searchFiles, scroller: () => mainRef.current, painting: mode === "files" });
+  const searchCount = textSearch.query === "" ? "" : textSearch.total === 0 ? "No matches" : textSearch.index === null ? `${textSearch.total} match${textSearch.total === 1 ? "" : "es"}` : `${textSearch.index + 1} of ${textSearch.total}`;
+  const toggleWhitespace = () => {
+    const hide = !hideWhitespace;
+    setDiffPreferences({ hideWhitespace: hide });
+    setCollapsedPaths([...whitespaceOnly].filter((path) => !viewed.has(path)), hide);
+    notify(hide ? "Whitespace changes hidden" : "Whitespace changes shown");
+  };
+  const openThreadCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const thread of comments.threads) if (threadIsOpen(thread)) counts.set(thread.path, (counts.get(thread.path) ?? 0) + 1);
+    return counts;
+  }, [comments.threads]);
+  const allThreadCounts = useMemo(() => threadCounts(comments.allThreads), [comments.allThreads]);
+  const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
+  const [commentsCollapsed, setCommentsCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const commentSectionList = useMemo(() => commentSections(comments.allThreads, diff?.files ?? [], threadFilter), [comments.allThreads, diff, threadFilter]);
+  const threadById = useMemo(() => new Map(comments.allThreads.map((thread) => [thread.id, thread])), [comments.allThreads]);
+  const suggestions = useSuggestions({
+    source,
+    diff,
+    threadById,
+    instanceKey,
+    onApplied: comments.loadComments,
+    refusal: atHead ? null : "Suggestions apply to the head's lines; switch to All changes (gr) or a range ending at the head to apply them",
+    onFindingsApplied: (findings) => void markFindingsApplied(findings),
+    onPosted: comments.loadComments,
+  });
 
   // Pierre mounts annotations into its slots after the render that adds them, too late for the box's autoFocus.
   const composerOpened = useRef(false);
@@ -244,13 +349,46 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     const want = keys.get().cursor?.want ?? "RIGHT";
     keys.set({ cursor: { path, side: want, line: null, want }, visual: null, focused: null });
   };
+  /** Going to a file the filter leaves out clears the filter; true when it did, and the file mounts on the next render. */
+  /**
+   * The "Filter files" menu, under the element it was opened from; from `gf`, under the file list's funnel while the
+   * list shows, else at the top of the view. Opened again from its funnel, it closes.
+   */
+  const openFileFilter = (from: Element | null) => {
+    if (diff === null || diff.files.length === 0) {
+      notify("No changed files to filter");
+      return;
+    }
+    if (overlay?.kind === "fileFilter") {
+      closeOverlay();
+      return;
+    }
+    const funnel = Array.from(rootRef.current?.querySelectorAll(`[${FILE_FILTER_BUTTON}]`) ?? []).find((button) => button.getClientRects().length > 0) ?? null;
+    const root = rootRef.current?.getBoundingClientRect();
+    const fallback = new DOMRect((root?.left ?? 0) + 12, (root?.top ?? 0) + 28, 0, 0);
+    setOverlay({ kind: "fileFilter", anchor: (from ?? funnel)?.getBoundingClientRect() ?? fallback });
+  };
+  const unhide = (path: string): boolean => {
+    const filter = readFileFilter(instanceKey);
+    const file = diff?.files.find((entry) => entry.path === path);
+    if (file === undefined || fileShown(file, filter, fileMarks)) return false;
+    setFileFilter(NO_FILE_FILTER);
+    notify(`File filter cleared to show ${path}`);
+    return true;
+  };
   const jumpTo = (path: string) => {
+    const unhid = unhide(path);
     active.set(path);
     expand(path);
     parkCursor(path);
-    sectionRefs.current.get(path)?.scrollIntoView({ block: "start" });
+    if (unhid) requestAnimationFrame(() => sectionRefs.current.get(path)?.scrollIntoView({ block: "start" }));
+    else sectionRefs.current.get(path)?.scrollIntoView({ block: "start" });
   };
   const startComment = (path: string, anchor: ComposerAnchor) => {
+    if (range !== null && (!atHead || anchor.side === "LEFT" || anchor.startSide === "LEFT")) {
+      notify(atHead ? "In a range, comments go on the new side; switch to All changes to comment on old lines" : "Switch to All changes to comment");
+      return;
+    }
     setComposer({ path, ...anchor });
     composerOpened.current = true;
     if (anchor.line === null) parkCursor(path);
@@ -261,8 +399,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   // switch lands in the view that mounts.
   const { reveal, onScreen } = useCursorReveal(
     keys,
-    () => (modeRef.current === "narrative" ? narrativeScrollRef.current : mainRef.current),
-    (path) => (modeRef.current === "narrative" ? excerptRefs.current.get(path) : sectionRefs.current.get(path)) ?? null,
+    () => (modeRef.current === "narrative" ? narrativeScrollRef.current : modeRef.current === "comments" ? commentsScrollRef.current : mainRef.current),
+    (path) => (modeRef.current === "narrative" ? excerptRefs.current.get(path) : modeRef.current === "comments" ? commentSectionRefs.current.get(path) : sectionRefs.current.get(path)) ?? null,
     () => modeRef.current === "files",
   );
   const revealRef = useRef(reveal);
@@ -283,7 +421,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     rootRef.current?.focus({ preventScroll: true });
   };
   /** Back to the files view with the cursor where it stands, centred; a cursor on a header lands on that file. */
-  const leaveToFiles = () =>
+  const leaveToFiles = () => {
+    const from = keys.get().cursor;
+    if (from !== null) unhide(from.path);
     inFiles(() => {
       const cursor = keys.get().cursor;
       if (cursor === null) return;
@@ -292,6 +432,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       expand(cursor.path);
       revealRef.current(cursor, "center");
     });
+  };
   /** The files view on `path`: at the cursor when it is on that file's lines, else at the file's header. */
   const openInFiles = (path: string) => {
     if (!currentPaths.has(path)) {
@@ -300,18 +441,29 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     }
     const cursor = keys.get().cursor;
     if (cursor !== null && cursor.path === path && cursor.line !== null) leaveToFiles();
-    else inFiles(() => jumpTo(path));
+    else {
+      unhide(path);
+      inFiles(() => jumpTo(path));
+    }
+  };
+  const markViewed = (path: string, isViewed: boolean): boolean => {
+    if (range !== null && !atHead) {
+      notify("Switch to All changes to mark files viewed");
+      return false;
+    }
+    markFileViewed(path, isViewed);
+    return true;
   };
   const enterNarrative = () => {
     if (!narrativeAvailable) {
-      notify("This view has no narrative review");
+      notify(range !== null ? "The narrative covers all the changes; switch to All changes (gr) first" : "This view has no narrative review");
       return;
     }
     setMode("narrative");
     rootRef.current?.focus({ preventScroll: true });
   };
 
-  const navFiles = (): NavFile[] => (diff?.files ?? []).map((file) => ({ path: file.path, collapsed: collapsed.has(file.path), rows: keys.models.get(file.path)?.rows ?? null }));
+  const navFiles = (): NavFile[] => shownFiles.map((file) => ({ path: file.path, collapsed: collapsed.has(file.path), rows: keys.models.get(file.path)?.rows ?? null }));
   const navFilesRef = useRef(navFiles);
   navFilesRef.current = navFiles;
   // A newly opened diff starts the cursor on its first line, not on whatever line is mid-screen when a key is first
@@ -343,7 +495,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   placeInitialCursorRef.current = placeInitialCursor;
   const hasFiles = diff !== null && diff.files.length > 0;
   useEffect(() => {
-    if (hasFiles && initialCursor.current?.instanceKey !== instanceKey) initialCursor.current = { instanceKey, placed: null, done: false };
+    // A new range is a new diff to start at the top of.
+    const placeKey = `${instanceKey}|${rangeKey(range)}`;
+    if (hasFiles && initialCursor.current?.instanceKey !== placeKey) initialCursor.current = { instanceKey: placeKey, placed: null, done: false };
     placeInitialCursorRef.current();
   });
   useEffect(() => {
@@ -356,12 +510,12 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   /** The line at the middle of the screen, where the files view's cursor rests. */
   const seat = (): Cursor | null => {
     const main = mainRef.current;
-    if (main === null || diff === null || diff.files.length === 0) return null;
+    if (main === null || shownFiles.length === 0) return null;
     const files = navFiles();
     const middle = cursorLineY(main);
     const want = keys.get().cursor?.want ?? "RIGHT";
     const other = want === "LEFT" ? "RIGHT" : "LEFT";
-    for (const [fileIndex, file] of diff.files.entries()) {
+    for (const [fileIndex, file] of shownFiles.entries()) {
       const box = sectionRefs.current.get(file.path)?.getBoundingClientRect();
       if (box === undefined || box.bottom <= middle) continue;
       const model = collapsed.has(file.path) ? undefined : keys.models.get(file.path);
@@ -385,6 +539,16 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     [findingsByPath],
   );
   const notify = (message: string) => toast.message(message, { duration: 1800 });
+  const commitsControl = commits === null || (commits.commits.length === 0 && range === null) ? null : { label: rangeLabel(range, commits), partial: range !== null, onOpen: () => setOverlay({ kind: "commits" }) };
+  /** Blame under the line it is about (or the element it was asked from), once that line is in view. */
+  const openBlame = (path: string, span: LineSpan, anchor: Element | null) => {
+    const model = keys.models.get(path);
+    const row = model === undefined ? -1 : rowIndexOf(model.rows, span.side, span.end);
+    const line = row === -1 ? null : (model?.element(row, span.side) ?? null);
+    setOverlay({ kind: "blame", path, span, anchor: (anchor ?? line ?? sectionRefs.current.get(path) ?? null)?.getBoundingClientRect() ?? null });
+  };
+  const fileActions = fileActionsFor({ diff, navigate, notify, noCheckout: labels.noCheckout, blame: source.blame === undefined ? null : (path, span) => openBlame(path, span, null) });
+  const fileMenuActions: FileMenuActions = { actions: fileActions, blameFrom: openBlame };
   const fileTreeFits = () => (rootRef.current?.clientWidth ?? 0) >= FILE_TREE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
   const returnToDiff = () => rootRef.current?.focus({ preventScroll: true });
   const makeFindingCard = async ({ reviewId, finding }: ListedFinding): Promise<string | null> => {
@@ -417,7 +581,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const filesEnv = (): ReviewEnv => ({
     keys,
     files: navFiles(),
-    threads: comments.threads,
+    threads: inlineThreads,
     findings: findingAnchors,
     viewed,
     target: source.canPostToGithub === true ? { value: comments.target, set: comments.setTarget } : null,
@@ -503,15 +667,35 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       returnToDiff();
       return true;
     },
-    openOverlay: (kind) => setOverlay({ kind }),
-    search: lastSearch === null || diff === null ? null : { query: lastSearch, matches: new Set(rankFiles(diff.files, lastSearch).map((file) => file.path)) },
+    openOverlay: (kind) => {
+      if (kind === "fileFilter") {
+        openFileFilter(null);
+        return;
+      }
+      if (kind === "search") textSearch.open(keys.get().cursor);
+      setOverlay({ kind });
+    },
+    search: textSearch.env,
     jump: jumpTo,
     pickSymbol: (names, pick) => setOverlay({ kind: "symbols", names, pick }),
     notify,
+    toggleWhitespace,
+    fileActions,
+    toggleThreadsHidden: () => {
+      const hidden = !preferences.hideThreads;
+      setDiffPreferences({ hideThreads: hidden });
+      return hidden;
+    },
+    suggestions,
+    openCommits: commitsControl === null ? null : commitsControl.onOpen,
   });
   const runFilesCommand = (command: ReviewCommand, count: number) => {
     if (command.kind === "narrative") {
       enterNarrative();
+      return;
+    }
+    if (command.kind === "commentsView") {
+      enterComments();
       return;
     }
     runReviewCommand(command, count, filesEnv());
@@ -571,7 +755,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     ...filesEnv(),
     files: narrativeFiles(),
     // The anchors the keys step through are the ones the excerpts draw, as `excerptAnnotations` cuts them.
-    threads: comments.threads.filter((thread) => excerptShows(thread.path, thread.side, thread.line)),
+    threads: inlineThreads.filter((thread) => excerptShows(thread.path, thread.side, thread.line)),
     findings: findingAnchors.filter((finding) => finding.line !== null && excerptShows(finding.path, finding.side, finding.line)),
     seat: () => visibleCursor(1) ?? firstPosition(narrativeFiles(), keys.get().cursor?.want ?? "RIGHT"),
     // The step's prose reads top to bottom; the cursor scrolls only when it would leave the screen.
@@ -586,8 +770,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       if (canTouch(path)) startComment(path, range);
     },
     markViewed: (path, isViewed) => {
-      if (currentPaths.has(path)) markViewed(path, isViewed);
-      else notify(`${path} is not in the current diff`);
+      if (currentPaths.has(path)) return markViewed(path, isViewed);
+      notify(`${path} is not in the current diff`);
+      return false;
     },
     setCollapsed: reader.setCollapsed,
     toggleLayout: () => setDiffPreferences({ narrativeLayout: preferences.narrativeLayout === "split" ? "unified" : "split" }),
@@ -721,6 +906,10 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
         leaveToFiles();
         return;
       case "findFile":
+        if (diff === null || diff.files.length === 0) notify("No changed files to search");
+        else setOverlay({ kind: "files" });
+        return;
+      case "searchText":
         if (reader.chapters.length === 0) notify("No narrative to search");
         else setOverlay({ kind: "steps" });
         return;
@@ -736,6 +925,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       }
       case "fileTree":
         narrativeEnv().toggleFileTree();
+        return;
+      case "commentsView":
+        enterComments();
         return;
       case "side":
         // Past the old side, or from an excerpt header, the next step left is the outline.
@@ -790,9 +982,215 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     }
   };
 
-  const pickKeymap = useCallback((): Keymap<NarrativeCommand> => (modeRef.current === "narrative" ? NARRATIVE_KEYMAP : REVIEW_KEYMAP), []);
+  // ---- The comments view: every thread over its code, the same cursor over its sections.
+
+  /** Where `gc` returns to: the view it was pressed in, and the cursor there. */
+  const commentsReturn = useRef<{ mode: "files" | "narrative"; cursor: Cursor | null } | null>(null);
+  const enterComments = () => {
+    if (!commentsAvailable) {
+      notify(range !== null ? "The comments view covers all the changes; switch to All changes (gr) first" : "No comment threads yet");
+      return;
+    }
+    commentsReturn.current = { mode: mode === "narrative" ? "narrative" : "files", cursor: keys.get().cursor };
+    setMode("comments");
+    rootRef.current?.focus({ preventScroll: true });
+  };
+  const leaveComments = () => {
+    const back = commentsReturn.current ?? { mode: "files" as const, cursor: null };
+    commentsReturn.current = null;
+    if (back.mode === "narrative" && narrativeAvailable) {
+      keys.set({ cursor: back.cursor, visual: null, focused: null });
+      setMode("narrative");
+      rootRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (back.cursor !== null) unhide(back.cursor.path);
+    inFiles(() => {
+      const cursor = back.cursor;
+      if (cursor === null || !currentPaths.has(cursor.path)) return;
+      keys.set({ cursor, visual: null, focused: null });
+      active.set(cursor.path);
+      expand(cursor.path);
+      revealRef.current(cursor, "center");
+    });
+  };
+  const commentFiles = (): NavFile[] => commentSectionList.map((section) => ({ path: section.key, collapsed: commentsCollapsed.has(section.key), rows: keys.models.get(section.key)?.rows ?? null }));
+  /** The first (or, going up, last) section header or line in view; null when none is on screen. */
+  const commentsVisibleCursor = (direction: 1 | -1): Cursor | null => {
+    const scroller = commentsScrollRef.current;
+    const files = commentFiles();
+    if (scroller === null || files.length === 0) return null;
+    const view = scroller.getBoundingClientRect();
+    const want = keys.get().cursor?.want ?? "RIGHT";
+    const other = want === "LEFT" ? "RIGHT" : "LEFT";
+    const shown = (box: DOMRect | undefined) => box !== undefined && box.bottom > view.top && box.top < view.bottom;
+    let found: Cursor | null = null;
+    for (const [fileIndex, file] of files.entries()) {
+      if (shown(commentSectionRefs.current.get(file.path)?.getBoundingClientRect())) {
+        found = cursorAt(files, { fileIndex, row: -1 }, want);
+        if (direction === 1) return found;
+      }
+      const model = file.collapsed ? undefined : keys.models.get(file.path);
+      if (model === undefined) continue;
+      for (let row = 0; row < model.rows.length; row++) {
+        if (!shown((model.element(row, want) ?? model.element(row, other))?.getBoundingClientRect())) continue;
+        found = cursorAt(files, { fileIndex, row }, want);
+        if (direction === 1) return found;
+      }
+    }
+    return found;
+  };
+  /** Comments start only on today's lines: a section of the current diff, not GitHub's stored hunk. */
+  const commentableSection = (key: string): boolean => {
+    const section = commentSectionList.find((entry) => entry.key === key);
+    if (section?.kind === "outdated") {
+      notify("These are the lines as they were; comment on today's lines (gf opens the file)");
+      return false;
+    }
+    if (!currentPaths.has(key)) {
+      notify(`${key} is not in the current diff`);
+      return false;
+    }
+    return true;
+  };
+  const commentsEnv = (): ReviewEnv => ({
+    ...filesEnv(),
+    files: commentFiles(),
+    // The keys find threads by the section that draws them; actions take the thread by id.
+    threads: commentSectionList.flatMap((section) => section.threads.map((thread) => ({ ...thread, path: section.key }))),
+    findings: [],
+    seat: () => commentsVisibleCursor(1) ?? firstPosition(commentFiles(), keys.get().cursor?.want ?? "RIGHT"),
+    reveal: (cursor, block) => reveal(cursor, block ?? "nearest"),
+    scrollPage: (fraction) => {
+      const scroller = commentsScrollRef.current;
+      if (scroller === null) return 0;
+      scroller.scrollBy({ top: fraction * scroller.clientHeight, behavior: "auto" });
+      return Math.round((fraction * scroller.clientHeight) / LINE_PX);
+    },
+    startComment: (path, range) => {
+      if (commentableSection(path)) startComment(path, range);
+    },
+    markViewed: (path, isViewed) => {
+      if (currentPaths.has(path)) return markViewed(path, isViewed);
+      notify("Mark files viewed from today's lines");
+      return false;
+    },
+    explain: explainHunk === null ? null : (path, side, startLine, endLine) => (commentableSection(path) ? explainHunk(path, side, startLine, endLine) : undefined),
+    setCollapsed: (paths, isCollapsed) =>
+      setCommentsCollapsed((current) => {
+        const next = new Set(current);
+        for (const path of paths) {
+          if (isCollapsed) next.add(path);
+          else next.delete(path);
+        }
+        return next;
+      }),
+    toggleFileTree: () => notify("The comments view has no file list"),
+    focusFileTree: () => false,
+    findingFilter: null,
+    filteredFindings: null,
+    focusOutsideFindings: () => false,
+    search: null,
+    jump: (path) => {
+      commentSectionRefs.current.get(path)?.scrollIntoView({ block: "start" });
+      parkCursor(path);
+    },
+  });
+  const commentsEnvRef = useRef(commentsEnv);
+  commentsEnvRef.current = commentsEnv;
+  // The comments view opens at its top, on the first section.
+  useEffect(() => {
+    if (mode !== "comments") return;
+    commentsScrollRef.current?.scrollTo({ top: 0 });
+    const env = commentsEnvRef.current();
+    const first = firstPosition(env.files, keys.get().cursor?.want ?? "RIGHT");
+    keys.set({ cursor: first, visual: null, focused: first === null ? null : focusAt(env, first) });
+  }, [mode, keys]);
+  /** `gf`: the files view at the thread's line, or at its file when the thread has no line there today. */
+  const openThreadInFiles = (section: CommentSection | null) => {
+    const state = keys.get();
+    const here = section ?? commentSectionList.find((entry) => entry.key === state.cursor?.path) ?? null;
+    if (here === null) {
+      notify("No thread here");
+      return;
+    }
+    const focused = state.focused?.kind === "thread" && state.cursor?.path === here.key ? threadById.get(state.focused.id) : undefined;
+    const thread = focused ?? (here.threads[0] === undefined ? undefined : threadById.get(here.threads[0].id));
+    const path = thread?.path ?? here.path;
+    if (!currentPaths.has(path)) {
+      notify(`${path} is not in the current diff`);
+      return;
+    }
+    const want = state.cursor?.want ?? "RIGHT";
+    const onLine = section === null && here.kind === "current" && state.cursor !== null && state.cursor.line !== null ? state.cursor : null;
+    const target: Cursor =
+      thread !== undefined && !thread.outdated && thread.line !== null && (onLine === null || focused !== undefined)
+        ? { path, side: thread.side, line: thread.line, want }
+        : (onLine ?? { path, side: want, line: null, want });
+    unhide(path);
+    inFiles(() => {
+      active.set(path);
+      expand(path);
+      keys.set({ cursor: target, visual: null, focused: thread === undefined || target.line === null ? null : { kind: "thread", id: thread.id } });
+      if (target.line === null) sectionRefs.current.get(path)?.scrollIntoView({ block: "start" });
+      else revealRef.current(target, "center");
+    });
+  };
+  const runCommentsCommand = (command: CommentsCommand, count: number) => {
+    const state = keys.get();
+    switch (command.kind) {
+      case "commentsView":
+        leaveComments();
+        return;
+      case "narrative":
+        enterNarrative();
+        return;
+      case "threadFilter": {
+        const next = nextThreadFilter(threadFilter);
+        setThreadFilter(next);
+        notify(`Threads: ${THREAD_FILTER_LABEL[next].toLowerCase()}`);
+        return;
+      }
+      case "openInFiles":
+        openThreadInFiles(null);
+        return;
+      case "findFile":
+      case "searchNext":
+      case "searchText":
+        notify("Search from the files view (gc goes back)");
+        return;
+      case "side":
+        // No file list here to step left into.
+        if (command.side === "LEFT" && state.cursor !== null && (state.cursor.line === null || state.cursor.side === "LEFT" || state.cursor.want === "LEFT")) return;
+        runReviewCommand(command, count, commentsEnv());
+        return;
+      default:
+        runReviewCommand(command, count, commentsEnv());
+    }
+  };
+  const commentAnnotationsFor = (section: CommentSection): PatchAnnotationProps => {
+    const fileComposer = section.kind === "current" && composer !== null && composer.path === section.key ? composer : null;
+    const shownComposer = fileComposer === null || fileComposer.line === null || section.patch === null ? (fileComposer?.line === null ? fileComposer : null) : excerptAnnotations(section.patch, [], [], fileComposer).composer;
+    return {
+      path: section.key,
+      threads: section.threads,
+      composer: shownComposer,
+      onStartComment: (anchor) => commentsEnv().startComment(section.key, anchor),
+      onCancelComposer: () => setComposer(null),
+      onSubmitComposer: (body, target) => (fileComposer === null ? Promise.resolve() : comments.addComment(section.path, fileComposer, body, target)),
+      findings: NO_PLACED_FINDINGS,
+      onToggleFinding: toggleFinding,
+      onEditFinding: editFinding,
+    };
+  };
+
+  const pickKeymap = useCallback(
+    (): Keymap<NarrativeCommand | CommentsCommand> => (modeRef.current === "narrative" ? NARRATIVE_KEYMAP : modeRef.current === "comments" ? COMMENTS_KEYMAP : REVIEW_KEYMAP),
+    [],
+  );
   useReviewKeys(rootRef, keys, overlay === null, pickKeymap, (command, count) => {
-    if (mode === "narrative") runNarrativeCommand(command, count);
+    if (mode === "narrative") runNarrativeCommand(command as NarrativeCommand, count);
+    else if (mode === "comments") runCommentsCommand(command as CommentsCommand, count);
     else runFilesCommand(command as ReviewCommand, count);
   });
   const runFilesCommandRef = useRef(runFilesCommand);
@@ -829,20 +1227,20 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       }),
     [active],
   );
-  const markers = useScrollMarkers(mainRef, [diff, comments.threads, collapsed, mode]);
+  const markers = useScrollMarkers(mainRef, [diff, inlineThreads, collapsed, mode, shownFiles]);
   // The sidebar tracks whichever file header is at (or just above) the top of the scroller, like GitHub's file tree.
   const trackActive = () => {
     const main = mainRef.current;
     if (main === null || diff === null) return;
     const top = main.getBoundingClientRect().top + 8;
     let current: string | null = null;
-    for (const entry of diff.files) {
+    for (const entry of shownFiles) {
       const section = sectionRefs.current.get(entry.path);
       if (section === undefined) continue;
       if (section.getBoundingClientRect().top <= top) current = entry.path;
       else break;
     }
-    active.set(current ?? diff.files[0]?.path ?? null);
+    active.set(current ?? shownFiles[0]?.path ?? null);
   };
 
   const annotationsFor = (path: string): PatchAnnotationProps => {
@@ -890,11 +1288,16 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
 
   return (
+    <CommitRangeContext.Provider value={range}>
     <DiffSourceContext.Provider value={sourceContext}>
       <DiffCommentsContext.Provider value={commentActions}>
+        <SuggestionsContext.Provider value={suggestions}>
         <ReviewKeysContext.Provider value={keys}>
+          <FileActionsContext.Provider value={fileMenuActions}>
+          <SearchHighlightCss.Provider value={textSearch.css}>
           {/* A wheel or a click means the reader is on the mouse; the cursor hides until the next key. */}
           <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none" onWheelCapture={hideCursor} onPointerDownCapture={hideCursor}>
+            <style>{textSearch.css}</style>
             {typeof toolbar === "function" ? toolbar({ local: localPending, githubDrafts, reload: comments.loadComments }) : toolbar}
             {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? (
               <div data-diff-submit-bar="">{renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments })}</div>
@@ -902,6 +1305,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
 
             {error !== null ? <p className={cn("px-3 py-2 text-sm text-destructive", enter.fade)}>{error}</p> : null}
             {diff !== null && diff.message !== null ? <p className="px-3 py-2 text-sm text-muted-foreground">{diff.message}</p> : null}
+            {diff?.truncated === true ? <TruncationBanner diff={diff} /> : null}
             {diff !== null && diff.files.length > 0 ? (
               <SummaryBar
                 diff={diff}
@@ -910,9 +1314,49 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 findingShown={shownFindingCount}
                 findingFilter={findingFilter}
                 commentTarget={source.canPostToGithub === true ? { target: comments.target, onChange: comments.setTarget } : null}
-                mode={narrativeAvailable ? { value: mode, stale, onChange: (next) => (next === mode ? undefined : next === "narrative" ? enterNarrative() : leaveToFiles()) } : null}
+                mode={
+                  narrativeAvailable || commentsAvailable
+                    ? {
+                        value: mode,
+                        stale,
+                        narrative: narrativeAvailable,
+                        comments: commentsAvailable,
+                        onChange: (next) => (next === mode ? undefined : next === "comments" ? enterComments() : next === "narrative" ? enterNarrative() : leaveToFiles()),
+                      }
+                    : null
+                }
                 progress={mode === "narrative" ? { position: reader.position, total: reader.total } : null}
+                whitespace={{ hidden: hideWhitespace, onToggle: toggleWhitespace }}
+                search={mode === "files" && textSearch.active ? { query: textSearch.query, count: searchCount, onClear: textSearch.clear } : null}
+                fileFilter={mode === "files" && fileFiltered ? { shown: shownFiles.length, total: diff.files.length, onClear: () => setFileFilter(NO_FILE_FILTER) } : null}
+                threads={
+                  mode === "comments"
+                    ? null
+                    : {
+                        resolved: allThreadCounts.resolved,
+                        outdated: allThreadCounts.outdated,
+                        hidden: preferences.hideThreads,
+                        onOpen: enterComments,
+                        onShow: () => setDiffPreferences({ hideThreads: false }),
+                      }
+                }
+                suggestions={
+                  suggestions.apply === null || suggestions.batch.length === 0
+                    ? null
+                    : { count: suggestions.batch.length, busy: suggestions.busy, onCommit: () => void suggestions.apply?.([...suggestions.batch]) }
+                }
+                layout={
+                  mode === "narrative"
+                    ? { value: preferences.narrativeLayout, onToggle: () => setDiffPreferences({ narrativeLayout: preferences.narrativeLayout === "split" ? "unified" : "split" }) }
+                    : { value: preferences.layout, onToggle: () => setDiffPreferences({ layout: preferences.layout === "split" ? "unified" : "split" }) }
+                }
+                commits={commitsControl}
               />
+            ) : null}
+            {diff !== null && diff.files.length === 0 && range !== null && commitsControl !== null ? (
+              <div className="border-b border-border px-3 py-1">
+                <CommitsButton {...commitsControl} />
+              </div>
             ) : null}
 
             <div className="relative flex min-h-0 flex-1">
@@ -940,13 +1384,33 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                   onNarratedViewed={() => runNarrativeCommand({ kind: "narratedViewed" }, 1)}
                   onLeaveOutline={returnToDiff}
                 />
+              ) : mode === "comments" ? (
+                <CommentsView
+                  sections={commentSectionList}
+                  originals={threadById}
+                  filter={threadFilter}
+                  counts={allThreadCounts}
+                  onFilter={setThreadFilter}
+                  scrollRef={commentsScrollRef}
+                  sectionRef={(key, node) => {
+                    if (node === null) commentSectionRefs.current.delete(key);
+                    else commentSectionRefs.current.set(key, node);
+                  }}
+                  collapsed={commentsCollapsed}
+                  inDiff={(path) => currentPaths.has(path)}
+                  annotationsFor={commentAnnotationsFor}
+                  onToggleCollapsed={(key) => commentsEnv().setCollapsed([key], !commentsCollapsed.has(key))}
+                  onOpen={openThreadInFiles}
+                />
               ) : (
                 <>
                   <ActiveFileTreeSidebar
                     active={active}
                     diff={diff}
+                    files={shownFiles}
+                    filter={{ active: fileFiltered, onOpen: openFileFilter }}
                     viewed={viewed}
-                    commentCount={(path) => forPath(path).filter(threadIsOpen).length}
+                    commentCount={(path) => openThreadCounts.get(path) ?? 0}
                     findingCount={(path) => findingsByPath.get(path)?.length ?? 0}
                     risk={(path) => risk.get(path) ?? null}
                     changedSince={(path) => changedRangesByPath.has(path)}
@@ -970,7 +1434,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                       }}
                       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
                     >
-                      {delta !== null && delta.files.length > 0 ? (
+                      {range === null && delta !== null && delta.files.length > 0 ? (
                         <DeltaStrip delta={delta} newFindings={newFindings} touchedFindings={touchedFindings} findingFilter={findingFilter} onJump={jumpTo} actions={deltaActions} />
                       ) : null}
                       {diff !== null && diff.files.length > 0 && (outsideFindings.preExisting.length > 0 || outsideFindings.filtered.length > 0) ? (
@@ -989,9 +1453,18 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                           {diff.hiddenVendored === null ? "No changes." : `Only vendored files changed (${diff.hiddenVendored.files} hidden by the "Hide vendored files" setting).`}
                         </p>
                       ) : null}
-                      {diff?.files.map((file, index) => (
+                      {diff !== null && diff.files.length > 0 && shownFiles.length === 0 ? (
+                        <p className={cn("p-4 text-sm text-muted-foreground", enter.fade)}>
+                          No files match the file filter.{" "}
+                          <button type="button" className="underline hover:text-foreground" onClick={() => setFileFilter(NO_FILE_FILTER)}>
+                            Clear filters
+                          </button>{" "}
+                          (or gf to change it)
+                        </p>
+                      ) : null}
+                      {shownFiles.map((file, index) => (
                         <FileSection
-                          key={file.path}
+                          key={`${rangeKey(range)}:${file.path}`}
                           file={file}
                           index={index}
                           sectionRef={(node) => {
@@ -1010,6 +1483,10 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                           onExplain={explainHunk === null ? null : (side, startLine, endLine) => explainHunk(file.path, side, startLine, endLine)}
                           semantics={semanticsByPath.get(file.path) ?? NO_SEMANTICS}
                           changedRanges={changedRangesByPath.get(file.path) ?? NO_RANGES}
+                          shown={shownPatches.get(file.path) ?? NO_PATCH}
+                          loadedPatch={loadedPatchOf(file)}
+                          onPatchLoaded={(patch) => rememberLoadedPatch(file, patch)}
+                          searchLine={textSearch.reached?.path === file.path ? textSearch.reached : null}
                         />
                       ))}
                     </main>
@@ -1018,17 +1495,18 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                 </>
               )}
               <ModeLabel />
-              {overlay?.kind === "help" ? <KeysOverlay onClose={closeOverlay} sections={mode === "narrative" ? NARRATIVE_KEY_HELP : KEY_HELP} /> : null}
+              {overlay?.kind === "help" ? <KeysOverlay onClose={closeOverlay} sections={mode === "narrative" ? NARRATIVE_KEY_HELP : mode === "comments" ? COMMENTS_KEY_HELP : KEY_HELP} /> : null}
               {overlay?.kind === "files" && diff !== null ? (
                 <Picker
                   label="Search file names"
                   placeholder="Search file names…"
                   initialQuery={lastSearch ?? ""}
-                  rank={(query) => fileItems(diff.files, query)}
+                  rank={(query) => fileItems(shownFiles, query)}
                   onPick={(path, query) => {
                     closeOverlay();
                     setLastSearch(query.trim() === "" ? null : query);
-                    jumpTo(path);
+                    if (mode === "narrative") openInFiles(path);
+                    else jumpTo(path);
                   }}
                   onClose={closeOverlay}
                 />
@@ -1066,10 +1544,58 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
                   onClose={closeOverlay}
                 />
               ) : null}
+              {overlay?.kind === "search" ? (
+                <SearchBox
+                  initialQuery={textSearch.query}
+                  count={searchCount}
+                  onChange={textSearch.type}
+                  onCommit={(query) => {
+                    const searching = textSearch.commit(query);
+                    closeOverlay();
+                    if (!searching) return;
+                    keys.set({ cursorShown: true });
+                    runFilesCommand({ kind: "searchNext", direction: 1 }, 1);
+                  }}
+                  onCancel={() => {
+                    textSearch.cancel();
+                    closeOverlay();
+                  }}
+                />
+              ) : null}
+              {overlay?.kind === "commits" && commits !== null ? (
+                <CommitPicker
+                  commits={commits}
+                  current={range}
+                  notify={notify}
+                  onClose={closeOverlay}
+                  onPick={(next) => {
+                    closeOverlay();
+                    if (rangeKey(next) === rangeKey(range)) return;
+                    setRange(next);
+                    notify(next === null ? "Showing all changes" : `Showing ${rangeLabel(next, commits)}${rangeEndsAtHead(next, commits) ? "" : ": switch to All changes to comment or mark files viewed"}`);
+                  }}
+                />
+              ) : null}
+              {overlay?.kind === "fileFilter" && diff !== null ? (
+                <FileFilterMenu
+                  files={diff.files}
+                  filter={fileFilter}
+                  marks={fileMarks}
+                  findings={allFindings.length > 0}
+                  anchor={overlay.anchor}
+                  onChange={setFileFilter}
+                  onClose={(refocus) => (refocus ? closeOverlay() : setOverlay(null))}
+                />
+              ) : null}
+              {overlay?.kind === "blame" ? <BlamePopover path={overlay.path} span={overlay.span} anchor={overlay.anchor} repo={diff?.repo ?? null} onClose={closeOverlay} /> : null}
             </div>
           </div>
+          </SearchHighlightCss.Provider>
+          </FileActionsContext.Provider>
         </ReviewKeysContext.Provider>
+        </SuggestionsContext.Provider>
       </DiffCommentsContext.Provider>
     </DiffSourceContext.Provider>
+    </CommitRangeContext.Provider>
   );
 }

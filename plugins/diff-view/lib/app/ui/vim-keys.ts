@@ -11,4 +11,7 @@ export {
   useKeyHandler,
   useKeyScope,
   usePickerKeys,
+  useSearchBoxKeys,
+  textRanges,
+  useMenuKeys,
 } from "../../../../vim-mode/lib/react.ts";

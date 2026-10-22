@@ -15,7 +15,9 @@ known) in the side panel. The user can comment on lines or whole files there.
 "Review comments on your changes." Each bullet names a location as
 `path:line` (`(old side)` marks a removed line; a bare `path` is a file-level
 comment), and replies say which comment they answer. Treat it like review
-feedback: address each comment in the code, then summarize what changed.
+feedback: address each comment in the code, then summarize what changed. A
+```` ```suggestion ```` block in a comment is the exact replacement text for
+the lines that comment is on.
 Sent comments stay visible in the view but can no longer be edited.
 
 ## Settings

@@ -9,8 +9,11 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DIFF_CHANGED } from "./events";
 import { checkedLineRange, locationLabel } from "./lib/line-range";
-import { emptyDiff, environmentDiff, environmentFileSides, grepDefinitions, grepUsages, hideVendoredFiles, localEnvironmentPath, runDifftastic } from "./lib/server";
-import type { DiffComment, DiffFile, DiffResult, FileSlice, StructuralDiff, SymbolLookup, SymbolUsages } from "./lib/types";
+import { applySuggestionsInCheckout, emptyDiff, environmentDiff, environmentFileSides, gitBlame, grepDefinitions, grepUsages, hideVendoredFiles, localEnvironmentPath, patchFromSides, runDifftastic } from "./lib/server";
+import { SUGGESTION_NOTE, mentionsSuggestion } from "./lib/suggestions";
+import type { BlameLine, DiffComment, DiffFile, DiffResult, FileSlice, StructuralDiff, SuggestionItem, SymbolLookup, SymbolUsages } from "./lib/types";
+import { COMMIT_SHA_PATTERN, commitRangeKey, createExpiringCache, environmentCommits, environmentRangeDiff, environmentRangeFileSides } from "./lib/server";
+import { WORKTREE_SHA, type CommitRange, type DiffCommits } from "./lib/types";
 
 const threadIdSchema = z.string().min(1);
 const commentBodySchema = z.string().trim().min(1).max(10_000);
@@ -29,6 +32,7 @@ const diffFileSchema: z.ZodType<DiffFile> = z.object({
   deletions: z.number().int(),
   patch: z.string().nullable(),
   vendored: z.boolean(),
+  binary: z.boolean().optional(),
 });
 const diffResultSchema: z.ZodType<DiffResult> = z.object({
   source: z.enum(["pr", "environment", "none"]),
@@ -40,6 +44,9 @@ const diffResultSchema: z.ZodType<DiffResult> = z.object({
   message: z.string().nullable(),
   fetchedAt: z.number(),
   hiddenVendored: z.object({ files: z.number().int(), additions: z.number().int(), deletions: z.number().int() }).nullable(),
+  truncatedNote: z.string().nullable().optional(),
+  repo: z.string().nullable(),
+  environmentId: z.string().nullable(),
 });
 const structuralLineSchema = z.object({ line: z.number().int(), changes: z.array(z.object({ start: z.number().int(), end: z.number().int(), highlight: z.string() })) });
 const structuralDiffSchema: z.ZodType<StructuralDiff> = z.object({
@@ -95,12 +102,31 @@ const diffCommentSchema: z.ZodType<DiffComment> = z.object({
   applyId: z.string().nullable(),
 });
 
+const blameLineSchema: z.ZodType<BlameLine> = z.object({ line: z.number().int(), sha: z.string(), author: z.string(), time: z.number(), summary: z.string() });
+const suggestionItemSchema: z.ZodType<SuggestionItem> = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+  startLine: z.number().int().min(1),
+  endLine: z.number().int().min(1),
+  expected: z.array(z.string()),
+  replacement: z.array(z.string()),
+});
+
+const commitRangeSchema: z.ZodType<CommitRange> = z
+  .object({ from: z.string().regex(COMMIT_SHA_PATTERN), to: z.union([z.string().regex(COMMIT_SHA_PATTERN), z.literal(WORKTREE_SHA)]) })
+  .strict();
+const diffCommitsSchema: z.ZodType<DiffCommits> = z.object({
+  commits: z.array(z.object({ sha: z.string(), summary: z.string(), author: z.string(), date: z.string() })),
+  marks: z.array(z.object({ sha: z.string(), label: z.string() })),
+  base: z.string().nullable(),
+});
+
 const threadInput = z.object({ threadId: threadIdSchema }).strict();
 const symbolInput = z.object({ threadId: threadIdSchema, symbol: z.string().trim().min(1).max(200) }).strict();
 
 export const rpcContract = defineRpcContract({
-  diff_get: { input: z.object({ threadId: threadIdSchema, refresh: z.boolean().default(false) }).strict(), output: diffResultSchema },
-  diff_structural: { input: z.object({ threadId: threadIdSchema, path: z.string().min(1) }).strict(), output: structuralDiffSchema },
+  diff_get: { input: z.object({ threadId: threadIdSchema, refresh: z.boolean().default(false), range: commitRangeSchema.nullable().default(null) }).strict(), output: diffResultSchema },
+  diff_structural: { input: z.object({ threadId: threadIdSchema, path: z.string().min(1), range: commitRangeSchema.nullable().default(null) }).strict(), output: structuralDiffSchema },
   symbol_definitions: { input: symbolInput, output: symbolLookupSchema },
   symbol_usages: { input: symbolInput, output: symbolUsagesSchema },
   /** A slice of a file in the thread's checkout, for widening an inline peek. */
@@ -133,6 +159,20 @@ export const rpcContract = defineRpcContract({
   diff_comment_delete: { input: z.object({ id: z.string() }).strict(), output: z.object({ deleted: z.boolean() }) },
   /** Send every unsent comment to the thread's agent as one message. */
   diff_comments_send: { input: threadInput, output: z.object({ sent: z.number().int() }) },
+  /** The text patch of a file the diff came without one for, made from its two sides. */
+  diff_load_patch: { input: z.object({ threadId: threadIdSchema, path: z.string().min(1), range: commitRangeSchema.nullable().default(null) }).strict(), output: z.object({ patch: z.string().nullable() }) },
+  /** Who last changed lines of a file in the thread's checkout: the working tree for the new side, the merge base for the old. */
+  diff_blame: {
+    input: z.object({ threadId: threadIdSchema, path: z.string().min(1), side: sideSchema, startLine: z.number().int().min(1), endLine: z.number().int().min(1), range: commitRangeSchema.nullable().default(null) }).strict(),
+    output: z.object({ lines: z.array(blameLineSchema) }),
+  },
+  /** Writes suggested changes into the thread's checkout (uncommitted), refusing them all if any item's lines moved. */
+  diff_suggestions_apply: {
+    input: z.object({ threadId: threadIdSchema, items: z.array(suggestionItemSchema).min(1).max(200), message: z.string().max(2_000).nullable().default(null) }).strict(),
+    output: z.object({ applied: z.number().int(), commitUrl: z.string().nullable() }),
+  },
+  /** The commits of the thread's changes in its local checkout, oldest first, uncommitted changes last. */
+  diff_commits: { input: threadInput, output: diffCommitsSchema },
 });
 
 interface CommentRow {
@@ -185,7 +225,7 @@ function where(row: CommentRow): string {
 
 /** One message with every unsent comment, replies under the comment they answer. */
 export function commentsMessage(unsent: readonly CommentRow[], roots: ReadonlyMap<string, CommentRow>): string {
-  const lines = ["Review comments on your changes. Address each one, then summarize what you changed.", ""];
+  const lines = ["Review comments on your changes. Address each one, then summarize what you changed.", ...(mentionsSuggestion(unsent.map((row) => row.body)) ? [SUGGESTION_NOTE] : []), ""];
   for (const comment of unsent) {
     const root = comment.in_reply_to === null ? null : (roots.get(comment.in_reply_to) ?? null);
     const body = comment.body.trim().replace(/\n/gu, "\n  ");
@@ -196,6 +236,7 @@ export function commentsMessage(unsent: readonly CommentRow[], roots: ReadonlyMa
 }
 
 const STRUCTURAL_CACHE_LIMIT = 200;
+const DIFF_CACHE_TTL_MS = 15_000;
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
@@ -265,30 +306,38 @@ export default async function plugin(bb: BbPluginApi) {
     return (await bb.sdk.threads.get({ threadId })).environmentId;
   }
 
-  async function fullDiff(threadId: string): Promise<DiffResult> {
+  // Every file's structural diff, load and viewed mark reads the diff again; within a few seconds they share one read.
+  const diffCache = createExpiringCache<DiffResult>(DIFF_CACHE_TTL_MS);
+  /** The thread's changes, or a range of its history; `fresh` reads them again rather than from the cache. */
+  async function fullDiff(threadId: string, range: CommitRange | null = null, fresh = false): Promise<DiffResult> {
     const environmentId = await threadEnvironment(threadId);
     if (environmentId === null) return emptyDiff("none", "This thread has no environment yet.");
-    return environmentDiff(bb.sdk, environmentId);
+    return diffCache.get(`${environmentId}:${commitRangeKey(range)}`, () => (range === null ? environmentDiff(bb.sdk, environmentId) : environmentRangeDiff(bb.sdk, environmentId, range)), fresh);
   }
 
-  async function threadDiff(threadId: string): Promise<DiffResult> {
-    const diff = await fullDiff(threadId);
+  async function threadDiff(threadId: string, refresh: boolean, range: CommitRange | null): Promise<DiffResult> {
+    // The whole diff is read afresh on every ask, as it always was; a range's history only changes on a refresh.
+    const diff = await fullDiff(threadId, range, refresh || range === null);
     return (await settings.get()).hideVendored ? hideVendoredFiles(diff) : diff;
   }
 
-  async function diffFile(threadId: string, path: string): Promise<{ file: DiffFile; baseRef: string | null }> {
-    const diff = await fullDiff(threadId);
+  async function diffFile(threadId: string, path: string, range: CommitRange | null = null): Promise<{ file: DiffFile; baseRef: string | null }> {
+    const diff = await fullDiff(threadId, range);
     const file = diff.files.find((entry) => entry.path === path || entry.previousPath === path);
     if (file === undefined) throw new Error(`${path} is not in this thread's changes`);
     return { file, baseRef: diff.baseRef };
   }
 
+  async function fileSides(environmentId: string, file: DiffFile, baseRef: string | null, range: CommitRange | null): Promise<{ old: string | null; new: string | null }> {
+    return range === null ? environmentFileSides(bb.sdk, environmentId, file, baseRef) : environmentRangeFileSides(bb.sdk, environmentId, range, file);
+  }
+
   const structuralCache = new Map<string, StructuralDiff>();
-  async function structuralDiff(threadId: string, path: string): Promise<StructuralDiff> {
+  async function structuralDiff(threadId: string, path: string, range: CommitRange | null): Promise<StructuralDiff> {
     const environmentId = await threadEnvironment(threadId);
     if (environmentId === null) throw new Error("This thread has no environment yet.");
-    const { file, baseRef } = await diffFile(threadId, path);
-    const sides = await environmentFileSides(bb.sdk, environmentId, file, baseRef);
+    const { file, baseRef } = await diffFile(threadId, path, range);
+    const sides = await fileSides(environmentId, file, baseRef, range);
     const key = createHash("sha1").update(path).update("\0").update(sides.old ?? "\u0001").update("\0").update(sides.new ?? "\u0001").digest("hex");
     const cached = structuralCache.get(key);
     if (cached !== undefined) return cached;
@@ -300,6 +349,14 @@ export default async function plugin(bb: BbPluginApi) {
     return result;
   }
 
+  async function loadPatch(threadId: string, path: string, range: CommitRange | null): Promise<string | null> {
+    const environmentId = await threadEnvironment(threadId);
+    if (environmentId === null) throw new Error("This thread has no environment yet.");
+    const { file, baseRef } = await diffFile(threadId, path, range);
+    const sides = await fileSides(environmentId, file, baseRef, range);
+    return patchFromSides(file.path, file.previousPath, sides.old, sides.new);
+  }
+
   async function checkout(threadId: string): Promise<{ path: string; environmentId: string } | null> {
     const environmentId = await threadEnvironment(threadId);
     if (environmentId === null) return null;
@@ -308,7 +365,8 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   async function viewedPaths(threadId: string): Promise<string[]> {
-    const current = new Map((await fullDiff(threadId)).files.map((file) => [file.path, fileFingerprint(file)]));
+    // Read afresh: a mark lapses the moment its file changes again.
+    const current = new Map((await fullDiff(threadId, null, true)).files.map((file) => [file.path, fileFingerprint(file)]));
     return stmts.viewedForThread
       .all(threadId)
       .filter((row) => current.get(row.path) === row.fingerprint)
@@ -331,8 +389,8 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(rpcContract, {
-    diff_get: ({ threadId }) => threadDiff(threadId),
-    diff_structural: ({ threadId, path }) => structuralDiff(threadId, path),
+    diff_get: ({ threadId, refresh, range }) => threadDiff(threadId, refresh, range),
+    diff_structural: ({ threadId, path, range }) => structuralDiff(threadId, path, range),
     symbol_definitions: async ({ threadId, symbol }) => {
       const local = await checkout(threadId);
       if (local === null) return { symbol, definitions: [], open: { kind: "none" }, searched: "none" };
@@ -404,6 +462,32 @@ export default async function plugin(bb: BbPluginApi) {
       for (const row of unsent) stmts.markSent.run(sendId, row.id);
       publish(threadId);
       return { sent: unsent.length };
+    },
+    diff_load_patch: async ({ threadId, path, range }) => ({ patch: await loadPatch(threadId, path, range) }),
+    diff_blame: async ({ threadId, path, side, startLine, endLine, range }) => {
+      const local = await checkout(threadId);
+      if (local === null) throw new Error("Blame needs a local checkout of this thread's environment.");
+      const { file, baseRef } = await diffFile(threadId, path, range);
+      // A diff of uncommitted changes alone has no merge base; its old side is HEAD.
+      const oldRev = range?.from ?? baseRef ?? "HEAD";
+      const newRev = range === null || range.to === WORKTREE_SHA ? null : range.to;
+      const lines =
+        side === "LEFT"
+          ? await gitBlame(local.path, oldRev, file.previousPath ?? file.path, startLine, endLine)
+          : await gitBlame(local.path, newRev, file.path, startLine, endLine);
+      return { lines };
+    },
+    diff_suggestions_apply: async ({ threadId, items }) => {
+      const local = await checkout(threadId);
+      if (local === null) throw new Error("Applying suggestions needs a local checkout of this thread's environment.");
+      const result = await applySuggestionsInCheckout(local.path, items);
+      publish(threadId);
+      return result;
+    },
+    diff_commits: async ({ threadId }) => {
+      const environmentId = await threadEnvironment(threadId);
+      if (environmentId === null) return { commits: [], marks: [], base: null };
+      return environmentCommits(bb.sdk, environmentId, (await fullDiff(threadId)).baseRef);
     },
   });
 

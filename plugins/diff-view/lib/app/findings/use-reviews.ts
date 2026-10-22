@@ -26,5 +26,17 @@ export function useReviews(source: DiffSource, refreshSignal: unknown) {
       throw cause;
     }
   };
-  return { reviews, toggleFinding, editFinding };
+  /** Marks findings fixed, once their suggestion is applied; the diff then leaves them out. */
+  const markApplied = async (findings: ReadonlyArray<{ reviewId: string; findingId: string }>) => {
+    const setApplied = source.reviews?.setApplied;
+    if (setApplied === undefined) return;
+    for (const { reviewId, findingId } of findings) {
+      try {
+        replaceReview(await setApplied(reviewId, findingId, true));
+      } catch (cause) {
+        toast.error(errorMessage(cause));
+      }
+    }
+  };
+  return { reviews, toggleFinding, editFinding, markApplied };
 }

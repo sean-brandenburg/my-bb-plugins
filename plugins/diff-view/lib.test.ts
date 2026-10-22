@@ -1101,8 +1101,8 @@ describe("narrative chapters", () => {
   });
 
   it("keeps every review key, so the cursor and comments work on a step's lines as on the files", () => {
-    // h and l turn pages instead, the narrative's main motion; the arrows keep the sides.
-    for (const [key, command] of Object.entries(REVIEW_KEYMAP)) if (key !== "h" && key !== "l") expect(NARRATIVE_KEYMAP[key]).toEqual(command);
+    // h and l turn pages instead, the narrative's main motion; the arrows keep the sides. gf opens the files view.
+    for (const [key, command] of Object.entries(REVIEW_KEYMAP)) if (key !== "h" && key !== "l" && key !== "gf") expect(NARRATIVE_KEYMAP[key]).toEqual(command);
     expect(NARRATIVE_KEYMAP.l).toEqual({ kind: "step", direction: 1 });
     expect(NARRATIVE_KEYMAP["<Right>"]).toEqual({ kind: "side", side: "RIGHT" });
     expect(NARRATIVE_KEYMAP["]]"]).toEqual({ kind: "chapter", direction: 1 });

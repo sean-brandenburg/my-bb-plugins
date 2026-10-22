@@ -52,6 +52,7 @@ const SHARED_HELP = KEY_HELP.filter((section) => section.title !== "File list").
     "Ctrl-d Ctrl-u": "Half a page down / up (Ctrl-f / Ctrl-b a whole page)",
     "/": "Search steps by title and text and jump to one",
     "n N": "Next / previous step matching the search",
+    f: "Find a file by name and open it in the files view",
     v: "Mark the excerpt's file viewed or not",
     zr: "Not in excerpts: they are line diffs",
     gd: "Not in excerpts: they are line diffs",

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { ComponentProps, PointerEvent as ReactPointerEvent } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import type { DiffResult } from "../../types";
+import type { DiffFile, DiffResult } from "../../types";
 import { cn } from "../utils";
 import { PRESS } from "../ui/motion";
 import { SkeletonLines } from "../ui/skeleton";
 import { readPreference, setDiffPreferences, useDiffPreferences, writePreference } from "../state";
 import { FileTree } from "./file-tree";
+import { FileFilterButton } from "./file-filter-menu";
 
 const DEFAULT_WIDTH = 288;
 const MIN_WIDTH = 180;
@@ -29,7 +30,18 @@ function readWidth(): number {
  * The file tree beside the diff, from the `@3xl` container width up: hideable to a thin rail and resizable by its
  * edge, both remembered across views. Renders as siblings of the diff inside the view's flex row.
  */
-export function FileTreeSidebar({ diff, ...tree }: { diff: DiffResult | null } & Omit<ComponentProps<typeof FileTree>, "files" | "onHide">) {
+export function FileTreeSidebar({
+  diff,
+  files,
+  filter,
+  ...tree
+}: {
+  diff: DiffResult | null;
+  /** The files the file filter leaves in. */
+  files: DiffFile[];
+  filter: { active: boolean; onOpen: (anchor: Element) => void };
+} & Omit<ComponentProps<typeof FileTree>, "files" | "onHide">) {
+  const fileCount = diff === null ? "" : files.length === diff.files.length ? String(diff.files.length) : `${files.length} of ${diff.files.length}`;
   const { fileTreeOpen: open } = useDiffPreferences();
   const setOpen = (value: boolean) => setDiffPreferences({ fileTreeOpen: value });
   const [width, setWidth] = useState<number>(readWidth);
@@ -61,19 +73,20 @@ export function FileTreeSidebar({ diff, ...tree }: { diff: DiffResult | null } &
           <button type="button" className={cn("rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Show file list" title="Show file list (t)" onClick={() => setOpen(true)}>
             <Icon name="ChevronDown" className="size-3.5 -rotate-90" />
           </button>
-          {diff !== null ? <span className="mt-1 text-[10px] tabular-nums text-muted-foreground">{diff.files.length}</span> : null}
+          {diff !== null ? <span className={cn("mt-1 text-[10px] tabular-nums text-muted-foreground", filter.active && "text-primary")}>{files.length}</span> : null}
         </div>
       ) : null}
       <aside data-file-tree="" className={cn("relative hidden shrink-0 flex-col border-r border-border @3xl:flex", !open && "@3xl:hidden")} style={{ width }}>
         <div className="flex items-center gap-1 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">Files{diff !== null ? ` · ${diff.files.length}` : ""}</span>
+          <span className="min-w-0 flex-1 truncate">Files{diff !== null ? ` · ${fileCount}` : ""}</span>
+          {diff !== null && diff.files.length > 0 ? <FileFilterButton active={filter.active} onClick={filter.onOpen} /> : null}
           <button type="button" className={cn("rounded p-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Hide file list" title="Hide file list (t)" onClick={() => setOpen(false)}>
             <Icon name="ChevronDown" className="size-3.5 rotate-90" />
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {diff === null ? <SkeletonLines widths={FILE_SKELETON} label="Loading files" className="px-3 py-2" lineClassName="h-2.5" /> : <FileTree
-              files={diff.files}
+              files={files}
               {...tree}
               onHide={() => {
                 setOpen(false);

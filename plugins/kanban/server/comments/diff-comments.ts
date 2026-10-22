@@ -96,6 +96,9 @@ export function createDiffComments(
       selected: true,
       selectionOverride: null,
       addressedAt: null,
+      diffHunk: null,
+      originalLine: comment.line,
+      originalStartLine: comment.startLine,
     }));
   }
 

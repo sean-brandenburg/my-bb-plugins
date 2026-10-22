@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import type { DiffComment, DiffCommentTarget, GithubComment, LineRange } from "../../types";
 import { errorMessage } from "../format";
 import type { DiffSource } from "../source";
-import { buildDiffThreads, localCommentState, type DiffThread } from "./threads";
+import { allDiffThreads, localCommentState, type DiffThread } from "./threads";
+import { shownInline } from "./comment-sections";
 
 /**
  * The source's comments (and synced GitHub ones) as threads, with the edits the view makes to them. Every edit
@@ -20,7 +21,9 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
     else source.listGithubComments().then(setPrComments, () => setPrComments([]));
   }, [source]);
   useEffect(loadComments, [loadComments, refreshSignal]);
-  const threads = useMemo(() => buildDiffThreads(comments, prComments), [comments, prComments]);
+  const allThreads = useMemo(() => allDiffThreads(comments, prComments), [comments, prComments]);
+  // Resolved and outdated threads are over; the comments view lists them.
+  const threads = useMemo(() => allThreads.filter(shownInline), [allThreads]);
 
   const editComment = async (id: string, body: string) => {
     try {
@@ -78,6 +81,7 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
 
   return {
     threads,
+    allThreads,
     localPending: comments.filter((comment) => localCommentState(comment) === "pending"),
     githubDrafts: comments.filter((comment) => localCommentState(comment) === "draft"),
     target: source.canPostToGithub === true ? (chosenTarget ?? source.defaultCommentTarget ?? "local") : "local",

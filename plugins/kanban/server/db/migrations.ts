@@ -250,5 +250,10 @@ export function migrate(bb: BbPluginApi, db: KanbanDatabase): void {
       pulled_at INTEGER,
       updated_at INTEGER NOT NULL
     )`,
+    `ALTER TABLE pr_comments ADD COLUMN diff_hunk TEXT`,
+    `ALTER TABLE pr_comments ADD COLUMN original_line INTEGER`,
+    `ALTER TABLE pr_comments ADD COLUMN original_start_line INTEGER`,
+    // Comments already synced have no hunk; the next sync pulls them again.
+    `UPDATE tickets SET comments_synced_for = NULL`,
   ]);
 }

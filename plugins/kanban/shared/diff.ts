@@ -29,6 +29,8 @@ export const diffFileSchema = z.object({
   patch: z.string().nullable(),
   /** Under a vendored tree (vendor/, node_modules/, third_party/, …): never given a structural diff. */
   vendored: z.boolean(),
+  /** Known to be binary (git's "Binary files" line; a GitHub file with no patch and no line counts); absent when unknown. */
+  binary: z.boolean().optional(),
 });
 export type DiffFile = z.infer<typeof diffFileSchema>;
 
@@ -44,6 +46,12 @@ export const ticketDiffSchema = z.object({
   fetchedAt: z.number(),
   /** Vendored files left out of `files` by the "Hide vendored files" setting; null when nothing was hidden. */
   hiddenVendored: z.object({ files: z.number().int(), additions: z.number().int(), deletions: z.number().int() }).nullable(),
+  /** What a truncated diff is missing, for the banner above it. */
+  truncatedNote: z.string().nullable().optional(),
+  /** The GitHub repository (`owner/name`): the PR's, or the checkout's `origin`; null when unknown. */
+  repo: z.string().nullable(),
+  /** The environment the changes are in, whose files open in bb's file preview; null for a PR's diff. */
+  environmentId: z.string().nullable(),
 });
 export type TicketDiff = z.infer<typeof ticketDiffSchema>;
 
@@ -100,3 +108,29 @@ export const symbolUsagesSchema = z.object({
   truncated: z.boolean(),
 });
 export type SymbolUsages = z.infer<typeof symbolUsagesSchema>;
+
+/** Who last changed one line; an all-zero `sha` is a line not committed yet. `time` is epoch milliseconds. */
+export const blameLineSchema = z.object({ line: z.number().int(), sha: z.string(), author: z.string(), time: z.number(), summary: z.string() });
+export type BlameLine = z.infer<typeof blameLineSchema>;
+
+/** A suggested change to apply: new-side lines that read `expected` become `replacement`. */
+export const suggestionItemSchema = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+  startLine: z.number().int().min(1),
+  endLine: z.number().int().min(1),
+  expected: z.array(z.string()),
+  replacement: z.array(z.string()),
+});
+export type SuggestionItem = z.infer<typeof suggestionItemSchema>;
+/** Part of the diff's history: after `from` (exclusive) up to `to`, which may be `WORKTREE` (uncommitted changes). */
+export const commitRangeSchema = z.object({ from: z.string().regex(/^[0-9a-f]{7,40}$/u), to: z.string().regex(/^([0-9a-f]{7,40}|WORKTREE)$/u) }).strict();
+export type CommitRange = z.infer<typeof commitRangeSchema>;
+
+/** The diff's commits oldest first, the review marks to read on from, and where the first commit starts. */
+export const diffCommitsSchema = z.object({
+  commits: z.array(z.object({ sha: z.string(), summary: z.string(), author: z.string(), date: z.string() })),
+  marks: z.array(z.object({ sha: z.string(), label: z.string() })),
+  base: z.string().nullable(),
+});
+export type DiffCommits = z.infer<typeof diffCommitsSchema>;
