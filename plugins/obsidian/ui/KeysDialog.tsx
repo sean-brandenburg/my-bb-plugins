@@ -13,7 +13,7 @@ export function KeysDialog() {
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Work anywhere on the Vault page (notes, the home, the calendar), its file sidebar, and its Outline and Backlinks tabs, outside a text box. The arrow keys work as h, j, k, and l.</DialogDescription>
         </DialogHeader>
-        <KeyHelp sections={KEY_HELP} />
+        <KeyHelp sections={KEY_HELP} search />
       </DialogContent>
     </Dialog>
   );

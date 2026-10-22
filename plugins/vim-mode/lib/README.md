@@ -12,7 +12,7 @@ It is layers, not a framework. Use the highest layer that fits and drop a level 
 | Scope | `bindKeyScope`, `useKeyScope` | A plugin page or panel with its own root |
 | Cursors | `runListMotion` (focus over `[data-nav-row]`), `stepIndex` (a highlighted index), `spatialStep` (2-D), `scrollPane` (no cursor) | Moving |
 | Widgets | `createPickerKeys` / `usePickerKeys`, `createMenuKeys`, `createSearchBoxKeys`, `useTextSearch` | Selects, comboboxes, switchers, menus, `/` search |
-| Help | `KeyHelp` (React), `renderKeyHelp` (DOM), `keymapConflicts`, `unboundHelpKeys` | The `?` list, and tests that keep it honest |
+| Help | `KeyHelp` (React), `renderKeyHelp` (DOM), `filterKeyHelp`, `keymapConflicts`, `unboundHelpKeys` | The `?` list and its `/` search, and tests that keep it honest |
 
 ## Quickstart
 
@@ -172,7 +172,12 @@ overlay (default: open dialogs) over the root.
 
 - `KeyHelp sections` (React) is the `?` dialog's grid (`className` replaces its two-column layout for a narrow
   container); put it in the plugin's own `Dialog`, with `useFocusReturn(open)` for `onAfterCloseAutoFocus`, since a
-  dialog a key opened has no trigger to give focus back to. `Kbd` is one key cap, `size="small"` inside hint text.
+  dialog a key opened has no trigger to give focus back to. `Kbd` is one key cap, `size="small"` inside hint text, and
+  `KeyHelp size="small"` is the grid at that size.
+- `KeyHelp search` puts a search box over the list: `/` anywhere in the dialog holding it focuses the box, typing filters
+  the list (`filterKeyHelp`: an entry's action or keys, or a section's title; smartcase, literal), Enter goes back to the
+  keys keeping the filter, and Escape drops it without closing the dialog. Leave it off for a list shown inline on a page
+  whose own `/` is in reach.
 - `keysFor(keymap, match)` is the key bound to a command, for a hint strip that can't drift from the keymap.
 - `renderKeyHelp(document, sections)` is the same list as plain DOM for content scripts.
 - `unboundHelpKeys(sections, keymaps, elsewhere)` takes one keymap or several (a board and the card inside it).

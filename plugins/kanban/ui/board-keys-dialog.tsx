@@ -11,7 +11,7 @@ export function BoardKeysDialog({ open, onOpenChange }: { open: boolean; onOpenC
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Work anywhere on the board or an open card outside a text box.</DialogDescription>
         </DialogHeader>
-        <KeyHelp sections={KEY_HELP} />
+        <KeyHelp sections={KEY_HELP} search />
       </DialogContent>
     </Dialog>
   );

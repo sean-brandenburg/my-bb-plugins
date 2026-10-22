@@ -1,5 +1,5 @@
 import { createKeyHandler, type KeyHandler } from "./handler.ts";
-import type { Keymap } from "./reader.ts";
+import type { KeyHelpSection, Keymap } from "./reader.ts";
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -19,6 +19,24 @@ export function compileSearch(query: string, options: { regex?: boolean } = {}):
   } catch {
     return new RegExp(escapeRegExp(query), flags);
   }
+}
+
+/**
+ * The entries of a shortcuts list whose action or keys contain `query` (smartcase, literal), and
+ * every entry of a section whose title does; sections left empty are dropped.
+ */
+export function filterKeyHelp(sections: readonly KeyHelpSection[], query: string): KeyHelpSection[] {
+  const pattern = compileSearch(query, { regex: false });
+  if (pattern === null) return [...sections];
+  const matches = (text: string) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  };
+  return sections.flatMap((section) => {
+    if (section.title !== "" && matches(section.title)) return [section];
+    const keys = section.keys.filter(({ keys, action }) => matches(action) || keys.some(matches));
+    return keys.length === 0 ? [] : [{ ...section, keys }];
+  });
 }
 
 /** Where `pattern` matches in `text`, as [start, end) offsets; empty matches are skipped. */

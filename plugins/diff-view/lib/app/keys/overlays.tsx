@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { DiffFile } from "../../types";
 import { cn } from "../utils";
 import { FAST, enter } from "../ui/motion";
-import { type Keymap, useKeyHandler, usePickerKeys } from "../ui/vim-keys";
+import { KeyHelp, type Keymap, useKeyHandler, usePickerKeys } from "../ui/vim-keys";
 import type { KeyHelpSection } from "../ui/vim-keys-core";
 import { KEY_HELP } from "./keymap";
 import { rankFiles } from "./rank-files";
@@ -12,7 +12,7 @@ const PANEL = "absolute inset-x-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] flex
 
 const CLOSE_KEYMAP: Keymap<"close"> = { "<Esc>": "close", "?": "close", q: "close" };
 
-/** The `?` sheet. Escape, `?` or `q` closes it. */
+/** The `?` sheet. Escape, `?` or `q` closes it, and `/` searches it. */
 export function KeysOverlay({ onClose, sections = KEY_HELP }: { onClose: () => void; sections?: readonly KeyHelpSection[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => ref.current?.focus({ preventScroll: true }), []);
@@ -33,26 +33,8 @@ export function KeysOverlay({ onClose, sections = KEY_HELP }: { onClose: () => v
         Keyboard shortcuts
         <span className="ml-auto text-right text-xs font-normal text-muted-foreground">Esc to close · keys work anywhere in the diff outside a text box</span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-4 overflow-y-auto p-3 text-xs">
-        {sections.map(({ title, keys }) => (
-          <section key={title} className="flex min-w-0 flex-col gap-1.5">
-            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
-            <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1">
-              {keys.map(({ keys: combo, action }) => (
-                <div key={action} className="contents">
-                  <dt className="flex gap-1">
-                    {combo.map((key) => (
-                      <kbd key={key} className="min-w-5 rounded border border-border bg-muted px-1 py-px text-center font-mono text-[11px]">
-                        {key}
-                      </kbd>
-                    ))}
-                  </dt>
-                  <dd className="text-muted-foreground">{action}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ))}
+      <div className="overflow-y-auto p-3">
+        <KeyHelp sections={sections} search size="small" className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-4" />
       </div>
     </div>
   );

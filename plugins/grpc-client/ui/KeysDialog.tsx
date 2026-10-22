@@ -11,7 +11,7 @@ export function KeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Work anywhere in the gRPC view outside a text box. The arrow keys work as h, j, k and l.</DialogDescription>
         </DialogHeader>
-        <KeyHelp sections={KEY_HELP} />
+        <KeyHelp sections={KEY_HELP} search />
       </DialogContent>
     </Dialog>
   );

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "bb-motion": "file:../motion/lib",
+    "bb-vim-keys": "file:../vim-mode/lib",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -43,7 +44,8 @@
   },
   "pnpm": {
     "overrides": {
-      "bb-motion": "link:../motion/lib"
+      "bb-motion": "link:../motion/lib",
+      "bb-vim-keys": "link:../vim-mode/lib"
     }
   },
   "scripts": {
