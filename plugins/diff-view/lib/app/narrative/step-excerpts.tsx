@@ -4,7 +4,7 @@ import { cn } from "../utils";
 import { Button, COMPACT } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { CHEVRON, OPACITY_TRANSITION, PRESS } from "../ui/motion";
-import { useCursorOnHeader } from "../keys/review-keys-context";
+import { CURSOR_RING, CURSOR_SHOWN, useCursorOnHeader } from "../keys/review-keys-context";
 import { useDiffPreferences } from "../state";
 import type { PatchAnnotationProps } from "../patch-annotations";
 import { NoRows } from "../file-section";
@@ -47,7 +47,7 @@ export function ExcerptSection({
   const inert = annotations === null;
   return (
     <section ref={sectionRef} data-narrative-excerpt={excerpt.path} className="overflow-hidden rounded-md border border-border">
-      <div className={cn("group/header flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs", onHeader && "ring-1 ring-inset ring-primary/70")} data-cursor={onHeader ? "" : undefined}>
+      <div className={cn("group/header flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand excerpt" : "Collapse excerpt"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
@@ -57,7 +57,7 @@ export function ExcerptSection({
         </button>
         {inert ? null : (
           <>
-            <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && "opacity-100")}>
+            <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && `${CURSOR_SHOWN}opacity-100`)}>
               <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5 text-muted-foreground")} onClick={onCommentOnFile} aria-label="Comment on file">
                 <Icon name="MessageSquare" className="size-3.5" />
               </Button>

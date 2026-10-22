@@ -402,7 +402,8 @@ its PR is reviewed and its review findings and comments are handed to agents.
   comments the board recorded as addressed, and links each step to the new
   narrative's steps. The reader steps from the earlier narrative, through
   "What changed", into the current one.
-- **Hunk headers**: every hunk in the structural view starts with a GitHub-style
+- **Hunk headers**: every hunk in the structural view (short of one that is
+  the whole file) starts with a GitHub-style
   `@@` row naming the line span and enclosing function. Its "Explain" button
   (shown under the pointer; `K` from the keys) spawns one short agent thread (reusing the review, tour or card thread's
   checkout) that explains what the hunk does and why; the answer renders as a
@@ -437,8 +438,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   toward "n of m viewed" at the top (scoped to the PR head, so a push resets
   it); lockfiles, vendored and generated files, and files with over 1,000
   changed lines, collapse by default (the file header says why); the file
-  tree groups by directory with per-directory stats; long lines always wrap,
-  and the diff opens split; comment markers sit on a
+  tree groups by directory with per-directory stats; long lines scroll
+  sideways in a wide view and wrap at spaces with a hanging indent in a
+  narrow one, and the diff opens split; comment markers sit on a
   track beside the scrollbar; and the whole review runs from the keyboard with
   vim-style keys (see the Diff view plugin's README, or press `?` in the
   view).

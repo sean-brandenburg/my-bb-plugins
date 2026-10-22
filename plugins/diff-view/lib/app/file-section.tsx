@@ -16,7 +16,7 @@ import { findingAnchorId } from "./findings/findings";
 import { StructuralPatch } from "./structural/structural-patch";
 import { AnnotatedPatch } from "./text/annotated-patch";
 import { DiffErrorBoundary } from "./text/diff-error-boundary";
-import { useCursorOnHeader, usePublishNavModel, type FileNavModel } from "./keys/review-keys-context";
+import { CURSOR_RING, CURSOR_SHOWN, useCursorOnHeader, usePublishNavModel, type FileNavModel } from "./keys/review-keys-context";
 import { FileGlyph } from "./file-marks";
 import { useNerdFont } from "./ui/nerd-font";
 
@@ -75,7 +75,7 @@ export function FileSection({
   const [entrance] = useState(() => (index <= STAGGER_CAP ? { className: cn(enter.fade, STAGGER), style: stagger(index) } : null));
   return (
     <section ref={sectionRef} className={cn("border-b border-border", entrance?.className)} style={entrance?.style}>
-      <div className={cn("group/header sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5", onHeader && "ring-1 ring-inset ring-primary/70")} data-cursor={onHeader ? "" : undefined}>
+      <div className={cn("group/header sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5", onHeader && CURSOR_RING)} data-cursor={onHeader ? "" : undefined}>
         <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5")} onClick={onToggleCollapsed} aria-label={collapsed ? "Expand file" : "Collapse file"} aria-expanded={!collapsed} data-bbm-open={!collapsed}>
           <Icon name="ChevronRight" className={cn("size-3.5", CHEVRON)} />
         </Button>
@@ -96,7 +96,7 @@ export function FileSection({
         ) : null}
         <span className="text-xs tabular-nums text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
         <span className="text-xs tabular-nums text-red-600 dark:text-red-400">−{file.deletions}</span>
-        <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && "opacity-100")}>
+        <span title="Comment on file (O)" className={cn("opacity-0 focus-within:opacity-100 group-hover/header:opacity-100", OPACITY_TRANSITION, onHeader && `${CURSOR_SHOWN}opacity-100`)}>
           <Button type="button" variant="ghost" className={cn(COMPACT, "px-1.5 text-muted-foreground")} onClick={onCommentOnFile} aria-label="Comment on file">
             <Icon name="MessageSquare" className="size-3.5" />
           </Button>

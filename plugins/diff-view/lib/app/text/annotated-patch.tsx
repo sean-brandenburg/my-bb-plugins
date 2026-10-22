@@ -9,7 +9,8 @@ import { FileLevelComments } from "../comments/file-level-comments";
 import { DiffThreadView } from "../comments/thread-view";
 import { FindingAnnotation } from "../findings/finding-annotation";
 import { visualRange, type NavRow } from "../keys/nav";
-import { useFileCursor, usePublishNavModel, type FileNavModel } from "../keys/review-keys-context";
+import { useCursorShown, useFileCursor, usePublishNavModel, type FileNavModel } from "../keys/review-keys-context";
+import { useDiffWide } from "../layout";
 import type { DiffSide, LineRange } from "../../types";
 import { buildLineAnnotations, fromPierreSide, toPierreSide, type AnnotationMeta, type PierreSide } from "./line-annotations";
 import { navRows, patchRows, selectionRange } from "./patch-rows";
@@ -94,6 +95,8 @@ export function AnnotatedPatch({
   const navModel = useMemo<FileNavModel>(() => ({ rows: nav, cutToHunk: true, element }), [nav, element]);
   usePublishNavModel(path, navModel);
   const fileCursor = useFileCursor(path);
+  const cursorShown = useCursorShown();
+  const wide = useDiffWide();
   const cursorSelection = useMemo<PierreSelection | null>(() => {
     if (fileCursor === null) return null;
     const { cursor, visual } = fileCursor;
@@ -140,7 +143,7 @@ export function AnnotatedPatch({
       theme: themes,
       themeType: themeMode,
       disableFileHeader: true,
-      overflow: "wrap" as const,
+      overflow: wide ? ("scroll" as const) : ("wrap" as const),
       unsafeCSS: COLUMN_CSS,
       lineHoverHighlight: "both" as const,
       enableGutterUtility: true,
@@ -150,7 +153,7 @@ export function AnnotatedPatch({
       onLineSelectionChange: setDragged,
       onLineSelectionEnd: finish,
     };
-  }, [layout, hunkSeparators, themes, themeMode, rows]);
+  }, [layout, hunkSeparators, themes, themeMode, rows, wide]);
   // Stable across cursor moves, which re-render this file for its selection, so Pierre leaves the annotations alone.
   const renderAnnotation = useCallback(
     ({ metadata }: DiffLineAnnotation<AnnotationMeta>) => {
@@ -181,7 +184,7 @@ export function AnnotatedPatch({
           patch={fullPatch}
           options={options}
           lineAnnotations={annotations}
-          selectedLines={dragged ?? composerSelection ?? cursorSelection}
+          selectedLines={dragged ?? composerSelection ?? (cursorShown ? cursorSelection : null)}
           disableWorkerPool={workerPool === undefined}
           className="text-xs"
           renderAnnotation={renderAnnotation}

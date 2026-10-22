@@ -15,8 +15,10 @@ plugins embed.
   file tree once the container is at least 48rem wide (hidden in a narrow side
   panel), structural (difftastic) diffs, with a text (Pierre) diff for any file
   difftastic cannot diff (`gl` switches those between split, the default, and
-  unified), long lines always wrapped, viewed marks, and ⌘-hover and ⌘-click symbol peeks in the
-  thread's checkout.
+  unified), long lines scrolled sideways in a wide view (48rem and up) and
+  wrapped at spaces with a hanging indent in a narrow one, viewed marks, and
+  ⌘-hover and ⌘-click symbol peeks in the thread's checkout. A structural
+  hunk header (`@@`) is left out when the hunk is the whole file.
 - **File marks**: with a Nerd Font (see the nerd-font plugin), each file in the
   tree and on its header leads with one muted icon: a diff glyph when it was
   added, deleted, renamed or copied, its file type otherwise. Without one, the
@@ -49,8 +51,9 @@ plugins embed.
   review with the keyboard" (⌘⇧D by default, rebindable in bb's keyboard
   settings) opens the side panel and gives it the keyboard. A cursor moves
   over lines, file headers and folds of hidden lines (Enter opens a fold: a
-  short one whole, a long one 20 lines at a time with the cursor left on it)
-  and stays in the middle of the screen (a newly opened diff starts it on the
+  short one whole, a long one 20 lines at a time with the cursor left on it);
+  it is drawn from the first key and hidden again by a wheel or a click, so a
+  reader on the mouse never sees it. It stays in the middle of the screen (a newly opened diff starts it on the
   first line): the diff scrolls under it as it moves (`zt`/`zb` aside, and short of either end of
   the diff), and scrolling by hand carries it along to the middle line. Keys: `j`/`k` lines (with counts, `5j`; a line with several comments or findings
   is stepped through one at a time), `h`/`l` old

@@ -43,6 +43,8 @@ export interface FocusedAnnotation {
 
 export interface ReviewKeysState {
   cursor: Cursor | null;
+  /** The cursor is drawn: a key was pressed since the reader last scrolled or clicked. Mouse readers never see it. */
+  cursorShown: boolean;
   /** Where `V` started; the selection runs from here to the cursor, within one file. */
   visual: Cursor | null;
   /** Keys typed toward an unfinished command, for the mode label. */
@@ -56,7 +58,16 @@ export interface FileCursor {
   visual: Cursor | null;
 }
 
-const INITIAL: ReviewKeysState = { cursor: null, visual: null, pending: "", focused: null };
+const INITIAL: ReviewKeysState = { cursor: null, visual: null, pending: "", focused: null, cursorShown: false };
+
+/**
+ * The cursor's look, applied only while the view root carries `data-cursor-shown` (toggled from `cursorShown`), so the
+ * rows themselves never re-render when it appears or hides. The root is the `group/diff`.
+ */
+export const CURSOR_RING = "group-data-[cursor-shown]/diff:ring-1 group-data-[cursor-shown]/diff:ring-inset group-data-[cursor-shown]/diff:ring-primary/70";
+export const CURSOR_GUTTER = "group-data-[cursor-shown]/diff:bg-primary/25 group-data-[cursor-shown]/diff:font-medium group-data-[cursor-shown]/diff:text-foreground";
+/** Shown with the cursor, for a hint or control that only means something while it is drawn. */
+export const CURSOR_SHOWN = "group-data-[cursor-shown]/diff:"; 
 
 /**
  * The view's keyboard state, outside React so moving the cursor re-renders only the file it is in, plus the
@@ -154,6 +165,11 @@ export function useIsReading(kind: FocusedAnnotation["kind"], id: string): boole
     const focused = keys?.get().focused;
     return focused?.kind === kind && focused.id === id && focused.passive !== true;
   });
+}
+
+export function useCursorShown(): boolean {
+  const keys = useContext(ReviewKeysContext);
+  return useSyncExternalStore(keys?.subscribe ?? NO_SUBSCRIPTION, () => keys?.get().cursorShown ?? false);
 }
 
 export function useReviewKeysState(): ReviewKeysState {

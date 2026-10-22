@@ -344,6 +344,9 @@ export function StructuralPatch({
       return range !== null && rangesOverlap(span.start, span.stop, [range]);
     });
     const explanation = explanations.find((entry) => entry.side === span.side && entry.startLine <= span.stop && entry.endLine >= span.start) ?? null;
+    // A hunk that is the whole file (an added or deleted file) says nothing a reader doesn't know; K still asks for an explanation.
+    const wholeFile = span.start === 1 && span.stop === (span.side === "new" ? newLines : oldLines).length;
+    if (wholeFile && labels.length === 0 && explanation === null) return null;
     return (
       <Fragment key={`hunk-${index}`}>
         <tr className="group/hunk bg-muted/30 text-[11px] text-muted-foreground">
@@ -454,8 +457,9 @@ export function StructuralPatch({
         onCancel={onCancelComposer}
       />
       {!hasChanges ? <p className="px-3 py-2 text-sm text-muted-foreground">No structural changes.</p> : null}
-      <div>
-        <table ref={tableRef} className="w-full table-fixed border-collapse font-mono text-[12px] leading-5">
+      {/* Wide: lines keep their shape and the table scrolls sideways, as on GitHub. Narrow: the columns are fixed and lines wrap. */}
+      <div className="@3xl:overflow-x-auto">
+        <table ref={tableRef} className="w-full table-fixed border-collapse font-mono text-[12px] leading-5 [tab-size:4] @3xl:w-max @3xl:min-w-full @3xl:table-auto">
           {/* table-fixed sizes columns from the first row, where an empty side is one colSpan=2 cell; pin the gutters here instead. */}
           <colgroup>
             <col className="w-12" />

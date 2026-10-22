@@ -3,7 +3,7 @@ import type { DiffSide, SemanticChange, StructuralDiff } from "../../types";
 import { cn } from "../utils";
 import { FAST, PRESS, enter } from "../ui/motion";
 import { rangesOverlap } from "../ranges";
-import { useCursorSide } from "../keys/review-keys-context";
+import { CURSOR_GUTTER, CURSOR_RING, CURSOR_SHOWN, useCursorSide } from "../keys/review-keys-context";
 import type { MovedRow } from "./moves";
 import type { StructuralRow } from "./rows";
 import { StructuralLine } from "./structural-line";
@@ -46,7 +46,7 @@ function semanticAt(semantics: SemanticChange[], side: DiffSide, line: number): 
 
 function LineCells({ context, line, side, rowChanged, movedRow, selected, atCursor }: { context: RowContext; line: number | null; side: DiffSide; rowChanged: boolean; movedRow: MovedRow | null; selected: boolean; atCursor: boolean }) {
   if (line === null) {
-    return <td className="bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,var(--color-border)_6px,var(--color-border)_7px)] opacity-40" colSpan={2} />;
+    return <td className="bg-muted/30" colSpan={2} />;
   }
   const lines = side === "LEFT" ? context.oldLines : context.newLines;
   const sideLine = movedRow !== null ? null : ((side === "LEFT" ? context.oldChanges : context.newChanges).get(line) ?? null);
@@ -57,6 +57,8 @@ function LineCells({ context, line, side, rowChanged, movedRow, selected, atCurs
   const tint = selected ? "bg-amber-400/20" : neutral ? "bg-violet-500/10" : rowChanged && (side === "LEFT" ? "bg-red-500/10" : "bg-emerald-500/10");
   const gutterTint = selected ? "bg-amber-400/35" : neutral ? "bg-violet-500/20" : rowChanged && (side === "LEFT" ? "bg-red-500/20" : "bg-emerald-500/20");
   const changedSince = side === "RIGHT" && rangesOverlap(line, line, context.changedRanges);
+  // A wrapped line continues under its own first character, not at the margin, as an editor wraps; tabs count four.
+  const indent = (/^[ \t]*/u.exec(text)?.[0] ?? "").replace(/\t/gu, "    ").length;
   const movedLabel =
     movedRow !== null && movedRow.first ? (
       <button
@@ -71,7 +73,7 @@ function LineCells({ context, line, side, rowChanged, movedRow, selected, atCurs
   return (
     <>
       <td
-        className={cn("group/ln select-none border-r border-border/60 pr-2 text-right align-top text-muted-foreground/70", gutterTint, changedSince && "shadow-[inset_2px_0_0_0_theme(colors.sky.500)]", atCursor && "bg-primary/25 font-medium text-foreground")}
+        className={cn("group/ln select-none border-r border-border/60 pl-3 pr-2 text-right align-top text-muted-foreground/70", gutterTint, changedSince && "shadow-[inset_2px_0_0_0_theme(colors.sky.500)]", atCursor && CURSOR_GUTTER)}
         title={changedSince ? "Changed since you last looked" : undefined}
       >
         <button
@@ -89,13 +91,17 @@ function LineCells({ context, line, side, rowChanged, movedRow, selected, atCurs
             if (event.detail === 0) context.onLineActivate(side, line);
           }}
         >
-          <span className="group-hover/ln:invisible">{line}</span>
-          <span className="absolute inset-0 hidden items-center justify-end pr-0.5 text-primary group-hover/ln:flex">+</span>
+          {line}
+          <span aria-hidden="true" className="absolute -left-2.5 top-0 hidden text-primary group-hover/ln:inline">
+            +
+          </span>
         </button>
       </td>
-      <td className={cn("whitespace-pre-wrap break-words pl-2 pr-3 align-top", tint, atCursor && "ring-1 ring-inset ring-primary/70")} data-cursor={atCursor ? "" : undefined}>
+      <td className={cn("whitespace-pre-wrap pl-2 pr-3 align-top @3xl:whitespace-pre", tint, atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
         {movedLabel}
-        <StructuralLine text={text} changes={sideLine} tokens={lineTokens} side={side} onSymbol={context.onSymbol} onSymbolHover={context.onSymbolHover} />
+        <span className="block" style={indent > 0 ? { paddingLeft: `${indent}ch`, textIndent: `-${indent}ch` } : undefined}>
+          <StructuralLine text={text} changes={sideLine} tokens={lineTokens} side={side} onSymbol={context.onSymbol} onSymbolHover={context.onSymbolHover} />
+        </span>
       </td>
     </>
   );
@@ -148,7 +154,7 @@ export const GapRow = memo(function GapRow({ path, from, to, total, first, last,
   const range = `${first.rhs ?? first.lhs}–${last.rhs ?? last.lhs}`;
   return (
     <tr data-gap={from} className="bg-sky-500/10 text-[11px] text-muted-foreground">
-      <td colSpan={4} className={cn("px-2 py-0.5", atCursor && "ring-1 ring-inset ring-primary/70")} data-cursor={atCursor ? "" : undefined}>
+      <td colSpan={4} className={cn("px-2 py-0.5", atCursor && CURSOR_RING)} data-cursor={atCursor ? "" : undefined}>
         <div className="flex items-center gap-1">
           {count <= EXPAND_STEP_LINES ? (
             <ExpanderButton label="↕" title={`Show ${count} unchanged lines`} onClick={() => onReveal(from, to)} />
@@ -162,7 +168,7 @@ export const GapRow = memo(function GapRow({ path, from, to, total, first, last,
             {count} unchanged {count === 1 ? "line" : "lines"} ({range})
           </span>
           {/* Hidden rather than unmounted: inserting an element as the cursor passes restyles the whole page under bb themes with broad :has() rules. */}
-          <span className={cn("ml-auto font-mono text-[10px]", enter.fade, FAST, !atCursor && "hidden")}>↩ show {count <= EXPAND_STEP_LINES ? "them" : `${EXPAND_STEP_LINES} more`}</span>
+          <span className={cn("ml-auto hidden font-mono text-[10px]", enter.fade, FAST, atCursor && `${CURSOR_SHOWN}inline`)}>↩ show {count <= EXPAND_STEP_LINES ? "them" : `${EXPAND_STEP_LINES} more`}</span>
         </div>
       </td>
     </tr>

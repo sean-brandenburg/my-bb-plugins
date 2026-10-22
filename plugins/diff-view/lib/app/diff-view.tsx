@@ -2,7 +2,7 @@
 // diff, with viewed marks, line comments, ⌘-click symbol peeks and, when the data source has them, review findings,
 // hunk explanations and an agent-written narrative that walks the same lines step by step with the same keys. It
 // renders whatever a `DiffSource` serves, so any plugin can embed it.
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import type { DiffComment, SemanticChange, SymbolLookup } from "../types";
 import { readPreference, requestReload, setDiffPreferences, useDiffInstance, useDiffPreferences, writePreference } from "./state";
 import { DEFAULT_LABELS, DiffSourceContext, type DiffSource, type DiffViewLabels } from "./source";
 import { DeltaStrip, useDelta } from "./delta-strip";
+import { DiffLayoutContext, WIDE_MIN_REM } from "./layout";
 import { FileSection } from "./file-section";
 import { WHOLE_FILE, type ComposerAnchor, type PatchAnnotationProps } from "./patch-annotations";
 import { riskByPath } from "./risk";
@@ -98,7 +99,7 @@ const COMPOSER_MOUNT_MS = 500;
 const FILE_TREE_MOUNT_MS = 200;
 
 /** The file list and the narrative outline show from the `@3xl` container width (48rem) up. */
-const FILE_TREE_MIN_REM = 48;
+const FILE_TREE_MIN_REM = WIDE_MIN_REM;
 
 /** The vim-style mode and half-typed keys, shown while the view has the keyboard. */
 function ModeLabel() {
@@ -176,6 +177,29 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const [active] = useState(createActivePath);
   const [composer, setComposer] = useState<({ path: string } & ComposerAnchor) | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Wide enough to scroll long lines sideways (the `@3xl` width), for the parts Tailwind's container variants can't reach (Pierre's options).
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const measure = () => setWide(root.clientWidth >= WIDE_MIN_REM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+  // The cursor's look lives on the root as an attribute, so showing or hiding it re-renders no row.
+  useEffect(() => {
+    const unsubscribe = keys.subscribe(() => {
+      rootRef.current?.toggleAttribute("data-cursor-shown", keys.get().cursorShown);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [keys]);
+  const hideCursor = () => {
+    if (keys.get().cursorShown) keys.set({ cursorShown: false });
+  };
   const mainRef = useRef<HTMLElement | null>(null);
   const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
@@ -878,7 +902,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     <DiffSourceContext.Provider value={sourceContext}>
       <DiffCommentsContext.Provider value={commentActions}>
         <ReviewKeysContext.Provider value={keys}>
-          <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none">
+         <DiffLayoutContext.Provider value={wide}>
+          {/* A wheel or a click means the reader is on the mouse; the cursor hides until the next key. */}
+          <div ref={rootRef} data-diff-root="" tabIndex={-1} className="group/diff @container flex h-full min-h-0 flex-col outline-none" onWheelCapture={hideCursor} onPointerDownCapture={hideCursor}>
             {typeof toolbar === "function" ? toolbar({ local: localPending, githubDrafts, reload: comments.loadComments }) : toolbar}
             {renderSubmitBar !== undefined && (localPending.length > 0 || githubDrafts.length > 0) ? (
               <div data-diff-submit-bar="">{renderSubmitBar({ local: localPending, githubDrafts, reload: comments.loadComments })}</div>
@@ -1052,6 +1078,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
               ) : null}
             </div>
           </div>
+         </DiffLayoutContext.Provider>
         </ReviewKeysContext.Provider>
       </DiffCommentsContext.Provider>
     </DiffSourceContext.Provider>

@@ -28,11 +28,12 @@ export function useReviewKeys<C extends { kind: string }>(rootRef: RefObject<HTM
     onTextEscape: (field) => escapeFromText(field, rootRef.current),
     onCommand: (command, { target, count }) => {
       if (target?.closest(OWN_LISTS) != null && !PAST_OWN_LISTS.has(command.kind)) return;
+      if (!keys.get().cursorShown) keys.set({ cursorShown: true });
       onCommand(command, Math.min(count ?? 1, MAX_COUNT));
     },
     // The mode label shows a half-typed command until it completes or times out.
     onPending: (pending) => {
-      if (keys.get().pending !== pending) keys.set({ pending });
+      if (keys.get().pending !== pending) keys.set({ pending, cursorShown: keys.get().cursorShown || pending !== "" });
     },
   });
 }
