@@ -66,7 +66,7 @@ its PR is reviewed and its review findings and comments are handed to agents.
   reviews, comments and subtasks, for up to a week), `a` adds a
   card to the current column, `za` shows or hides the column's old cards
   (see Columns), Ctrl-d/Ctrl-u scroll the column, `T` switches to the Todo
-  view, and `?` (or Settings → Keyboard shortcuts) lists them all. Arrow keys
+  view, and `?` (or Settings → Keyboard shortcuts) lists them all, with `/` to search the list. Arrow keys
   work as `h`/`j`/`k`/`l`. `k` past a column's top card lands on its + button
   and then on the title bar's controls, where `h`/`l` and `0`/`$` step along,
   `j` comes back down, and `o`, Enter or Space press; `j`/`k` and `gg`/`G` also

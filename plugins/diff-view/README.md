@@ -86,7 +86,7 @@ plugins embed.
   review where the host has one (see below),
   `gd` peeks at a symbol on the line (Escape closes it), `gl` switches line-diff files between
   split and unified, `R` refreshes, and
-  `?` lists every key.
+  `?` lists every key (`/` in that list searches it).
   `t` shows or hides the file list. In it, `j`/`k` move (a count repeats),
   `h`/`l` close and open folders (`h` on a file goes to its folder), `gg`/`G`
   and Ctrl-D/U jump, Enter, `o` or `l` jumps to the file with the cursor on its
