@@ -15,8 +15,8 @@ plugins embed.
   file tree once the container is at least 48rem wide (hidden in a narrow side
   panel), structural (difftastic) diffs, with a text (Pierre) diff for any file
   difftastic cannot diff (`gl` switches those between split, the default, and
-  unified), long lines scrolled sideways in a wide view (48rem and up) and
-  wrapped at spaces with a hanging indent in a narrow one, viewed marks, and
+  unified), two equal halves at any width with long lines wrapped at spaces
+  under their own indentation (never a sideways scroll), viewed marks, and
   ⌘-hover and ⌘-click symbol peeks in the thread's checkout. A structural
   hunk header (`@@`) is left out when the hunk is the whole file.
 - **File marks**: with a Nerd Font (see the nerd-font plugin), each file in the

@@ -21,12 +21,11 @@ import { SymbolPeek } from "../symbols/symbol-peek";
 import { useSymbolNavigation } from "../symbols/use-symbol-navigation";
 import { visualRange, type NavRow } from "../keys/nav";
 import { useFileSelection, usePublishNavModel, type FileNavModel } from "../keys/review-keys-context";
-import { useDiffWide } from "../layout";
 import { enclosingDefinition } from "./enclosing-definition";
 import { detectMoves } from "./moves";
 import { CONTEXT_LINES, hunkSpan, structuralRows, visibleRows, type StructuralRow } from "./rows";
 import { IDENTIFIER } from "./structural-line";
-import { EXPAND_STEP_LINES, GapRow, SpanCell, StructuralRowView, type RowContext } from "./structural-row";
+import { EXPAND_STEP_LINES, GapRow, StructuralRowView, type RowContext } from "./structural-row";
 import { shikiLangFor, useShikiTokens } from "./syntax";
 
 /** One row the keyboard cursor can stand on: a shown line or a fold of unchanged lines. */
@@ -85,7 +84,6 @@ export function StructuralPatch({
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
   const [drag, setDrag] = useState<LineDrag | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
-  const wide = useDiffWide();
   const themeName = useHostThemeName();
   const shikiLang = shikiLangFor(path);
   const oldTokens = useShikiTokens(diff?.oldText ?? "", shikiLang, themeName);
@@ -240,7 +238,6 @@ export function StructuralPatch({
       newTokens,
       semantics,
       changedRanges,
-      wide,
       onLinePress: (side, line, extend) => {
         const { composer: open } = latest.current;
         // A shift-click extends the open comment's range on the same side, from whichever end stays put.
@@ -268,7 +265,7 @@ export function StructuralPatch({
       onSymbol: (symbol, anchor) => latestSymbols.current.lookupSymbol(symbol, anchor),
       onSymbolHover: (symbol, anchor) => latestSymbols.current.hoverSymbol(symbol, anchor),
     };
-  }, [path, text, oldTokens, newTokens, semantics, changedRanges, wide, reveal]);
+  }, [path, text, oldTokens, newTokens, semantics, changedRanges, reveal]);
   const notesByLine = useMemo(() => {
     const byLine = new Map<string, { threads: typeof threads; findings: typeof findings }>();
     const at = (side: DiffSide, line: number) => {
@@ -309,21 +306,6 @@ export function StructuralPatch({
   if (diff === null || shape === null || text === null || rowContext === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   const { oldLines, newLines } = text;
   const { rows, visible } = shape;
-  // Wide, both code columns are as wide as the longest shown line on either side, so the sides stay equal as the table
-  // scrolls; left to the table, each side would take its own longest line and the right side would start off the screen.
-  // A tab is at most four columns, so counting it as four errs wide; auto layout widens a column its lines still overrun.
-  let longestLine = 0;
-  if (wide) {
-    for (const row of rows) {
-      if (!visible.has(row.index)) continue;
-      for (const line of [row.lhs === null ? null : oldLines[row.lhs - 1], row.rhs === null ? null : newLines[row.rhs - 1]]) {
-        if (line === undefined || line === null) continue;
-        const length = line.length + (line.split("\t").length - 1) * 3;
-        if (length > longestLine) longestLine = length;
-      }
-    }
-  }
-  const codeColumn = wide ? { width: `calc(${longestLine}ch + 1.25rem)` } : undefined;
   const visualSelection = fileSelection?.visual != null ? visualRange(shape.nav, fileSelection.visual, fileSelection.cursor, false) : null;
   const selected = (side: DiffSide, line: number): boolean => {
     if (drag !== null) return side === drag.side && line >= Math.min(drag.anchor, drag.current) && line <= Math.max(drag.anchor, drag.current);
@@ -341,7 +323,7 @@ export function StructuralPatch({
     if (list.length === 0 && !composing && lineFindings.length === 0) return null;
     return (
       <tr key={`${side}-${line}-notes`}>
-        <SpanCell wide={wide} className="px-3 py-1">
+        <td colSpan={4} className="px-3 py-1">
           {list.map((thread) => (
             <DiffThreadView key={thread.id} thread={thread} />
           ))}
@@ -349,7 +331,7 @@ export function StructuralPatch({
           {lineFindings.map((entry) => (
             <FindingAnnotation key={`${entry.item.reviewId}:${entry.item.finding.id}`} item={entry.item} anchorId={findingAnchorId(entry)} onToggle={(selected) => onToggleFinding(entry.item, selected)} onEdit={(edit) => onEditFinding(entry.item, edit)} />
           ))}
-        </SpanCell>
+        </td>
       </tr>
     );
   };
@@ -368,7 +350,7 @@ export function StructuralPatch({
     return (
       <Fragment key={`hunk-${index}`}>
         <tr className="group/hunk bg-muted/30 text-[11px] text-muted-foreground">
-          <SpanCell wide={wide} className="px-3 py-0.5">
+          <td colSpan={4} className="px-3 py-0.5">
             <div className="flex items-center gap-2">
               <code className="min-w-0 truncate text-muted-foreground/80" title={enclosing ?? undefined}>
                 @@ {span.side === "new" ? "" : "old "}{span.start}–{span.stop}
@@ -403,20 +385,20 @@ export function StructuralPatch({
                 ) : null}
               </span>
             </div>
-          </SpanCell>
+          </td>
         </tr>
         {explanation !== null && explanation.status === "completed" && explanation.body !== null ? (
           <tr key={`explain-${index}`}>
-            <SpanCell wide={wide} className="px-3 py-1">
+            <td colSpan={4} className="px-3 py-1">
               <ExplanationStrip explanation={explanation} />
-            </SpanCell>
+            </td>
           </tr>
         ) : null}
       </Fragment>
     );
   };
   const gapRow = (from: number, to: number) => (
-    <GapRow key={`gap-${from}`} path={path} from={from} to={to} total={rows.length} first={rows[from]!} last={rows[to - 1]!} at={rows[foldCursorIndex({ kind: "gap", from, to })]!} wide={wide} onReveal={reveal} />
+    <GapRow key={`gap-${from}`} path={path} from={from} to={to} total={rows.length} first={rows[from]!} last={rows[to - 1]!} at={rows[foldCursorIndex({ kind: "gap", from, to })]!} onReveal={reveal} />
   );
   const body: ReactNode[] = [];
   let gapStart: number | null = null;
@@ -447,7 +429,7 @@ export function StructuralPatch({
         {row.rhs !== null ? annotationRow("RIGHT", row.rhs) : null}
         {symbols.peek !== null && symbols.peek.rowIndex === row.index ? (
           <tr key={`peek-${row.index}`}>
-            <SpanCell wide={wide} className="px-3 py-1">
+            <td colSpan={4} className="px-3 py-1">
               <SymbolPeek
                 trail={symbols.peek.trail}
                 data={symbols.symbolData(symbols.peek.trail.at(-1)!)}
@@ -457,7 +439,7 @@ export function StructuralPatch({
                 onOpenFile={onOpenFile}
                 onSymbolHover={symbols.hoverSymbol}
               />
-            </SpanCell>
+            </td>
           </tr>
         ) : null}
       </Fragment>,
@@ -475,16 +457,15 @@ export function StructuralPatch({
         onCancel={onCancelComposer}
       />
       {!hasChanges ? <p className="px-3 py-2 text-sm text-muted-foreground">No structural changes.</p> : null}
-      {/* Wide: lines keep their shape and the table scrolls sideways, as on GitHub, both sides as wide as the longest line. Narrow: the columns are fixed and lines wrap.
-          The scroller is a container so a spanning cell can take its width (SpanCell); any `@` variant inside the table would measure it, not the view. */}
-      <div className={cn(wide && "@container overflow-x-auto")}>
-        <table ref={tableRef} className={cn("w-full table-fixed border-collapse font-mono text-[12px] leading-5 [tab-size:4]", wide && "w-max min-w-full table-auto")}>
+      {/* Two equal halves at any width, never a sideways scroll: long lines wrap at spaces under their own indentation. */}
+      <div>
+        <table ref={tableRef} className="w-full table-fixed border-collapse font-mono text-[12px] leading-5 [tab-size:4]">
           {/* table-fixed sizes columns from the first row, where an empty side is one colSpan=2 cell; pin the gutters here instead. */}
           <colgroup>
             <col className="w-12" />
-            <col style={codeColumn} />
+            <col />
             <col className="w-12" />
-            <col style={codeColumn} />
+            <col />
           </colgroup>
           <tbody>{body}</tbody>
         </table>

@@ -438,9 +438,9 @@ its PR is reviewed and its review findings and comments are handed to agents.
   toward "n of m viewed" at the top (scoped to the PR head, so a push resets
   it); lockfiles, vendored and generated files, and files with over 1,000
   changed lines, collapse by default (the file header says why); the file
-  tree groups by directory with per-directory stats; long lines scroll
-  sideways in a wide view and wrap at spaces with a hanging indent in a
-  narrow one, and the diff opens split; comment markers sit on a
+  tree groups by directory with per-directory stats; the two sides stay
+  equal at any width and long lines wrap at spaces under their own
+  indentation (never a sideways scroll), and the diff opens split; comment markers sit on a
   track beside the scrollbar; and the whole review runs from the keyboard with
   vim-style keys (see the Diff view plugin's README, or press `?` in the
   view).
