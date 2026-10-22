@@ -36,6 +36,8 @@ export const summaryQuerySchema = z
   .object({
     /** Only events at or after this time; null for all time. */
     sinceMs: z.number().int().nullable(),
+    /** Only events before this time; null or absent for up to now. */
+    untilMs: z.number().int().nullable().optional(),
     kind: z.enum(KINDS).nullable(),
     /** A plugin id, "bb" for bb's own UI, or null for every plugin. */
     plugin: z.string().nullable(),
@@ -66,6 +68,23 @@ export const summarySchema = z.object({
 });
 export type Summary = z.infer<typeof summarySchema>;
 
+export const timelineQuerySchema = z
+  .object({
+    sinceMs: z.number().int().nullable(),
+    untilMs: z.number().int().nullable(),
+    kind: z.enum(KINDS).nullable(),
+    plugin: z.string().nullable(),
+    /** Bucket width; an hour, six hours, a day, or a week. */
+    bucketMs: z.number().int().min(60_000),
+    /** The client's UTC offset, so day buckets start at its midnight rather than UTC's. */
+    offsetMs: z.number().int(),
+  })
+  .strict();
+export type TimelineQuery = z.infer<typeof timelineQuerySchema>;
+
+export const timelineBucketSchema = z.object({ start: z.number().int(), count: z.number().int() });
+export type TimelineBucket = z.infer<typeof timelineBucketSchema>;
+
 export const storedEventSchema = eventSchema.extend({ id: z.number().int() });
 export type StoredEvent = z.infer<typeof storedEventSchema>;
 
@@ -77,6 +96,11 @@ export const rpcContract = defineRpcContract({
   summary: {
     input: summaryQuerySchema,
     output: summarySchema,
+  },
+  timeline: {
+    input: timelineQuerySchema,
+    /** Only buckets with events, oldest first; the client fills the gaps. */
+    output: z.array(timelineBucketSchema),
   },
   recent: {
     input: z.object({ limit: z.number().int().min(1).max(1000) }).strict(),

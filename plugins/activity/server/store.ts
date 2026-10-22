@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type Database from "better-sqlite3";
-import type { ActivityEvent, Kind, StoredEvent, Summary, SummaryItem, SummaryQuery } from "../contract";
+import type { ActivityEvent, Kind, StoredEvent, Summary, SummaryItem, SummaryQuery, TimelineBucket, TimelineQuery } from "../contract";
 
 /** Append-only: the host records each statement's hash by index and refuses to load when a shipped one changes. */
 const MIGRATIONS = [
@@ -45,6 +45,8 @@ interface ItemRow {
 export interface Store {
   record(events: readonly ActivityEvent[]): void;
   summary(query: SummaryQuery): Summary;
+  /** Events per time bucket in the range; buckets nobody used are left out. */
+  timeline(query: TimelineQuery): TimelineBucket[];
   recent(limit: number): StoredEvent[];
   /** Deletes events before `beforeMs`; returns how many went. */
   prune(beforeMs: number): number;
@@ -62,12 +64,16 @@ export function createStore(bb: BbPluginApi): Store {
     for (const event of events) insert.run(event.at, event.kind, event.plugin, event.route, event.key, event.label, event.via, event.count);
   });
 
-  const where = (query: Omit<SummaryQuery, "limit">): { sql: string; params: (number | string)[] } => {
+  const where = (query: Pick<SummaryQuery, "sinceMs" | "untilMs" | "kind" | "plugin">): { sql: string; params: (number | string)[] } => {
     const clauses: string[] = [];
     const params: (number | string)[] = [];
     if (query.sinceMs !== null) {
       clauses.push("at >= ?");
       params.push(query.sinceMs);
+    }
+    if (query.untilMs !== null && query.untilMs !== undefined) {
+      clauses.push("at < ?");
+      params.push(query.untilMs);
     }
     if (query.kind !== null) {
       clauses.push("kind = ?");
@@ -100,6 +106,17 @@ export function createStore(bb: BbPluginApi): Store {
         .all(...params, query.limit) as ItemRow[];
       const first = db.prepare("SELECT min(at) AS at FROM events").get() as { at: number | null };
       return { total, plugins, items: items.map((item): SummaryItem => ({ ...item, pointer: item.pointer ?? 0, keyboard: item.keyboard ?? 0 })), firstAt: first.at };
+    },
+    timeline(query) {
+      const { sql, params } = where(query);
+      // Integer division floors at to its bucket; the offset shifts the boundaries to the client's local midnight.
+      // Bound numbers arrive as REAL, so they are cast back or the division would not floor.
+      return db
+        .prepare(
+          `SELECT ((at + CAST(? AS INTEGER)) / CAST(? AS INTEGER)) * CAST(? AS INTEGER) - CAST(? AS INTEGER) AS start, count(*) AS count
+           FROM events${sql} GROUP BY start ORDER BY start`,
+        )
+        .all(query.offsetMs, query.bucketMs, query.bucketMs, query.offsetMs, ...params) as TimelineBucket[];
     },
     recent(limit) {
       return (db.prepare("SELECT * FROM events ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((row) => ({ ...row }));

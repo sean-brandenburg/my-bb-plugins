@@ -39,7 +39,7 @@ export const HELP: readonly KeyHelpSection[] = [
     title: "Move",
     keys: [
       { keys: ["j", "k"], action: "Next and previous row" },
-      { keys: ["h", "l"], action: "Close and open a plugin's rows; along the range and kind buttons" },
+      { keys: ["h", "l"], action: "Close and open a plugin's rows; along the range and kind buttons, and along the time strip" },
       { keys: ["gg", "G"], action: "First and last row" },
       { keys: ["Ctrl-d", "Ctrl-u"], action: "Half a page" },
     ],
@@ -47,12 +47,12 @@ export const HELP: readonly KeyHelpSection[] = [
   {
     title: "Act",
     keys: [
-      { keys: ["Enter", "o"], action: "Toggle a plugin's rows, or press the button under the cursor" },
+      { keys: ["Enter", "o"], action: "Toggle a plugin's rows, pin a stretch of the time strip, act on a finding, show a kind's remaining rows, or press the button under the cursor" },
       { keys: ["1", "2", "3", "4"], action: "Last day, week, month, or all time" },
       { keys: ["c"], action: "Cycle what's shown: everything, clicks, key commands, other keys, pages" },
       { keys: ["/", "i"], action: "Filter rows by name" },
       { keys: ["r"], action: "Reread the log" },
-      { keys: ["Esc"], action: "Leave the filter box, or clear it" },
+      { keys: ["Esc"], action: "Leave the filter box; then clear a finding's ordering, the pinned stretch, or the filter, one per press" },
       { keys: ["?"], action: "Show these keys" },
     ],
   },

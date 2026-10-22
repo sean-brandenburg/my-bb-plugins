@@ -11,7 +11,7 @@
     "name": "Activity log",
     "description": "Records how bb and its plugins get used: every button clicked, every vim key command run, and every page opened, attributed to the plugin it happened in. An Activity page and `bb activity` CLI rank controls and keys by use, so unused features can be pruned and the most-used ones get the design attention.",
     "branding": {
-      "icon": "Activity"
+      "icon": "./assets/icon.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx",

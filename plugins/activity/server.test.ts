@@ -1,6 +1,6 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ActivityEvent, Summary } from "./contract";
+import type { ActivityEvent, Summary, TimelineBucket } from "./contract";
 import plugin from "./server";
 
 type Host = ReturnType<typeof createFakePluginHost>;
@@ -63,10 +63,30 @@ describe("activity server", () => {
     const bbKeys = (await host.harness.behavior.callRpc("summary", { sinceMs: null, kind: "key", plugin: "bb", limit: 100 })) as Summary;
     expect(bbKeys.items.map((item) => item.key)).toEqual(["<D-k>"]);
 
+    const window = (await host.harness.behavior.callRpc("summary", { sinceMs: NOW - 3 * DAY, untilMs: NOW - DAY, kind: null, plugin: null, limit: 100 })) as Summary;
+    expect(window.items.map((item) => item.key)).toEqual(["Submit review"]);
+
     const commands = (await host.harness.behavior.callRpc("summary", { sinceMs: null, kind: "command", plugin: null, limit: 100 })) as Summary;
     expect(commands.items.map((item) => [item.plugin, item.key])).toEqual([
       ["kanban", "gg"],
       ["obsidian", "j"],
+    ]);
+  });
+
+  it("buckets events over time, with day boundaries at the client's midnight", async () => {
+    await seed();
+    const buckets = (await host.harness.behavior.callRpc("timeline", { sinceMs: NOW - 7 * DAY, untilMs: null, kind: null, plugin: null, bucketMs: DAY, offsetMs: 0 })) as TimelineBucket[];
+    expect(buckets).toEqual([
+      { start: NOW - 2 * DAY - 12 * 3_600_000, count: 1 },
+      { start: NOW - 12 * 3_600_000, count: 5 },
+    ]);
+    // Six hours east of UTC, noon UTC is 18:00 local and the day started at 06:00 UTC.
+    const east = (await host.harness.behavior.callRpc("timeline", { sinceMs: NOW - DAY, untilMs: null, kind: "click", plugin: null, bucketMs: DAY, offsetMs: 6 * 3_600_000 })) as TimelineBucket[];
+    expect(east).toEqual([{ start: NOW - 18 * 3_600_000, count: 2 }]);
+    const hours = (await host.harness.behavior.callRpc("timeline", { sinceMs: NOW - DAY, untilMs: null, kind: null, plugin: "kanban", bucketMs: 3_600_000, offsetMs: 0 })) as TimelineBucket[];
+    expect(hours).toEqual([
+      { start: NOW - 3_600_000, count: 1 },
+      { start: NOW, count: 2 },
     ]);
   });
 

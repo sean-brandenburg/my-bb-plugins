@@ -18,6 +18,7 @@ export default async function plugin(bb: BbPluginApi) {
       return null;
     },
     summary: async (query) => store.summary(query),
+    timeline: async (query) => store.timeline(query),
     recent: async ({ limit }) => store.recent(limit),
   });
   registerCli(bb, store);

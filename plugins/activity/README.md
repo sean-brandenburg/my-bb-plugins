@@ -22,9 +22,21 @@ into the plugin's own SQLite file under bb's data directory; nothing leaves the 
 
 ## Reading it
 
-The **Activity** page in the sidebar ranks what was used, under each plugin, for the last day, week, month, or all
-time. `j`/`k` move, `h`/`l` close and open a plugin, `1`–`4` pick the range, `c` cycles clicks, key commands,
-other keys, and pages, `/` filters by name, `r` rereads, `?` lists the keys.
+The **Activity** page in the sidebar reads the log for the last day, week, month, or all time. From the top:
+
+- A strip of events over time (by hour, six hours, day, or week, whichever gives about a month of columns).
+  `h`/`l` walk its columns and Enter pins one, so everything below shows only that stretch; Esc unpins.
+- Findings: short sentences the numbers support, each one a row Enter acts on. Controls only ever clicked with the
+  mouse (they want a key), things unused for two weeks (candidates to drop, once the log is old enough), the busiest
+  stretch, how many clicks came from the keyboard, the most-opened page. Acting on one switches the kind filter and
+  sorts the matching rows first, marked with a dot; Esc puts the order back.
+- One bar of each plugin's share of the events, which the plugin groups below are the legend for.
+- Under each plugin, its pages, clicks, key commands, and other keys as separate sections, busiest first, six rows
+  each with a "more" row for the rest. Bars of one kind use the same scale across every plugin, so a long bar means
+  the same thing wherever it is. Clicks show mouse against keyboard as two shades with the counts beside them.
+
+`j`/`k` move, `h`/`l` close and open a plugin, `1`–`4` pick the range, `c` cycles clicks, key commands, other keys,
+and pages, `/` filters by name, `r` rereads, `?` lists the keys.
 
 From the terminal, or for an agent asked about usage:
 

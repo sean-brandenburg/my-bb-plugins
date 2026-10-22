@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { mountCollector } from "./collector";
 import type { ActivityEvent, rpcContract } from "./contract";
 import { ActivityPage } from "./ui/ActivityPage";
+import { PULSE_ICON, PulseIcon } from "./ui/icon";
 
 let send: ((events: ActivityEvent[]) => Promise<void>) | null = null;
 
@@ -36,5 +37,7 @@ export default definePluginApp((app) => {
       return () => collector.dispose();
     },
   });
-  app.slots.navPanel({ id: "activity", title: "Activity", icon: "Activity", path: "log", component: ActivityPage });
+  // bb's icon set has no pulse line, and an unknown name falls back to its generic bolt.
+  app.experimental_icons.register({ name: PULSE_ICON, component: PulseIcon });
+  app.slots.navPanel({ id: "activity", title: "Activity", icon: PULSE_ICON, path: "log", component: ActivityPage });
 });
