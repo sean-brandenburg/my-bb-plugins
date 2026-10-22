@@ -4,6 +4,8 @@ import {
   createKeyReader,
   cycle,
   displaySequence,
+  KEY_COMMAND_EVENT,
+  type KeyCommandDetail,
   keymapConflicts,
   keyToken,
   listAction,
@@ -418,5 +420,37 @@ describe("bindKeyScope", () => {
     host.querySelector<HTMLElement>("#text")!.focus();
     scope(root, { takeFocus: true });
     expect(document.activeElement?.id).toBe("text");
+  });
+});
+
+describe("KEY_COMMAND_EVENT", () => {
+  it("announces each command that ran, with its keys and count, on the scope's root", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const seen: KeyCommandDetail[] = [];
+    window.addEventListener(KEY_COMMAND_EVENT, (event) => seen.push((event as CustomEvent<KeyCommandDetail>).detail));
+    const unbind = bindKeyScope(root, { keymap: { j: "down", gg: "top", x: "refused" }, counts: true, onCommand: (command) => command !== "refused" });
+    root.focus();
+    const typed = (name: string) => {
+      const event = key(name);
+      root.dispatchEvent(event);
+      return event;
+    };
+    const j = typed("j");
+    typed("g");
+    typed("g");
+    typed("3");
+    typed("j");
+    typed("x");
+    unbind();
+    root.remove();
+    expect(seen.map(({ keys, count }) => ({ keys, count }))).toEqual([
+      { keys: "j", count: null },
+      { keys: "gg", count: null },
+      { keys: "j", count: 3 },
+    ]);
+    expect(seen[0]!.event).toBe(j);
+    expect(j.defaultPrevented).toBe(true);
+    expect(seen[0]!.plugin).toBeUndefined();
   });
 });

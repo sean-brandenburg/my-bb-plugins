@@ -27,7 +27,7 @@ export {
   stepWrapping,
   toolbarButtons,
 } from "./rows.ts";
-export { bindKeys, type BindKeysOptions, createKeyHandler, type KeyContext, type KeyHandler, type KeyHandlerOptions } from "./handler.ts";
+export { bindKeys, type BindKeysOptions, createKeyHandler, KEY_COMMAND_EVENT, type KeyCommandDetail, type KeyContext, type KeyHandler, type KeyHandlerOptions } from "./handler.ts";
 export { renderKeyHelp } from "./help-dom.ts";
 export { createMenuKeys, MENU_ITEM, stepMenu } from "./menu.ts";
 export { focusWhenShown } from "./focus.ts";

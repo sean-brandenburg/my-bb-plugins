@@ -2,6 +2,23 @@ import { type KeyToken, keyToken } from "./keys.ts";
 import { createKeyReader, type Keymap, type KeyReader, SEQUENCE_TIMEOUT_MS } from "./reader.ts";
 import { isTextEntry, PRESSABLE } from "./targets.ts";
 
+declare const __BB_PLUGIN_ID__: string | undefined;
+
+/**
+ * Dispatched (bubbling, composed) on the handler's root or the key's target after a bound command
+ * runs, so one listener can see every plugin's key commands: the resolved sequence, its count, the
+ * keydown that typed it, and the plugin whose bundle the handler came from.
+ */
+export const KEY_COMMAND_EVENT = "bb-vim-keys:command";
+
+export interface KeyCommandDetail {
+  keys: string;
+  count: number | null;
+  event: KeyboardEvent;
+  /** `bb plugin build` defines the id into each bundle; undefined outside a build. */
+  plugin: string | undefined;
+}
+
 export interface KeyContext {
   event: KeyboardEvent;
   /** Where the key came from; null when focus was on the page itself. */
@@ -156,7 +173,9 @@ export function createKeyHandler<C>(options: KeyHandlerOptions<C>): KeyHandler {
     }
     if (read.kind === "pending") return take(event);
     if (options.onCommand(read.command, { event, target, keys: read.keys, count: read.count }) === false) return false;
-    return take(event);
+    take(event);
+    announce(selfElement() ?? target ?? doc ?? null, { keys: read.keys, count: read.count, event, plugin: typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined });
+    return true;
   };
 
   return {
@@ -171,6 +190,11 @@ export function createKeyHandler<C>(options: KeyHandlerOptions<C>): KeyHandler {
       shownPending = "";
     },
   };
+}
+
+function announce(on: EventTarget | null, detail: KeyCommandDetail): void {
+  if (on === null || typeof CustomEvent === "undefined") return;
+  on.dispatchEvent(new CustomEvent<KeyCommandDetail>(KEY_COMMAND_EVENT, { bubbles: true, composed: true, detail }));
 }
 
 export interface BindKeysOptions<C> extends KeyHandlerOptions<C> {

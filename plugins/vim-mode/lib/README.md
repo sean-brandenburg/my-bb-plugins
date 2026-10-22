@@ -109,6 +109,10 @@ It is layers, not a framework. Use the highest layer that fits and drop a level 
   pressed); `intercept` sees keys first and may take them; `onKey` sees each key the handler accepted, before it is read
   (to cancel work any key interrupts); `onUnbound` sees keys nothing bound; `onPending` the half-typed sequence for a
   mode label. `counts` enables `5j`.
+- After a bound command runs, the handler dispatches a bubbling `KEY_COMMAND_EVENT` (`bb-vim-keys:command`) on its
+  root or the key's target with `{ keys, count, event, plugin }` (`KeyCommandDetail`; `plugin` is the id `bb plugin build`
+  defines into the bundle). The activity plugin listens for it on the window to log which commands get used; a plugin
+  needn't do anything for its keys to count.
 - `bindKeys(target, options)` puts a handler on the window, a document or an element, with `capture` to run before bb
   and vim-mode and keep taken keys from them. It is for content scripts over bb's own DOM, which have no root of their
   own: resolve the surface at key time in `accepts`.
