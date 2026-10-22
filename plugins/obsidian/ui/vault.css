@@ -205,6 +205,9 @@
 }
 
 /* Dashboard cards: a tinted header row names the group and carries its count; rows inside are ruled. */
+.ob-dash {
+  container-type: inline-size;
+}
 .ob-dash-card {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -218,6 +221,26 @@
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklab, var(--muted) 50%, transparent);
   font-size: 0.8125rem;
+}
+.ob-dash-card-header > :first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ob-dash-card-header > :last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A narrow column (the right panel open) keeps the titles and drops the secondary columns. */
+@container (max-width: 30rem) {
+  .ob-dash-vault,
+  .ob-recent-folder {
+    display: none;
+  }
+  .ob-ticket-aside {
+    min-width: 0;
+  }
 }
 .ob-dash-count {
   font-size: 0.75rem;

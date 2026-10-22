@@ -67,10 +67,10 @@ export function Dashboard({ vault, recent }: { vault: Vault; recent: readonly Fi
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl px-6 pb-16 pt-10">
+      <div className="ob-dash mx-auto w-full max-w-2xl px-6 pb-16 pt-10">
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-xl font-semibold">{dateLabel}</h2>
-          <span className="truncate text-xs text-muted-foreground">{status?.vaultName}</span>
+          <span className="ob-dash-vault truncate text-xs text-muted-foreground">{status?.vaultName}</span>
         </div>
         <div className="mt-4 flex flex-wrap gap-2" data-nav-row="toolbar">
           <Button size="sm" onClick={() => void openToday()}>
