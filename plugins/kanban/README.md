@@ -493,8 +493,10 @@ its PR is reviewed and its review findings and comments are handed to agents.
   diff). Clicking outside closes it too.
 - **Comment threads**: the changes view shows the PR's inline GitHub review
   comments under their lines, threaded with their replies, alongside the
-  board's own comments. Resolved threads, and ones whose line the latest push
-  changed (outdated), are over and stay out of the diff unless you have an
+  board's own comments. Resolved threads stay in the diff, folded and dimmed,
+  with an Unresolve button (or `r`) to reopen them on GitHub; an open GitHub
+  thread has Resolve (`r`) beside Reply. Threads whose line the latest push
+  changed (outdated) are over and stay out of the diff unless you have an
   unsent reply in one; the card panel's PR comments still list them. Reply in
   any thread, locally or on GitHub (GitHub replies need a thread that is an
   inline GitHub comment, or a GitHub draft that becomes one). Local replies in

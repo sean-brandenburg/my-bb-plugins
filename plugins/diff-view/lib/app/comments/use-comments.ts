@@ -57,6 +57,16 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
       throw cause;
     }
   };
+  const resolveThread = async (thread: DiffThread, resolved: boolean) => {
+    if (source.setThreadResolved === undefined) return;
+    try {
+      await source.setThreadResolved(thread.id, resolved);
+      loadComments();
+    } catch (cause) {
+      toast.error(errorMessage(cause));
+      throw cause;
+    }
+  };
   const deleteComment = async (id: string) => {
     try {
       await source.deleteComment(id);
@@ -77,6 +87,7 @@ export function useComments(source: DiffSource, refreshSignal: unknown) {
     reply,
     editComment,
     moveComment,
+    resolveThread,
     deleteComment,
   };
 }

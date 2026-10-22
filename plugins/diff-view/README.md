@@ -65,8 +65,8 @@ plugins embed.
   `i` comments on the cursor's line, or on the file from its header; `V`
   selects lines for a range comment; `O` comments on the file. The comment or
   finding under the cursor is outlined and lists the keys it takes: Enter (or
-  `za`) opens or closes it, `a` replies to a thread, `e` edits your unsent
-  comment or a finding's wording, `dd` deletes your unsent comment, `x`
+  `za`) opens or closes it, `a` replies to a thread, `r` resolves or reopens
+  a GitHub thread, `e` edits your unsent comment or a finding's wording, `dd` deletes your unsent comment, `x`
   includes or excludes a finding in the apply round, `M` moves a comment
   between local and the GitHub PR, and `gx`/`go` open a thread on GitHub or
   the agent thread that replied. `T` switches where new comments go; `s`

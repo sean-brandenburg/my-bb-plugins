@@ -122,14 +122,16 @@ describe("buildDiffThreads", () => {
     expect(thread).toMatchObject({ id: "gone", orphaned: true, onGithub: false });
   });
 
-  it("leaves resolved and outdated GitHub threads out, unless a reply to one is still unsent", () => {
+  it("keeps resolved GitHub threads, closed, and leaves outdated ones out unless a reply to one is still unsent", () => {
     const resolved = github({ id: "review-comment:1", resolved: true });
     const outdated = github({ id: "review-comment:2", outdated: true, line: 12 });
     const open = github({ id: "review-comment:3" });
-    expect(buildDiffThreads([], [resolved, outdated, open]).map((thread) => thread.id)).toEqual(["review-comment:3"]);
-    const withDraft = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:1", target: "github" })], [resolved, outdated]);
-    expect(withDraft.map((thread) => thread.id)).toEqual(["review-comment:1"]);
-    const sent = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:1", target: "github", postedAt: 1, githubCommentId: "review-comment:9" })], [resolved]);
+    const threads = buildDiffThreads([], [resolved, outdated, open]);
+    expect(threads.map((thread) => thread.id)).toEqual(["review-comment:1", "review-comment:3"]);
+    expect(threads.map(threadIsOpen)).toEqual([false, true]);
+    const withDraft = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:2", target: "github" })], [outdated]);
+    expect(withDraft.map((thread) => thread.id)).toEqual(["review-comment:2"]);
+    const sent = buildDiffThreads([local({ id: "reply", inReplyTo: "review-comment:2", target: "github", postedAt: 1, githubCommentId: "review-comment:9" })], [outdated]);
     expect(sent).toEqual([]);
   });
 
@@ -694,7 +696,11 @@ describe("review keys", () => {
 describe("threadKeyActions", () => {
   it("offers edit, delete and a move for your unsent comment, and links to where the thread lives", () => {
     const [pending] = buildDiffThreads([local({ id: "c1" })], []);
-    expect(threadKeyActions(pending!, true)).toMatchObject({ canReply: true, ownUnsent: { id: "c1" }, moveTo: "github", url: null, agentThread: null });
+    expect(threadKeyActions(pending!, true)).toMatchObject({ canReply: true, canResolve: false, ownUnsent: { id: "c1" }, moveTo: "github", url: null, agentThread: null });
+    const [onGithub] = buildDiffThreads([], [github({ id: "review-comment:1" })]);
+    expect(threadKeyActions(onGithub!, true)).toMatchObject({ canResolve: true, url: "https://github.invalid/c" });
+    const [orphan] = buildDiffThreads([], [github({ id: "review-comment:2", inReplyTo: "review-comment:gone" })]);
+    expect(threadKeyActions(orphan!, true)).toMatchObject({ canReply: false, canResolve: false });
     expect(threadKeyActions(pending!, false).moveTo).toBeNull();
     const [draft] = buildDiffThreads([local({ id: "d1", target: "github" })], []);
     expect(threadKeyActions(draft!, true).moveTo).toBe("local");

@@ -314,6 +314,11 @@ export const rpcContract = defineRpcContract({
     input: z.object({ id: z.string(), addressed: z.boolean() }).strict(),
     output: prCommentSchema,
   },
+  /** Resolves or reopens the GitHub review thread an inline comment belongs to. */
+  comment_set_resolved: {
+    input: z.object({ id: z.string(), resolved: z.boolean() }).strict(),
+    output: prCommentSchema,
+  },
   comments_apply: {
     input: z.object({ ticketId: z.string(), push: z.boolean().default(true) }).strict(),
     output: z.object({ ticket: ticketSchema, apply: commentApplySchema }),

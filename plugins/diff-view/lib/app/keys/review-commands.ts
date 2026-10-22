@@ -53,6 +53,8 @@ export interface ReviewEnv {
   deleteComment: (id: string) => void;
   canPostToGithub: boolean;
   moveComment: (id: string, target: DiffCommentTarget) => void;
+  /** The source can resolve GitHub review threads. */
+  canResolve: boolean;
   openUrl: (url: string) => void;
   openThread: (threadId: string) => void;
   toggleFinding: (item: InlineFinding, selected: boolean) => void;
@@ -419,6 +421,17 @@ export function runReviewCommand(command: ReviewCommand, count: number, env: Rev
       }
       if (command.kind === "edit") env.keys.threads.get(thread.id)?.edit(id);
       else env.deleteComment(id);
+      return;
+    }
+    case "resolve": {
+      const thread = focusedThread(env, cursor);
+      if (thread === null) env.notify(focusedAnnotation(env, cursor) === null ? "No comment thread on this line" : "That key acts on comment threads, not findings");
+      else if (!env.canResolve || !threadKeyActions(thread, env.canPostToGithub).canResolve) env.notify("Only GitHub review threads can be resolved");
+      else {
+        const resolved = thread.resolved !== true;
+        env.keys.threads.get(thread.id)?.resolve(resolved);
+        env.notify(resolved ? "Resolving the thread on GitHub" : "Reopening the thread on GitHub");
+      }
       return;
     }
     case "move":

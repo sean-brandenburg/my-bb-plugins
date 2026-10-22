@@ -39,6 +39,8 @@ export interface DiffSource {
   canPostToGithub?: boolean;
   defaultCommentTarget?: DiffCommentTarget;
   listGithubComments?(): Promise<GithubComment[]>;
+  /** Resolves or reopens the GitHub review thread rooted at a synced inline comment (`review-comment:<n>`). */
+  setThreadResolved?(rootId: string, resolved: boolean): Promise<void>;
   reviews?: {
     list(): Promise<Review[]>;
     setSelection(reviewId: string, findingId: string, selected: boolean): Promise<Review>;

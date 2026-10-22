@@ -36,8 +36,8 @@ export function isUnsent(entry: ThreadEntry): boolean {
 
 /**
  * Merge synced GitHub review comments with the board's own diff comments into threads; posted drafts show once, as
- * their synced copy. GitHub threads that are resolved, or outdated by a later push, are over and stay out of the
- * diff, unless a reply to one is still unsent here.
+ * their synced copy. GitHub threads outdated by a later push are over and stay out of the diff, unless a reply to
+ * one is still unsent here; resolved ones stay, folded, so they can be reopened.
  */
 export function buildDiffThreads(local: readonly DiffComment[], github: readonly GithubComment[]): DiffThread[] {
   const synced = new Set(github.filter((comment) => comment.kind === "review-comment").map((comment) => comment.id));
@@ -90,11 +90,11 @@ export function buildDiffThreads(local: readonly DiffComment[], github: readonly
     replies.sort((a, b) => entryTime(a) - entryTime(b));
     thread.entries = [root!, ...replies];
   }
-  return [...threads.values()].filter((thread) => !(thread.resolved === true || thread.outdated) || thread.entries.some(isUnsent));
+  return [...threads.values()].filter((thread) => !thread.outdated || thread.entries.some(isUnsent));
 }
 
 export function threadIsOpen(thread: DiffThread): boolean {
-  // A resolved thread is only in the diff for an unsent reply, which the reader should see.
+  // A resolved thread with an unsent reply still has something the reader should see.
   if (thread.entries.some(isUnsent)) return true;
   if (thread.resolved === true) return false;
   const root = thread.entries[0]!;
@@ -104,6 +104,8 @@ export function threadIsOpen(thread: DiffThread): boolean {
 /** What the review keys can do in a thread, matching the buttons its comments show. */
 export interface ThreadKeyActions {
   canReply: boolean;
+  /** A GitHub review thread, which `r` resolves or reopens. */
+  canResolve: boolean;
   /** Your latest comment that has not been sent yet: the one `e`, `dd` and `M` act on. */
   ownUnsent: DiffComment | null;
   /** Where `M` moves that comment, when it can move. */
@@ -127,6 +129,7 @@ export function threadKeyActions(thread: DiffThread, canPostToGithub: boolean): 
   const posted = local.map((entry) => entry.comment.postedUrl).filter((url): url is string => url !== null);
   return {
     canReply: !thread.orphaned,
+    canResolve: root.source === "github" && !thread.orphaned,
     ownUnsent,
     moveTo,
     url: root.source === "github" ? root.comment.url : (posted[0] ?? null),

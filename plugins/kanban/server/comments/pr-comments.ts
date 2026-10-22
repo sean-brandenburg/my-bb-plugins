@@ -6,7 +6,7 @@ import type { CardThreads, ThreadEnvironment } from "../card-threads";
 import type { CodeReviewThreads } from "../code-review-threads";
 import type { KanbanContext } from "../context";
 import { rowToComment, rowToCommentApply, type CommentApplyRow, type TicketRow } from "../db/rows";
-import { githubPages, prShortName, reviewThreadResolution, type GithubIssueComment, type GithubReview, type GithubReviewComment } from "../github";
+import { githubPages, prShortName, resolveToken, reviewThreadResolution, setReviewThreadResolved, type GithubIssueComment, type GithubReview, type GithubReviewComment } from "../github";
 import type { Projects } from "../projects";
 import { locationLabel } from "bb-diff-view/line-range";
 import { parseStringArray, shortId, threadTitle } from "../util";
@@ -84,7 +84,7 @@ export function createPrComments(
   ctx: KanbanContext,
   { board, threads, projects, codeReviewThreads }: { board: BoardStore; threads: CardThreads; projects: Projects; codeReviewThreads: CodeReviewThreads },
 ) {
-  const { bb, db, stmts, sync, publish } = ctx;
+  const { bb, db, stmts, sync, settings, publish } = ctx;
   const { getTicket } = board;
   const { freshWorktree } = threads;
   const { projectForTicket } = projects;
@@ -245,6 +245,22 @@ export function createPrComments(
     return rowToComment(stmts.commentById.get(id)!);
   }
 
+  /** Resolves or reopens an inline comment's review thread on GitHub, then marks every comment of the thread here. */
+  async function setResolved(id: string, resolved: boolean): Promise<PrComment> {
+    const row = stmts.commentById.get(id);
+    if (row === undefined) throw new Error(`No comment with id ${id}`);
+    if (row.kind !== "review-comment") throw new Error("Only inline review threads can be resolved");
+    const rootId = row.in_reply_to ?? row.id;
+    const ticket = getTicket(row.ticket_id);
+    if (ticket.pr === null) throw new Error("This card has no pull request");
+    const auth = await resolveToken(settings);
+    if (auth === null) throw new Error("No GitHub token configured.");
+    const now = await setReviewThreadResolved(ticket.pr.repo, ticket.pr.number, Number(rootId.slice(rootId.indexOf(":") + 1)), resolved, auth.token);
+    stmts.setThreadResolved.run(now ? 1 : 0, rootId, rootId);
+    publish();
+    return rowToComment(stmts.commentById.get(id)!);
+  }
+
   /** The apply thread reports its commit: the comments it was given, synced and local, count as addressed. */
   function completeApply(row: CommentApplyRow, commit: string | null, pushed: boolean): number {
     const now = Date.now();
@@ -256,7 +272,7 @@ export function createPrComments(
     return parseStringArray(row.comment_ids).length;
   }
 
-  return { syncPrComments, spawnApplyForComments, listComments, setSelected, setAddressed, completeApply };
+  return { syncPrComments, spawnApplyForComments, listComments, setSelected, setAddressed, setResolved, completeApply };
 }
 
 export type PrComments = ReturnType<typeof createPrComments>;

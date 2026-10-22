@@ -6,7 +6,10 @@ export interface DiffCommentActions {
   canPostToGithub: boolean;
   /** Where new comments and replies go, set once for the view. */
   target: DiffCommentTarget;
+  /** The source can resolve GitHub review threads. */
+  canResolve: boolean;
   onReply: (thread: DiffThread, body: string, target: DiffCommentTarget) => Promise<void>;
+  onResolve: (thread: DiffThread, resolved: boolean) => Promise<void>;
   onEdit: (id: string, body: string) => Promise<void>;
   /** Re-targets one unsent comment. */
   onMoveComment: (id: string, target: DiffCommentTarget) => Promise<void>;
@@ -16,8 +19,10 @@ export interface DiffCommentActions {
 
 export const DiffCommentsContext = createContext<DiffCommentActions>({
   canPostToGithub: false,
+  canResolve: false,
   target: "local",
   onReply: async () => {},
+  onResolve: async () => {},
   onEdit: async () => {},
   onMoveComment: async () => {},
   onDelete: () => {},

@@ -180,10 +180,11 @@ function ThreadEntryView({
 
 /** The keys that act on the thread under the cursor, so they are discoverable without the `?` sheet. */
 function ThreadKeyHint({ thread, open, shown }: { thread: DiffThread; open: boolean; shown: boolean }) {
-  const { canPostToGithub } = useContext(DiffCommentsContext);
+  const { canPostToGithub, canResolve } = useContext(DiffCommentsContext);
   const actions = threadKeyActions(thread, canPostToGithub);
   const hints = [
     actions.canReply ? "a reply" : null,
+    canResolve && actions.canResolve ? (thread.resolved === true ? "r unresolve" : "r resolve") : null,
     actions.ownUnsent !== null ? "e edit" : null,
     actions.ownUnsent !== null ? "dd delete" : null,
     actions.moveTo === "github" ? "M move to GitHub" : actions.moveTo === "local" ? "M make local" : null,
@@ -201,8 +202,22 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
   const now = useNow();
   const [open, setOpen] = useState(thread.resolved !== true);
   const [replying, setReplying] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const focused = useIsFocused("thread", thread.id);
+  const canResolve = actions.canResolve && threadKeyActions(thread, actions.canPostToGithub).canResolve;
+  const setResolved = async (resolved: boolean) => {
+    setResolving(true);
+    try {
+      await actions.onResolve(thread, resolved);
+      // As on GitHub: a resolved thread folds away, a reopened one unfolds.
+      setOpen(!resolved);
+    } catch {
+      // The hook already toasted the failure.
+    } finally {
+      setResolving(false);
+    }
+  };
   useThreadControls(thread.id, {
     toggle: () => setOpen((value) => !value),
     reply: () => {
@@ -214,6 +229,7 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
       setOpen(true);
       setEditingId(commentId);
     },
+    resolve: (resolved) => void setResolved(resolved),
   });
   const entryEditing = (entry: ThreadEntry) => ({
     editing: entry.source === "local" && editingId === entry.comment.id,
@@ -269,10 +285,21 @@ export function DiffThreadView({ thread }: { thread: DiffThread }) {
               onCancel={() => setReplying(false)}
             />
           ) : (
-            <div>
+            <div className="flex items-center gap-1.5">
               <button type="button" className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground", PRESS)} onClick={() => setReplying(true)}>
                 Reply
               </button>
+              {canResolve ? (
+                <button
+                  type="button"
+                  className={cn("rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-50", PRESS)}
+                  disabled={resolving}
+                  title={thread.resolved === true ? "Reopen this thread on GitHub" : "Mark this thread resolved on GitHub"}
+                  onClick={() => void setResolved(thread.resolved !== true)}
+                >
+                  {thread.resolved === true ? "Unresolve" : "Resolve"}
+                </button>
+              ) : null}
             </div>
           )}
         </div>

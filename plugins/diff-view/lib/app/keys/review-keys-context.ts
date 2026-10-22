@@ -25,6 +25,8 @@ export interface ThreadControls {
   toggle: () => void;
   reply: () => void;
   edit: (commentId: string) => void;
+  /** Resolves or reopens the thread on GitHub, folding or unfolding it as the button does. */
+  resolve: (resolved: boolean) => void;
 }
 
 /** What a review finding lets the keyboard do to it. */
@@ -208,6 +210,7 @@ export function useThreadControls(id: string, controls: ThreadControls): void {
       toggle: () => latest.current.toggle(),
       reply: () => latest.current.reply(),
       edit: (commentId) => latest.current.edit(commentId),
+      resolve: (resolved) => latest.current.resolve(resolved),
     });
     return () => {
       keys.threads.delete(id);

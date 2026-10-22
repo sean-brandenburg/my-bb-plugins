@@ -205,6 +205,7 @@ export function prepareStatements(db: KanbanDatabase) {
     deleteCommentsForTicket: db.prepare<[string]>(`DELETE FROM pr_comments WHERE ticket_id = ?`),
     setCommentSelected: db.prepare<[number | null, string]>(`UPDATE pr_comments SET selected = ? WHERE id = ?`),
     setCommentAddressed: db.prepare<[number | null, string]>(`UPDATE pr_comments SET addressed_at = ? WHERE id = ?`),
+    setThreadResolved: db.prepare<[number, string, string]>(`UPDATE pr_comments SET resolved = ? WHERE id = ? OR in_reply_to = ?`),
     markCommentsAddressed: db.prepare<[number, string]>(
       `UPDATE pr_comments SET addressed_at = ?, selected = NULL WHERE id IN (SELECT value FROM json_each(?)) AND addressed_at IS NULL`,
     ),

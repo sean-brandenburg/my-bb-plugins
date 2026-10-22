@@ -70,6 +70,9 @@ function jiraIssueJson(issue: JiraStubIssue) {
   };
 }
 
+/** Resolve / unresolve mutations the GitHub stub received, by thread root id. */
+let resolvedMutations: Array<{ rootId: number; resolve: boolean }> = [];
+
 function stubGithub(options: {
   authored?: SearchItem[];
   requested?: SearchItem[];
@@ -98,6 +101,7 @@ function stubGithub(options: {
   const json = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   ghPending = { reviews: [], nextComment: 9000, created: [] };
+  resolvedMutations = [];
   const pendingComment = (comment: Partial<StubPendingComment> & { path: string; body: string }): StubPendingComment => ({
     id: ghPending.nextComment++, path: comment.path, line: comment.line ?? null, side: comment.side ?? "RIGHT", start_line: comment.start_line ?? null, start_side: comment.start_side ?? null, body: comment.body,
     ...(comment.in_reply_to_id === undefined ? {} : { in_reply_to_id: comment.in_reply_to_id }),
@@ -148,6 +152,14 @@ function stubGithub(options: {
         const comment = pendingComment({ path: "a.go", body: String(request.variables.body), in_reply_to_id: rootId });
         review.comments.push(comment);
         return json({ data: { addPullRequestReviewThreadReply: { comment: { databaseId: comment.id, url: `https://github.com/acme-co/widgets/pull/7#discussion_r${comment.id}` } } } });
+      }
+      if (request.query.includes("resolveReviewThread(")) {
+        const resolve = !/\bunresolveReviewThread\(/u.test(request.query);
+        const rootId = Number(String(request.variables.threadId).replace("PRRT_", ""));
+        if (Number.isNaN(rootId)) return json({ errors: [{ message: "Could not resolve to a node with the global id" }] });
+        resolvedMutations.push({ rootId, resolve });
+        options.resolvedThreads = (options.resolvedThreads ?? []).filter((id) => id !== rootId).concat(resolve ? [rootId] : []);
+        return json({ data: { [resolve ? "resolveReviewThread" : "unresolveReviewThread"]: { thread: { isResolved: resolve } } } });
       }
       if (request.query.includes("statusCheckRollup")) {
         if (options.failHeads) return new Response("boom", { status: 502 });
@@ -2835,6 +2847,13 @@ describe("PR comments", () => {
     expect(cli.stdout).toContain("[x] issue-comment:1  alice");
   });
 
+  it("resolves only inline review threads", async () => {
+    await syncedCard();
+    await expect(current().harness.behavior.callRpc("comment_set_resolved", { id: "issue-comment:1", resolved: true })).rejects.toThrow("Only inline review threads");
+    await expect(current().harness.behavior.callRpc("comment_set_resolved", { id: "review:100", resolved: true })).rejects.toThrow("Only inline review threads");
+    expect(resolvedMutations).toEqual([]);
+  });
+
   it("applies only selected comments, optionally without pushing, and marks them addressed afterwards", async () => {
     const card = await syncedCard();
     await current().harness.behavior.callRpc("comment_set_selected", { id: "review:100", selected: false });
@@ -3195,6 +3214,25 @@ describe("diff comment threads", () => {
     expect(byId.get("review-comment:11")).toMatchObject({ inReplyTo: "review-comment:10", resolved: false });
     expect(byId.get("review-comment:20")).toMatchObject({ side: "LEFT", resolved: true });
     expect(byId.get("review-comment:30")).toMatchObject({ outdated: true, line: 1 });
+  });
+
+  it("resolves and reopens a GitHub review thread from any of its comments, marking the whole thread here", async () => {
+    const card = await reviewCard();
+    const resolved = (await current().harness.behavior.callRpc("comment_set_resolved", { id: "review-comment:11", resolved: true })) as PrComment;
+    expect(resolved).toMatchObject({ id: "review-comment:11", resolved: true });
+    expect(resolvedMutations).toEqual([{ rootId: 10, resolve: true }]);
+    let { comments } = (await current().harness.behavior.callRpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] };
+    expect(comments.filter((comment) => comment.resolved === true).map((comment) => comment.id).sort()).toEqual(["review-comment:10", "review-comment:11", "review-comment:20"]);
+
+    // A later sync agrees with GitHub, which the stub keeps in step with the mutation.
+    await current().harness.behavior.callRpc("sync_now", null);
+    ({ comments } = (await current().harness.behavior.callRpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] });
+    expect(comments.find((comment) => comment.id === "review-comment:10")?.resolved).toBe(true);
+
+    await current().harness.behavior.callRpc("comment_set_resolved", { id: "review-comment:20", resolved: false });
+    expect(resolvedMutations.at(-1)).toEqual({ rootId: 20, resolve: false });
+    ({ comments } = (await current().harness.behavior.callRpc("comments_list", { ticketId: card.id })) as { comments: PrComment[] });
+    expect(comments.find((comment) => comment.id === "review-comment:20")?.resolved).toBe(false);
   });
 
   it("replies in GitHub threads locally for the agent, with the thread as context, or on GitHub via the replies endpoint", async () => {

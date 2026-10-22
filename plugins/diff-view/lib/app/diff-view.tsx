@@ -474,6 +474,7 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     },
     canPostToGithub: source.canPostToGithub ?? false,
     moveComment: (id, target) => void comments.moveComment(id, target),
+    canResolve: source.setThreadResolved !== undefined,
     openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
     openThread: onOpenThread,
     toggleFinding,
@@ -878,7 +879,9 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   };
   const commentActions: DiffCommentActions = {
     canPostToGithub: source.canPostToGithub ?? false,
+    canResolve: source.setThreadResolved !== undefined,
     onReply: comments.reply,
+    onResolve: comments.resolveThread,
     onEdit: comments.editComment,
     target: comments.target,
     onMoveComment: comments.moveComment,

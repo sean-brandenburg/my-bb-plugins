@@ -151,6 +151,7 @@ export function registerRpc(ctx: KanbanContext, services: Services): void {
     comments_list: ({ ticketId }) => prComments.listComments(ticketId),
     comment_set_selected: ({ id, selected }) => prComments.setSelected(id, selected),
     comment_set_addressed: ({ id, addressed }) => prComments.setAddressed(id, addressed),
+    comment_set_resolved: ({ id, resolved }) => prComments.setResolved(id, resolved),
     comments_apply: ({ ticketId, push }) => prComments.spawnApplyForComments(ticketId, push),
     review_reset_selection: ({ reviewId }) => reviews.resetSelection(reviewId),
     ticket_link_thread: ({ id, threadId }) => threads.linkThread(id, threadId),

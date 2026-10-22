@@ -78,7 +78,15 @@ function useKanbanDiffSource(subjectId: string, ticket: Ticket | null, plan: boo
       },
       canPostToGithub,
       defaultCommentTarget,
-      ...(prTicketId === null ? {} : { listGithubComments: async () => (await rpc.call("comments_list", { ticketId: prTicketId })).comments }),
+      ...(prTicketId === null
+        ? {}
+        : {
+            listGithubComments: async () => (await rpc.call("comments_list", { ticketId: prTicketId })).comments,
+            setThreadResolved: async (rootId, resolved) => {
+              await rpc.call("comment_set_resolved", { id: rootId, resolved });
+              refetch();
+            },
+          }),
       ...(reviewSubjectId === null
         ? {}
         : {

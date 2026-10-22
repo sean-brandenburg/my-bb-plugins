@@ -18,6 +18,7 @@ export type ReviewCommand =
   | { kind: "comment" }
   | { kind: "commentFile" }
   | { kind: "reply" }
+  | { kind: "resolve" }
   | { kind: "edit" }
   | { kind: "delete" }
   | { kind: "move" }
@@ -82,6 +83,7 @@ export const REVIEW_KEYMAP: Keymap<ReviewCommand> = {
   i: { kind: "comment" },
   O: { kind: "commentFile" },
   a: { kind: "reply" },
+  r: { kind: "resolve" },
   "<CR>": { kind: "fold", action: "annotation" },
   e: { kind: "edit" },
   dd: { kind: "delete" },
@@ -153,6 +155,7 @@ export const KEY_HELP: readonly KeyHelpSection[] = [
       { keys: ["V"], action: "Select lines; move, then i to comment on them" },
       { keys: ["O"], action: "Comment on the file" },
       { keys: ["a"], action: "Reply to the comment thread under the cursor" },
+      { keys: ["r"], action: "Resolve or reopen that thread on GitHub" },
       { keys: ["Enter", "za"], action: "Open or close the comment or finding under the cursor, or open a fold of hidden lines (za on a bare line folds the file)" },
       { keys: ["e"], action: "Edit your unsent comment in that thread, or the finding's wording" },
       { keys: ["dd"], action: "Delete your unsent comment in that thread" },

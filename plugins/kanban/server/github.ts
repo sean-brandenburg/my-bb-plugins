@@ -240,6 +240,20 @@ export async function reviewThreads(repo: string, number: number, token: string,
   return map;
 }
 
+/** Resolves or reopens the review thread rooted at `rootId` (its first comment's id); returns the state GitHub reports after. */
+export async function setReviewThreadResolved(repo: string, number: number, rootId: number, resolved: boolean, token: string, signal?: AbortSignal): Promise<boolean> {
+  const thread = (await reviewThreads(repo, number, token, signal)).get(rootId);
+  if (thread === undefined || thread.id === "") throw new Error("The thread was not found on GitHub");
+  const field = resolved ? "resolveReviewThread" : "unresolveReviewThread";
+  const data = await githubGraphql<Record<string, { thread: { isResolved: boolean } | null } | null>>(
+    `mutation($threadId: ID!) { ${field}(input: { threadId: $threadId }) { thread { isResolved } } }`,
+    { threadId: thread.id },
+    token,
+    signal,
+  );
+  return data[field]?.thread?.isResolved ?? resolved;
+}
+
 /** Resolved state per review thread, keyed by the thread's first comment id. */
 export async function reviewThreadResolution(repo: string, number: number, token: string, signal?: AbortSignal): Promise<Map<number, boolean>> {
   return new Map(Array.from(await reviewThreads(repo, number, token, signal), ([rootId, thread]) => [rootId, thread.isResolved]));
