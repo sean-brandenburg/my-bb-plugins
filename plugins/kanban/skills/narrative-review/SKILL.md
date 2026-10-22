@@ -52,6 +52,15 @@ the change is for and how its parts fit, then cover the details.
   there, how they connect to earlier steps, and what a reviewer should check
   closely: invariants, failure modes, anything surprising. Don't paraphrase the
   code line by line. The reader sees the lines next to your text.
+- **Shape the body for scanning**, not as one block of prose. Open with one or
+  two sentences that say what the step does and how it follows from the earlier
+  steps. Then put the details in bullets, one point per bullet, each with a bold
+  lead-in: `- **Idempotent:** \`ON CONFLICT DO NOTHING\` targets the primary key, so …`.
+  Use a numbered list when order matters (a call sequence, a lock order). End
+  with a `**Check:**` bullet or short paragraph naming what the reviewer should
+  verify. Put identifiers, paths and literals in inline code. The step title is
+  already the heading, so don't start the body with one; use a `###` only when a
+  long body has two distinct parts.
 - **`refs`**: `{ "path", "side": "new"|"old", "startLine", "endLine" }`. Use new-side
   numbers for added and context lines. Use old-side numbers for deleted lines,
   taken from the `-a,b` half of the hunk header. A hunk that replaces lines needs
@@ -85,7 +94,11 @@ Most changes need zero to three diagrams. Don't add one for a linear change.
 
 ## The summary, reading order and watch-outs
 
-The report's `summary` is 2–4 sentences on what the change does and why.
+The report's `summary` is Markdown. Its first sentence must be plain prose that
+says what the change does, because the board shows that sentence alone in a
+collapsed strip and would show raw markup there. After it, structure the rest:
+a short bullet list of the main parts of the change (bold lead-in, then one
+sentence each) and a sentence on why. About 60–150 words in total.
 `readingOrder` lists every changed file once, each with:
 
 - `role`: `key`, `supporting` or `mechanical`;
@@ -94,8 +107,12 @@ The report's `summary` is 2–4 sentences on what the change does and why.
 - `changes`: the semantic labels.
 
 Your prompt gives the exact rules for these. `watchOut` lists anything risky or
-easy to miss. These feed the board's tour strip and its review-attention level,
-so fill them in as carefully as the steps.
+easy to miss, one item per risk: a single plain sentence that names the risk and
+why it matters, under about 30 words. The board renders `note` and `watchOut`
+items as plain text, so they take no Markdown: no backticks, asterisks or
+headers. Detail belongs in the step that covers those lines. These feed the
+board's tour strip and its review-attention level, so fill them in as carefully
+as the steps.
 
 ## Revision chapter (when the code moved since an earlier narrative)
 
@@ -110,7 +127,8 @@ Your prompt says so when there is an earlier narrative. Then:
 3. Write `revision`: `{ "summary", "steps" }`. The `summary` explains the
    revision as a whole, for example "addresses the two review findings on retry
    handling and renames X". Each revision step explains one part of the delta:
-   - what changed, and why;
+   - what changed, and why, shaped like any step body: a sentence or two of
+     prose, then bullets with bold lead-ins;
    - the earlier step it revises, named by title;
    - `affects`: the ids of the new narrative's steps where the result shows up.
 

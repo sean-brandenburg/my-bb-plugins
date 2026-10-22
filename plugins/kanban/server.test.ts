@@ -3335,6 +3335,7 @@ describe("narrative review", () => {
     const firstPrompt = String(spawned.at(-1)!.prompt);
     expect(firstPrompt).toContain("narrative-review skill");
     expect(firstPrompt).toContain("narrative-check");
+    expect(firstPrompt).toContain("bullets with bold lead-ins");
     expect(firstPrompt).not.toContain("revision");
 
     const partial = { version: 2, summary: "Adds `more`.", steps: [{ id: "more", title: "Adds more", body: "```mermaid\nflowchart LR\n  a --> b\n```", refs: [{ path: "a.go", side: "new", startLine: 2, endLine: 3 }] }] };
