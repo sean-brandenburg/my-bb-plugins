@@ -309,6 +309,21 @@ export function StructuralPatch({
   if (diff === null || shape === null || text === null || rowContext === null) return <p className={cn("relative overflow-hidden p-4 text-sm text-muted-foreground", SHIMMER)}>Running difftastic…</p>;
   const { oldLines, newLines } = text;
   const { rows, visible } = shape;
+  // Wide, both code columns are as wide as the longest shown line on either side, so the sides stay equal as the table
+  // scrolls; left to the table, each side would take its own longest line and the right side would start off the screen.
+  // A tab is at most four columns, so counting it as four errs wide; auto layout widens a column its lines still overrun.
+  let longestLine = 0;
+  if (wide) {
+    for (const row of rows) {
+      if (!visible.has(row.index)) continue;
+      for (const line of [row.lhs === null ? null : oldLines[row.lhs - 1], row.rhs === null ? null : newLines[row.rhs - 1]]) {
+        if (line === undefined || line === null) continue;
+        const length = line.length + (line.split("\t").length - 1) * 3;
+        if (length > longestLine) longestLine = length;
+      }
+    }
+  }
+  const codeColumn = wide ? { width: `calc(${longestLine}ch + 1.25rem)` } : undefined;
   const visualSelection = fileSelection?.visual != null ? visualRange(shape.nav, fileSelection.visual, fileSelection.cursor, false) : null;
   const selected = (side: DiffSide, line: number): boolean => {
     if (drag !== null) return side === drag.side && line >= Math.min(drag.anchor, drag.current) && line <= Math.max(drag.anchor, drag.current);
@@ -460,16 +475,16 @@ export function StructuralPatch({
         onCancel={onCancelComposer}
       />
       {!hasChanges ? <p className="px-3 py-2 text-sm text-muted-foreground">No structural changes.</p> : null}
-      {/* Wide: lines keep their shape and the table scrolls sideways, as on GitHub, with each side as wide as its longest line. Narrow: the columns are fixed and lines wrap.
+      {/* Wide: lines keep their shape and the table scrolls sideways, as on GitHub, both sides as wide as the longest line. Narrow: the columns are fixed and lines wrap.
           The scroller is a container so a spanning cell can take its width (SpanCell); any `@` variant inside the table would measure it, not the view. */}
       <div className={cn(wide && "@container overflow-x-auto")}>
         <table ref={tableRef} className={cn("w-full table-fixed border-collapse font-mono text-[12px] leading-5 [tab-size:4]", wide && "w-max min-w-full table-auto")}>
           {/* table-fixed sizes columns from the first row, where an empty side is one colSpan=2 cell; pin the gutters here instead. */}
           <colgroup>
             <col className="w-12" />
-            <col />
+            <col style={codeColumn} />
             <col className="w-12" />
-            <col />
+            <col style={codeColumn} />
           </colgroup>
           <tbody>{body}</tbody>
         </table>
