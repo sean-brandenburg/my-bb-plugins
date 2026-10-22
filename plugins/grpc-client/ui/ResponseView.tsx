@@ -259,7 +259,7 @@ export function ResponseView({
                 type="button"
                 role="tab"
                 aria-selected={tab === entry.id}
-                className={cn(STRIP_OPTION, "px-2.5 py-0.5 text-sm", PRESS, tab === entry.id ? STRIP_ON : STRIP_OFF)}
+                className={cn(STRIP_OPTION, "px-2.5 text-sm", PRESS, tab === entry.id ? STRIP_ON : STRIP_OFF)}
                 onClick={() => onTab(entry.id)}
               >
                 {entry.label}

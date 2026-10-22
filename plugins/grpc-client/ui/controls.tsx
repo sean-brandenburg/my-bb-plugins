@@ -16,7 +16,7 @@ export function Centered({ children }: { children: ReactNode }) {
 
 /** A bordered strip that a row of choices sits in, so they read as one control the chosen one stands out of. */
 export const STRIP = "inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5";
-export const STRIP_OPTION = "rounded-[5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60";
+export const STRIP_OPTION = "inline-flex h-6 items-center rounded-[5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60";
 export const STRIP_ON = "bg-background font-medium text-foreground shadow-sm";
 export const STRIP_OFF = "text-muted-foreground hover:text-foreground";
 
@@ -29,7 +29,7 @@ export function Tabs<T extends string>({ value, options, onChange }: { value: T;
           type="button"
           role="tab"
           aria-selected={value === option.id}
-          className={cn(STRIP_OPTION, "px-2.5 py-0.5 text-sm", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
+          className={cn(STRIP_OPTION, "px-2.5 text-sm", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
           onClick={() => onChange(option.id)}
         >
           {option.label}
@@ -48,7 +48,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
           type="button"
           role="radio"
           aria-checked={value === option.id}
-          className={cn(STRIP_OPTION, "px-2 py-0.5 text-xs", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
+          className={cn(STRIP_OPTION, "px-2.5 text-sm", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
           onClick={() => onChange(option.id)}
         >
           {option.label}
