@@ -99,6 +99,12 @@ function annotationsAt(env: ReviewEnv, cursor: Cursor): Annotation[] {
   return anchorsAtCursor(env.files, cursor, annotationAnchors(env)).map((anchor) => anchor.annotation);
 }
 
+/** The first comment thread or finding on a cursor's line, for a view placing the cursor itself, as a key move would focus it. */
+export function focusAt(env: ReviewEnv, cursor: Cursor): FocusedAnnotation | null {
+  const first = annotationsAt(env, cursor)[0];
+  return first === undefined ? null : focusOf(first);
+}
+
 /** The annotation the comment keys act on: the one focused on this line, else the line's first. */
 function focusedAnnotation(env: ReviewEnv, cursor: Cursor): Annotation | null {
   const focused = env.keys.get().focused;

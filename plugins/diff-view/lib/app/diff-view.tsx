@@ -35,11 +35,11 @@ import { excerptAnnotations } from "./narrative/excerpts";
 import { searchSteps, type StepAddress } from "./narrative/chapters";
 import { useNarrativeReader } from "./narrative/use-narrative-reader";
 import { useNarrativeStory } from "./narrative/use-narrative-story";
-import { cursorAt, cursorPosition, firstPosition, lastPosition, type Cursor, type NavFile } from "./keys/nav";
+import { cursorAt, cursorPosition, firstPosition, lastPosition, rowIndexOf, type Cursor, type NavFile } from "./keys/nav";
 import { KEY_HELP, REVIEW_KEYMAP, type ReviewCommand } from "./keys/keymap";
 import { KeysOverlay, Picker, fileItems } from "./keys/overlays";
 import { rankFiles } from "./keys/rank-files";
-import { runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
+import { focusAt, runReviewCommand, type FindingAnchor, type ReviewEnv } from "./keys/review-commands";
 import { ReviewKeysContext, createReviewKeys, useReviewKeysState } from "./keys/review-keys-context";
 import { useCursorReveal } from "./keys/use-cursor-reveal";
 import { errorMessage } from "./format";
@@ -601,14 +601,14 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       const next = cursorAt(files, { fileIndex: 0, row }, want);
       // The header serves until the rows arrive; the page stays scrolled to its top, so the prose is read first.
       if (first.rows !== null) arrive.current = null;
-      if (!samePlace(keys.get().cursor, next)) keys.set({ cursor: next, visual: null, focused: null });
+      if (!samePlace(keys.get().cursor, next)) keys.set({ cursor: next, visual: null, focused: focusAt(narrativeEnv(), next) });
       return;
     }
     if (files.some((file) => !file.collapsed && file.rows === null)) return;
     const last = lastPosition(files, want);
     arrive.current = null;
     if (last === null) return;
-    keys.set({ cursor: last, visual: null, focused: null });
+    keys.set({ cursor: last, visual: null, focused: focusAt(narrativeEnv(), last) });
     scroller?.scrollTo({ top: scroller.scrollHeight });
     revealRef.current(last, "nearest");
   };
@@ -627,13 +627,14 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
       unsubscribe();
     };
   }, [keys]);
-  // Entering the narrative keeps a cursor that is on the step's code (back from the files view, say) and otherwise
-  // starts the page afresh.
+  // Entering the narrative keeps a cursor that is on a line the step shows (back from the files view, say) and
+  // otherwise starts the page afresh.
   useEffect(() => {
     if (mode !== "narrative") return;
     const cursor = keys.get().cursor;
-    const paths = new Set(narrativeFilesRef.current().map((file) => file.path));
-    if (cursor === null || !paths.has(cursor.path)) {
+    const file = narrativeFilesRef.current().find((entry) => entry.path === cursor?.path);
+    const shown = cursor !== null && file !== undefined && (cursor.line === null || (file.rows !== null && rowIndexOf(file.rows, cursor.side, cursor.line) !== -1));
+    if (!shown) {
       arrive.current = "start";
       placeOnArrivalRef.current();
       return;
@@ -849,6 +850,8 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
   const stale = narrative.story?.stale ?? tour?.stale ?? false;
   const writing: NarrativeWriting = {
     running: narrative.story?.running ?? null,
+    failed: tour?.narrative?.status === "failed" ? { threadId: tour.narrative.threadId } : null,
+    threadId: tour?.narrative?.status === "completed" ? tour.narrative.threadId : null,
     starting: tourBusy,
     label: reader.chapters.length === 0 ? "Write narrative" : stale ? "Write update" : "Rewrite",
     generate: startGenerate,

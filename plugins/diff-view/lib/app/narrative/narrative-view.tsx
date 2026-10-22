@@ -16,9 +16,15 @@ import type { NarrativeReader } from "./use-narrative-reader";
 export const NARRATIVE_OUTLINE = "[data-narrative-outline]";
 const ROW_FOCUS = "outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/70";
 
-/** What the view can ask of the agent: write a first narrative, update a stale one, or rewrite; or the thread writing one now. */
+/**
+ * What the view can ask of the agent: write a first narrative, update a stale one, or rewrite; the thread writing
+ * one now; the thread whose attempt failed; and the thread that wrote the newest one.
+ */
 export interface NarrativeWriting {
   running: { threadId: string } | null;
+  failed: { threadId: string } | null;
+  /** The thread that wrote the newest completed narrative. */
+  threadId: string | null;
   starting: boolean;
   label: "Write narrative" | "Write update" | "Rewrite";
   generate: () => void;
@@ -81,6 +87,15 @@ export function NarrativeView({
         {loaded && chapters.length === 0 ? (
           <div className={cn("mx-auto flex max-w-2xl flex-col items-start gap-3 px-4 py-8 text-sm", enter.fade)}>
             <h2 className="text-base font-semibold">No narrative yet</h2>
+            {writing.failed !== null && writing.running === null ? (
+              <p className="text-destructive">
+                The last attempt failed.{" "}
+                <button type="button" className="underline" onClick={() => writing.openThread(writing.failed!.threadId)}>
+                  Open its thread
+                </button>{" "}
+                for details.
+              </p>
+            ) : null}
             <p className="text-muted-foreground">
               {writing.running !== null
                 ? "An agent is writing the narrative; it shows here when the thread finishes."
@@ -348,6 +363,11 @@ function NarrativeOutline({
           <span className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-300" title="The code moved since the newest narrative">
             stale
           </span>
+        ) : null}
+        {writing.threadId !== null && writing.running === null ? (
+          <button type="button" className={cn("shrink-0 rounded px-1 py-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} title="Open the thread that wrote this narrative" onClick={() => writing.openThread(writing.threadId!)}>
+            thread
+          </button>
         ) : null}
         <WritingButton writing={writing} />
         <button type="button" className={cn("rounded p-0.5 hover:bg-state-hover hover:text-foreground", PRESS)} aria-label="Hide outline" title="Hide outline (t)" onClick={onHide}>
