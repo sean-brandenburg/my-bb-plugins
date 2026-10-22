@@ -543,9 +543,19 @@ export function DiffView({ source, instanceKey, onOpenThread, refreshSignal, lab
     }
     return true;
   };
+  /** Whether an excerpt of the step shows a line (or, a null line, the file), so the comment keys reach only what is drawn. */
+  const excerptShows = (path: string, side: "LEFT" | "RIGHT", line: number | null): boolean => {
+    if (!reader.describesCurrentDiff || !reader.excerpts.some((excerpt) => excerpt.path === path)) return false;
+    if (line === null) return true;
+    const rows = keys.models.get(path)?.rows;
+    return rows !== undefined && rowIndexOf(rows, side, line) !== -1;
+  };
   const narrativeEnv = (): ReviewEnv => ({
     ...filesEnv(),
     files: narrativeFiles(),
+    // The anchors the keys step through are the ones the excerpts draw, as `excerptAnnotations` cuts them.
+    threads: comments.threads.filter((thread) => excerptShows(thread.path, thread.side, thread.line)),
+    findings: findingAnchors.filter((finding) => finding.line !== null && excerptShows(finding.path, finding.side, finding.line)),
     seat: () => visibleCursor(1) ?? firstPosition(narrativeFiles(), keys.get().cursor?.want ?? "RIGHT"),
     // The step's prose reads top to bottom; the cursor scrolls only when it would leave the screen.
     reveal: (cursor, block) => reveal(cursor, block ?? "nearest"),
