@@ -306,7 +306,7 @@ export function starterRulesNote(defaults: { folder: string; template: string | 
 
 The Vault calendar (\`gc\`) starts a note for a meeting from the first rule below that matches it. A rule can match on \`title\`, \`organizer\`, \`calendar\`, \`location\` and \`text\` (the title, description, location and link together) with case-insensitive regular expressions, on \`attendees\` (\`3+\`, \`2-5\`, \`0\`) and on \`allDay\`. Every condition a rule names must hold. A rule with no conditions matches everything; meetings no rule matches go to \`${defaults.folder}/\`.
 
-A match puts the note in \`folder\`, named by \`file\` and filled from \`template\`. Placeholders: \`{{title}}\`, \`{{date}}\`, \`{{time}}\`, \`{{end}}\`, \`{{weekday}}\`, \`{{organizer}}\`, \`{{calendar}}\`, \`{{attendees}}\`, \`{{url}}\`, \`{{location}}\`, \`{{notes}}\`, any named group in a condition (\`(?<candidate>…)\`), and anything under \`extract\`, which pulls a placeholder out of the title without being a condition. \`{{a|b}}\` falls back to b when a is empty.
+A match puts the note in \`folder\`, named by \`file\` and filled from \`template\`. Placeholders: \`{{title}}\`, \`{{date}}\`, \`{{time}}\`, \`{{end}}\`, \`{{weekday}}\`, \`{{organizer}}\`, \`{{calendar}}\`, \`{{attendees}}\`, \`{{url}}\`, \`{{location}}\`, \`{{notes}}\`, any named group in a condition (\`(?<candidate>…)\`), and anything under \`extract\`, which pulls a placeholder out of the title without being a condition. \`{{a|b}}\` falls back to b when a is empty. Two meetings with one title on a day share a note unless \`file\` includes \`{{time}}\`.
 
 \`\`\`yaml
 - name: Interviews

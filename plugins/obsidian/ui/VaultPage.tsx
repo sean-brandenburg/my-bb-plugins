@@ -10,7 +10,7 @@ import { errorMessage } from "../shared/errors";
 import { targetFromSubpath } from "../shared/note-text";
 import { NOTE_EXTENSION, dirname, extension, isNotePath, joinPath, normalizePath, type LinkKind } from "../shared/obsidian";
 import { dateKeyOfDailyPath, localDateKey } from "../shared/daily";
-import { CalendarView, openMeetingRules, type CalendarKeys } from "./calendar/CalendarView";
+import { CalendarView, openMeetingRules, useMeetingRulesWatch, type CalendarKeys } from "./calendar/CalendarView";
 import { DailyNoteActions, Dashboard, startRoutine } from "./daily";
 import { ATTACHMENT_EXTENSIONS } from "./file-kinds";
 import { calendarDateOf, decodeNotePath, requestNavigation, useOpenNote } from "./navigation";
@@ -127,6 +127,7 @@ export function VaultPage({ subPath }: { subPath: string }) {
     [appPanel, setSidebarOpen],
   );
   usePanelTabRequests(openTab);
+  useMeetingRulesWatch();
   const global = useGlobalCommands();
   const [root, setRoot] = useState<HTMLElement | null>(null);
 

@@ -17,7 +17,7 @@ import { copyToClipboard } from "../global-keys";
 import { PANEL_PATH, calendarSubPath, useOpenNote } from "../navigation";
 import { runListCommand } from "../vault-keys";
 import type { VaultCommand } from "../vault-nav";
-import type { Vault, VaultRpc } from "../vault-client";
+import { useVaultChanges, type Vault, type VaultRpc } from "../vault-client";
 
 type WeekData = PluginRpcResult<(typeof rpcContract)["meetings"]>;
 
@@ -26,6 +26,21 @@ export type CalendarKeys = (command: VaultCommand, count: number | null) => bool
 
 /** Each week's meetings, kept across day changes and visits since reading the calendar takes a second or two. */
 const weekCache = new Map<string, WeekData>();
+
+/** The rules note the cached weeks were planned with. */
+let plannedRulesPath: string | null = null;
+
+/** Drops the cached weeks when the rules note is among the changed paths, since their note paths came from it. */
+function forgetWeeksIfRulesChanged(paths: readonly string[]): boolean {
+  if (plannedRulesPath === null || !paths.includes(plannedRulesPath)) return false;
+  weekCache.clear();
+  return true;
+}
+
+/** Kept on the Vault page, so editing the rules note there empties the cache even while the calendar isn't showing. */
+export function useMeetingRulesWatch(): void {
+  useVaultChanges((payload) => void forgetWeeksIfRulesChanged(payload.paths));
+}
 
 /** How often the past/now marking is re-read. */
 const CLOCK_MS = 60_000;
@@ -107,6 +122,7 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
       rpc.call("meetings", { from: monday, to: addDays(monday, 7) }).then(
         (next) => {
           weekCache.set(monday, next);
+          plannedRulesPath = next.rules.path;
           if (seq !== request.current) return;
           setError(null);
           setLoading(false);
@@ -123,6 +139,9 @@ export function CalendarView({ vault, dateKey, keys }: { vault: Vault; dateKey: 
   );
 
   useEffect(() => load(false), [load]);
+  useVaultChanges((payload) => {
+    if (forgetWeeksIfRulesChanged(payload.paths)) load(true);
+  });
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), CLOCK_MS);
