@@ -8,14 +8,15 @@ window and attributes what it sees to the plugin it happened in.
 
 | Kind | What | Grouped by |
 | --- | --- | --- |
-| click | A press on a button, link, menu item, list row, tab, or anything else with a pointer cursor | Its name with numbers, file names and paths blanked, plus the thing it sits in (`Cancel in kanban card`); a test id; a link's page; a row by its kind and its list (`option in Unread threads`), so content never makes a key |
+| click | A press on a button, link, menu item, list row, tab, or anything else with a pointer cursor | Its name with numbers (in labels of five characters or more, so `7d` stays `7d`), file names and paths blanked, plus the thing it sits in (`Cancel in kanban card`); a test id; a link's page; a row by its kind and its list (`option in Unread threads`), so content never makes a key |
 | command | A vim key sequence one of the plugins ran (`gg`, `5j`, `/`), announced by `bb-vim-keys` | The sequence |
 | key | Any other key pressed outside a text box: bb's own shortcuts, ⌘ chords, keys nothing bound | The key in vim notation (`<D-k>`, `<Esc>`) |
 | route | A page opened, with ids blanked (`/threads/*`, `/plugins/kanban/board`) | The page |
 
 The thing a control sits in comes from the DOM, not from the plugin: the nearest ancestor with an `aria-label`, a
 `data-testid`, a `data-*` marker (`data-kanban-card`) or id (`data-thread-id`, read as "thread"), or a structural
-role; else a short, digit-free heading. A row's own text (a thread title, a card name, a meeting) is never stored,
+role; else a short, digit-free heading. An element with a marker or id of its own (a board card with `data-ticket-id`) is
+keyed by that type and its container whatever its role (`ticket in kanban column list`). A row's own text (a thread title, a card name, a meeting) is never stored,
 and neither is a label longer than a name or made of several badges. Nothing in the log should identify what you
 were working on, only what you did with it.
 
