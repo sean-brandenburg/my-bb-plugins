@@ -14,20 +14,22 @@ export function Centered({ children }: { children: ReactNode }) {
   );
 }
 
+/** A bordered strip that a row of choices sits in, so they read as one control the chosen one stands out of. */
+export const STRIP = "inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5";
+export const STRIP_OPTION = "rounded-[5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60";
+export const STRIP_ON = "bg-background font-medium text-foreground shadow-sm";
+export const STRIP_OFF = "text-muted-foreground hover:text-foreground";
+
 export function Tabs<T extends string>({ value, options, onChange }: { value: T; options: { id: T; label: ReactNode }[]; onChange: (value: T) => void }) {
   return (
-    <div className="flex items-center gap-1" role="tablist">
+    <div className={STRIP} role="tablist">
       {options.map((option) => (
         <button
           key={option.id}
           type="button"
           role="tab"
           aria-selected={value === option.id}
-          className={cn(
-            "rounded-md px-2.5 py-1 text-sm",
-            PRESS,
-            value === option.id ? "bg-state-active font-medium text-foreground" : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-          )}
+          className={cn(STRIP_OPTION, "px-2.5 py-0.5 text-sm", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
           onClick={() => onChange(option.id)}
         >
           {option.label}
@@ -39,14 +41,14 @@ export function Tabs<T extends string>({ value, options, onChange }: { value: T;
 
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { id: T; label: string }[]; onChange: (value: T) => void }) {
   return (
-    <div className="flex items-center rounded-md border border-border p-0.5" role="radiogroup">
+    <div className={STRIP} role="radiogroup">
       {options.map((option) => (
         <button
           key={option.id}
           type="button"
           role="radio"
           aria-checked={value === option.id}
-          className={cn("rounded px-2 py-0.5 text-xs", PRESS, value === option.id ? "bg-state-active text-foreground" : "text-muted-foreground hover:text-foreground")}
+          className={cn(STRIP_OPTION, "px-2 py-0.5 text-xs", PRESS, value === option.id ? STRIP_ON : STRIP_OFF)}
           onClick={() => onChange(option.id)}
         >
           {option.label}

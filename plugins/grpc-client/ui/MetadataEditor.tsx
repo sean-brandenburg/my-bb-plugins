@@ -18,13 +18,20 @@ export function MetadataEditor({ rows, endpoint, onChange }: { rows: MetadataRow
   return (
     <EntranceScope>
       <div className="space-y-3" data-vim-ignore="">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Sent with every call to <span className="font-medium text-foreground">{endpoint}</span>. A row overrides an auth or endpoint header with the same name.
         </p>
         {presence.length > 0 ? (
-          <div className="space-y-2">
+          <div className="divide-y divide-border rounded-lg border border-border">
             {presence.map(({ key, value: row, index, exiting }) => (
-              <PresenceRow key={key} className={cn("flex items-center gap-2 rounded-md", FOCUS_RING)} fieldRow="item" cascadeIndex={index} exiting={exiting} onExited={() => onExited(key)}>
+              <PresenceRow
+                key={key}
+                className={cn("flex items-center gap-2 px-2 py-1.5 first:rounded-t-lg last:rounded-b-lg", FOCUS_RING)}
+                fieldRow="item"
+                cascadeIndex={index}
+                exiting={exiting}
+                onExited={() => onExited(key)}
+              >
                 <input
                   type="checkbox"
                   className="size-4 accent-foreground"

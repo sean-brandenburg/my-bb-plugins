@@ -125,7 +125,7 @@ export function HistoryList({
       </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         <div ref={header} className="flex items-center justify-between px-2 pb-1" data-nav-row="toolbar">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Recent calls</p>
+          <p className="text-xs font-medium text-muted-foreground">Recent calls</p>
           {confirmClear ? (
             <span className={cx("flex items-center gap-1 text-xs", enter.fade, speed.fast)}>
               <button
@@ -168,21 +168,24 @@ export function HistoryList({
           >
             <button
               type="button"
-              className={cn("flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-2 py-2 text-left", FOCUS_RING)}
+              className={cn("flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left", FOCUS_RING)}
               title={entry.message || entry.method}
               aria-current={entry.id === selectedId ? "true" : undefined}
               data-nav-row={exiting ? undefined : "item"}
               data-nav-key={`history:${entry.id}`}
               onClick={() => onOpen(entry)}
             >
-              <span className="flex min-w-0 items-center gap-2 text-sm">
-                <span className={cn("size-2 shrink-0 rounded-full", entry.ok ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
-                <span className="min-w-0 flex-1 truncate text-foreground">{entry.method.slice(entry.method.lastIndexOf("/") + 1)}</span>
-                <span className={cn("shrink-0 text-xs", entry.ok ? "text-muted-foreground" : "text-destructive")}>{entry.status}</span>
+              <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", entry.ok ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm text-foreground">{entry.method.slice(entry.method.lastIndexOf("/") + 1)}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {entry.endpoint} · {formatWhen(entry.at)}
+                  {entry.origin === "cli" ? " · CLI" : ""}
+                </span>
               </span>
-              <span className="truncate pl-4 text-xs text-muted-foreground">
-                {entry.endpoint} · {formatWhen(entry.at)} · {entry.durationMs} ms
-                {entry.origin === "cli" ? " · CLI" : ""}
+              <span className="flex shrink-0 flex-col items-end gap-0.5 tabular-nums">
+                <span className={cn("text-xs", entry.ok ? "text-muted-foreground" : "font-medium text-destructive")}>{entry.status}</span>
+                <span className="text-[11px] text-muted-foreground">{entry.durationMs} ms</span>
               </span>
             </button>
             <button

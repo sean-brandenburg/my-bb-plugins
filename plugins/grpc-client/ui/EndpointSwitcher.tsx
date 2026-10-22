@@ -79,7 +79,7 @@ export function EndpointSwitcher({
           onAnimationEnd={presence.onAnimationEnd}
           onKeyDown={onPanelKeyDown}
         >
-          <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Endpoint</p>
+          <p className="px-2 pb-1 pt-1 text-xs font-medium text-muted-foreground">Endpoint</p>
           {overview.endpoints.map((option) => (
             <button
               key={option.name}
@@ -93,9 +93,9 @@ export function EndpointSwitcher({
             >
               <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", option.protected ? "bg-amber-500" : "bg-emerald-500")} aria-hidden />
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 text-sm text-foreground">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                   {option.name}
-                  {option.protected ? <span className="text-[10px] text-amber-700 dark:text-amber-300">protected</span> : null}
+                  {option.protected ? <span className="rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-normal text-amber-700 dark:text-amber-300">protected</span> : null}
                 </span>
                 <span className="block truncate font-mono text-[11px] text-muted-foreground">
                   {option.transport === "tls" ? "" : `${option.transport} · `}
@@ -106,9 +106,9 @@ export function EndpointSwitcher({
               {option.name === endpoint.name ? <Icon name="Check" className="mt-1 size-3.5 shrink-0 text-foreground" /> : null}
             </button>
           ))}
-          <div className="mt-1.5 space-y-1.5 border-t border-border px-2 pb-1 pt-2">
+          <div className="-mx-1.5 -mb-1.5 mt-1.5 space-y-1.5 rounded-b-lg border-t border-border bg-muted/30 px-3.5 pb-2.5 pt-2">
             <label className="flex items-center gap-2">
-              <span className="w-12 shrink-0 text-xs text-muted-foreground">Protos</span>
+              <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">Protos</span>
               <select
                 className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 value={sourceName}
@@ -122,7 +122,7 @@ export function EndpointSwitcher({
               </select>
             </label>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="min-w-0 flex-1 truncate">
+              <span className="min-w-0 flex-1 truncate tabular-nums">
                 {descriptors === null
                   ? "Descriptors not loaded"
                   : `${descriptors.fileCount} files · loaded ${new Date(descriptors.loadedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}

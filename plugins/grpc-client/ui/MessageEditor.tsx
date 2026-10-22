@@ -263,7 +263,12 @@ function Section({
   return (
     <Appear className="py-1">
       <div className="rounded-lg border border-border" data-nav-group="">
-        <div {...FIELD_ROW} data-nav-row="group" className={cn("flex items-center gap-2 rounded-lg px-3 py-1.5", REVEAL_HOST, FOCUS_RING)} title={field.comment}>
+        <div
+          {...FIELD_ROW}
+          data-nav-row="group"
+          className={cn("flex items-center gap-2 bg-muted/50 px-3 py-1.5", open ? "rounded-t-lg border-b border-border" : "rounded-lg", REVEAL_HOST, FOCUS_RING)}
+          title={field.comment}
+        >
           <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={open} data-bbm-open={open} onClick={() => setOpen(!open)}>
             <Icon name="ChevronRight" className={cx("size-3.5 shrink-0 text-muted-foreground", CHEVRON)} />
             <FieldName field={field} set={set} />
@@ -272,7 +277,7 @@ function Section({
           {set ? <ClearButton label={`Clear ${field.jsonName}`} onClick={onClear} /> : null}
         </div>
         {open ? (
-          <Appear className="border-t border-border px-3 py-2">
+          <Appear className="px-3 py-2">
             <Docs field={field} />
             {children}
           </Appear>

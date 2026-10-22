@@ -47,7 +47,8 @@ export function ConfirmSendDialog({
         <DialogHeader>
           <DialogTitle>Send to {endpoint}?</DialogTitle>
           <DialogDescription>
-            {endpoint} ({target}) is protected. This really calls {methodName ?? "the method"}.
+            {endpoint} (<span className="font-mono text-xs">{target}</span>) is protected. This really calls{" "}
+            <span className="font-medium text-foreground">{methodName ?? "the method"}</span>.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

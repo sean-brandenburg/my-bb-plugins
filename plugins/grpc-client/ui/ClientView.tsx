@@ -763,10 +763,10 @@ export function ClientView() {
           ) : null}
           {requestTab === "metadata" ? <MetadataEditor rows={metadata} endpoint={endpoint.name} onChange={setMetadata} /> : null}
           {requestTab === "options" ? (
-            <div className={cx("max-w-xl space-y-5 text-sm", enter.rise)} data-vim-ignore="">
-              <label {...FIELD_ROW} className={cn("block space-y-1 rounded-md", FOCUS_RING)}>
-                <span className="font-medium text-foreground">Deadline</span>
-                <span className="flex items-center gap-2">
+            <div className={cx("max-w-2xl divide-y divide-border rounded-lg border border-border text-sm", enter.rise)} data-vim-ignore="">
+              <label {...FIELD_ROW} className={cn("flex items-start gap-4 rounded-t-lg px-3 py-2.5", FOCUS_RING)}>
+                <span className="w-20 shrink-0 pt-1.5 font-medium text-foreground">Deadline</span>
+                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                   <input
                     className={cn(inputClass, "w-28")}
                     placeholder={String(overview.timeoutSeconds)}
@@ -774,26 +774,36 @@ export function ClientView() {
                     value={timeout}
                     onChange={(event) => setTimeoutText(event.target.value)}
                   />
-                  <span className="text-muted-foreground">seconds (default {overview.timeoutSeconds})</span>
+                  <span className="text-xs text-muted-foreground">seconds (default {overview.timeoutSeconds})</span>
                 </span>
               </label>
-              <div className="space-y-2">
-                <span className="font-medium text-foreground">Auth</span>
-                <p className="text-muted-foreground">
-                  {method.auth === null ? "No auth profile, so no token is added." : `Profile “${method.auth}”`}
-                  {method.authReason ? ` · ${method.authReason}` : ""}
-                </p>
-                {method.auth !== null ? (
-                  <Button variant="outline" size="sm" data-nav-row="item" onClick={resetAuth}>
-                    Forget cached tokens
-                  </Button>
-                ) : null}
+              <div className="flex items-start gap-4 px-3 py-2.5">
+                <span className="w-20 shrink-0 font-medium text-foreground">Auth</span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-muted-foreground">
+                    {method.auth === null ? "No auth profile, so no token is added." : `Profile “${method.auth}”`}
+                    {method.authReason ? ` · ${method.authReason}` : ""}
+                  </p>
+                  {method.auth !== null ? (
+                    <Button variant="outline" size="sm" data-nav-row="item" onClick={resetAuth}>
+                      Forget cached tokens
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-              <dl className="space-y-1">
-                <dt className="font-medium text-foreground">Types</dt>
-                <dd className="break-all font-mono text-xs text-muted-foreground">request {method.input}</dd>
-                <dd className="break-all font-mono text-xs text-muted-foreground">response {method.output}</dd>
-              </dl>
+              <div className="flex items-start gap-4 px-3 py-2.5">
+                <span className="w-20 shrink-0 font-medium text-foreground">Types</span>
+                <dl className="min-w-0 flex-1 space-y-1 font-mono text-xs">
+                  <div className="flex gap-2">
+                    <dt className="w-16 shrink-0 text-muted-foreground">request</dt>
+                    <dd className="min-w-0 break-all text-foreground">{method.input}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-16 shrink-0 text-muted-foreground">response</dt>
+                    <dd className="min-w-0 break-all text-foreground">{method.output}</dd>
+                  </div>
+                </dl>
+              </div>
             </div>
           ) : null}
         </div>
@@ -840,7 +850,7 @@ export function ClientView() {
           </Centered>
         ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+            <div className="flex items-center gap-3 border-b border-border px-3 py-2">
               {listDocked ? null : (
                 <button
                   type="button"
@@ -871,7 +881,6 @@ export function ClientView() {
                   </button>
                 ) : null}
               </div>
-              <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
               <Tabs
                 value={requestTab}
                 onChange={setRequestTab}
@@ -881,7 +890,7 @@ export function ClientView() {
                     id: "metadata",
                     label: (
                       <>
-                        Metadata{activeMetadata.length > 0 ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{activeMetadata.length}</span> : null}
+                        Metadata{activeMetadata.length > 0 ? <span className="ml-1.5 text-[11px] tabular-nums text-muted-foreground">{activeMetadata.length}</span> : null}
                       </>
                     ),
                   },
@@ -979,8 +988,8 @@ export function ClientView() {
               </div>
             </div>
             {showComment && method.comment ? (
-              <p className={cx("whitespace-pre-line border-b border-border px-4 py-2 text-sm text-muted-foreground", enter.drop, speed.fast)}>
-                <span className="mb-1 block font-mono text-xs">{method.fullName}</span>
+              <p className={cx("whitespace-pre-line border-b border-border bg-muted/30 px-4 py-2 text-sm text-muted-foreground", enter.drop, speed.fast)}>
+                <span className="mb-1 block font-mono text-xs text-foreground">{method.fullName}</span>
                 {method.comment}
               </p>
             ) : null}

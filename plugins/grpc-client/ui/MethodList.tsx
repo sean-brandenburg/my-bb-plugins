@@ -121,7 +121,7 @@ function FilterPanel({
   return (
     <div className="flex max-h-[min(32rem,70vh)] flex-col">
       <div className="flex items-center justify-between px-2 pb-1 pt-1">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Auth type</span>
+        <span className="text-xs font-medium text-muted-foreground">Auth type</span>
         {filters.auth.length > 0 ? (
           <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => onChange({ ...filters, auth: [] })}>
             Any
@@ -137,7 +137,7 @@ function FilterPanel({
         onChange={() => onChange({ ...filters, hideDeprecated: !filters.hideDeprecated })}
       />
       <div className="mt-1.5 flex items-center justify-between border-t border-border px-2 pb-1 pt-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground">
           APIs{filters.services.length > 0 ? ` · ${filters.services.length} selected` : ""}
         </span>
         {filters.services.length > 0 ? (

@@ -5,7 +5,7 @@ import { cx, enter, NUDGE, OPACITY_TRANSITION, PRESS, speed, stagger, STAGGER, u
 import { useSearchBoxKeys, useTextSearch } from "bb-vim-keys/react";
 import type { CallResult } from "../contract";
 import { formatResponse } from "../shared/common";
-import { FOCUS_RING } from "./controls";
+import { FOCUS_RING, STRIP, STRIP_OFF, STRIP_ON, STRIP_OPTION } from "./controls";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
@@ -62,13 +62,13 @@ function JsonView({ text }: { text: string }) {
 function MetadataTable({ entries, empty }: { entries: [string, string][]; empty: string }) {
   if (entries.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
-    <dl className="divide-y divide-border rounded-lg border border-border text-sm">
+    <dl className="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
       {entries.map(([name, value], index) => (
-        <div key={`${name}-${index}`} className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-3 px-3 py-2">
-          <dt className="truncate font-mono text-[13px] text-muted-foreground" title={name}>
+        <div key={`${name}-${index}`} className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)]">
+          <dt className="truncate bg-muted/30 px-3 py-2 font-mono text-[13px] text-muted-foreground" title={name}>
             {name}
           </dt>
-          <dd className="break-all font-mono text-[13px] text-foreground">{value}</dd>
+          <dd className="break-all px-3 py-2 font-mono text-[13px] text-foreground">{value}</dd>
         </div>
       ))}
     </dl>
@@ -218,8 +218,8 @@ export function ResponseView({
   const statusLabel = result.ok ? "OK" : result.error !== null ? "Failed" : result.status.name;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", OPACITY_TRANSITION, sending && "opacity-50")}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2.5">
-        <div key={id} className="flex items-center gap-2.5 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-muted/30 px-4 py-2">
+        <div key={id} className="flex min-w-0 items-center gap-3 text-xs">
           <span className={cx("flex", enter.pop)}>
             <span
               className={cn(
@@ -231,17 +231,19 @@ export function ResponseView({
               {result.ok || result.error !== null ? statusLabel : `${result.status.code} ${statusLabel}`}
             </span>
           </span>
-          <span className={cx("tabular-nums text-muted-foreground", enter.fade, STAGGER)} style={stagger(1)}>
-            {formatDuration(result.durationMs)}
-          </span>
-          {body !== "" ? (
-            <span className={cx("tabular-nums text-muted-foreground", enter.fade, STAGGER)} style={stagger(2)}>
-              {formatSize(body)}
+          <span className="flex items-baseline gap-x-2 tabular-nums">
+            <span className={cx("font-medium text-foreground", enter.fade, STAGGER)} style={stagger(1)}>
+              {formatDuration(result.durationMs)}
             </span>
-          ) : null}
+            {body !== "" ? (
+              <span className={cx("text-muted-foreground", enter.fade, STAGGER)} style={stagger(2)}>
+                {formatSize(body)}
+              </span>
+            ) : null}
+          </span>
           {recordedAt !== null ? (
             <span
-              className={cx("rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground", enter.fade, STAGGER)}
+              className={cx("truncate rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground", enter.fade, STAGGER)}
               style={stagger(3)}
               title={new Date(recordedAt).toLocaleString()}
             >
@@ -249,24 +251,22 @@ export function ResponseView({
             </span>
           ) : null}
         </div>
-        <div className="ml-auto flex items-center gap-1" role="tablist">
-          {tabs.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === entry.id}
-              className={cn(
-                "rounded-md px-2.5 py-1 text-sm",
-                PRESS,
-                tab === entry.id ? "bg-state-active text-foreground" : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-              )}
-              onClick={() => onTab(entry.id)}
-            >
-              {entry.label}
-              {entry.count !== undefined ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{entry.count}</span> : null}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-1">
+          <div className={STRIP} role="tablist">
+            {tabs.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === entry.id}
+                className={cn(STRIP_OPTION, "px-2.5 py-0.5 text-sm", PRESS, tab === entry.id ? STRIP_ON : STRIP_OFF)}
+                onClick={() => onTab(entry.id)}
+              >
+                {entry.label}
+                {entry.count !== undefined ? <span className="ml-1.5 text-[11px] tabular-nums text-muted-foreground">{entry.count}</span> : null}
+              </button>
+            ))}
+          </div>
           {body !== "" ? <CopyButton text={body} /> : null}
         </div>
       </div>
