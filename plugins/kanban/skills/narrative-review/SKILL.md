@@ -48,20 +48,27 @@ the change is for and how its parts fit, then cover the details.
   sites switch to the new signature."
 - **`title`**: a short claim, not a file name. Write "Retries back off
   exponentially, capped at 30s", not "client.go".
-- **`body`**: Markdown, about 40–200 words. Say what the lines do and why they're
-  there, how they connect to earlier steps, and what a reviewer should check
+- **`body`**: Markdown, as short as it can be while saying everything a
+  reviewer needs: usually 30–120 words plus any diagram. Say what the lines do
+  and why they're there, how they connect to earlier steps, and what to check
   closely: invariants, failure modes, anything surprising. Don't paraphrase the
-  code line by line. The reader sees the lines next to your text.
-- **Shape the body for scanning**, not as one block of prose. Open with one or
-  two sentences that say what the step does and how it follows from the earlier
-  steps. Then put the details in bullets, one point per bullet, each with a bold
-  lead-in: `- **Idempotent:** \`ON CONFLICT DO NOTHING\` targets the primary key, so …`.
+  code line by line, and don't restate what the title or an earlier step
+  already said. The reader sees the lines next to your text.
+- **Shape the body for scanning**, not as one block of prose. Open with one
+  sentence on what the step does and how it follows from the earlier steps.
+  Then put the details in bullets, one point per bullet, each a single sentence
+  with a bold lead-in: `- **Idempotent:** \`ON CONFLICT DO NOTHING\` targets the primary key.`
   Use a numbered list when order matters (a call sequence, a lock order). When
   the step has something a reviewer should verify, end with a `**Check:**`
   bullet naming it; a mechanical step needs none. Put identifiers, paths and
-  literals in inline code. The step title is
+  literals in inline code. Cut filler: no "note that", "it's worth", "in order
+  to", or sentences that only announce the next sentence. The step title is
   already the heading, so don't start the body with one; use a `###` only when a
   long body has two distinct parts.
+- **Prefer a diagram to prose** whenever the step describes structure or flow:
+  a call sequence, branching, states, or how types relate. Draw it, then keep
+  only the prose the diagram can't carry (why, and what to check). See
+  Diagrams below.
 - **`refs`**: `{ "path", "side": "new"|"old", "startLine", "endLine" }`. Use new-side
   numbers for added and context lines. Use old-side numbers for deleted lines,
   taken from the `-a,b` half of the hunk header. A hunk that replaces lines needs
@@ -74,32 +81,42 @@ the change is for and how its parts fit, then cover the details.
 
 ## Diagrams
 
-Put a fenced `mermaid` block in a step's `body` when a picture explains more than
-prose does:
+Diagrams are the preferred way to explain structure or flow; prose is the
+fallback. Put a fenced `mermaid` block in a step's `body` whenever the step
+covers any of these, and cut the prose that would have described the same
+thing:
 
-- a call or message sequence across files or services (`sequenceDiagram`);
+- a call or message sequence across functions, files or services
+  (`sequenceDiagram`);
 - a state machine or lifecycle (`stateDiagram-v2`);
 - a data model or how types relate (`classDiagram`, `erDiagram`);
-- a decision flow with several branches (`flowchart`).
+- a decision flow with two or more branches (`flowchart`);
+- before/after shape of a reworked path, as two small subgraphs in one
+  `flowchart`.
 
 Keep a diagram under about 15 nodes, and name nodes after the identifiers in the
 code. Put the diagram in the step about that structure, usually early in the
-arc, not in a separate step. Mermaid syntax pitfalls:
+arc, not in a separate step. The `summary` may carry one diagram too, when the
+whole change is a flow or a data-model change. Mermaid syntax pitfalls:
 
 - Quote any label that contains punctuation: `A["parse(input)"]`.
 - Don't put `end` as a bare word in a flowchart label.
 - Use `-->` for edges.
 - Don't wrap the block in HTML.
 
-Most changes need zero to three diagrams. Don't add one for a linear change.
+A diagram earns its place when it replaces prose. Skip it only for a step with
+nothing structural to show: a single straight-line edit, a rename, a constant
+change, generated files.
 
 ## The summary, reading order and watch-outs
 
 The report's `summary` is Markdown. Its first sentence must be plain prose that
 says what the change does, because the board shows that sentence alone in a
 collapsed strip and would show raw markup there. After it, structure the rest:
-a short bullet list of the main parts of the change (bold lead-in, then one
-sentence each) and a sentence on why. About 60–150 words in total.
+a short bullet list of the main parts of the change (bold lead-in, one sentence
+each), a sentence on why, and a diagram when the change as a whole is a flow or
+a model change. About 40–100 words of text; no detail that a step already
+carries.
 `readingOrder` lists every changed file once, each with:
 
 - `role`: `key`, `supporting` or `mechanical`;
@@ -109,7 +126,7 @@ sentence each) and a sentence on why. About 60–150 words in total.
 
 Your prompt gives the exact rules for these. `watchOut` lists anything risky or
 easy to miss, one item per risk: a single plain sentence that names the risk and
-why it matters, under about 30 words. The board renders `note` and `watchOut`
+why it matters, under about 20 words. The board renders `note` and `watchOut`
 items as plain text, so they take no Markdown: no backticks, asterisks or
 headers. Detail belongs in the step that covers those lines. These feed the
 board's tour strip and its review-attention level, so fill them in as carefully
