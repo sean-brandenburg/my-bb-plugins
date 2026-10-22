@@ -24,6 +24,21 @@ Personal [bb](https://getbb.app) plugins, one directory each under `plugins/`.
 | `no-selection-menu` | Hides the Add to chat / Reply in side chat toolbar bb pops up over highlighted text |
 | `activity` | Logs every click, vim key command, and page across bb and the plugins, attributed to the plugin it happened in, with an Activity page and `bb activity` CLI that rank them so unused features can be pruned |
 
+## Usage data
+
+The `activity` plugin logs how bb and these plugins get used: every click, vim key command, other key, and page,
+per plugin, with mouse-vs-keyboard counts for clicks. Check it before pruning a feature or giving something a key:
+
+```sh
+bb activity plugins --since 30d                   # which plugins see use at all
+bb activity top --since 30d --kind command --plugin <name>   # which of a plugin's keys get used
+bb activity top --since 30d --kind click          # which controls are clicked, and how
+bb activity top --since all --json                # the same for a script
+```
+
+The Activity page in the sidebar shows the same ranking. Details, limits, and the event shape are in
+[plugins/activity/README.md](plugins/activity/README.md).
+
 ## Install
 
 From a local checkout (rebuild after changes with `bb plugin build plugins/<name>`):

@@ -14,7 +14,10 @@
       "icon": "Activity"
     },
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
   },
   "dependencies": {
     "bb-motion": "file:../motion/lib",

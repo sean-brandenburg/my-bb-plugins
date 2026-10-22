@@ -218,6 +218,11 @@ export function mountCollector(doc: Document, win: Window, options: CollectorOpt
     push(record);
     pendingKeys.set(keydown, record);
     lastKey = { record, at: record.at };
+    // A type-to-search box (bb's settings search, a palette) takes a key pressed on the page and
+    // then holds focus; that key was text, not a shortcut, so it goes once the box has focus.
+    win.setTimeout(() => {
+      if (record.kind === "key" && isTextEntry(doc.activeElement)) drop(record);
+    }, 0);
   };
 
   /** The raw keys a sequence or count was typed as, sitting just before `record` in the buffer. */

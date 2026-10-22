@@ -24,3 +24,10 @@ When a plugin change is done, land it and install it locally without waiting to 
 Install from the main checkout, never a worktree path: a worktree install breaks once the worktree is cleaned up.
 
 Commits are GPG-signed and the sandbox blocks `~/.gnupg`, so `git commit` and `cherry-pick` run outside it. So do the install, build, and reload in the main checkout, which the sandbox can't write to.
+
+## Usage data
+
+Before dropping a feature, changing a key, or deciding what a surface should do first, read how it is used:
+`bb activity plugins --since 30d`, then `bb activity top --since 30d --plugin <name>` (`--kind command` for keys,
+`--kind click` for controls with their mouse-vs-keyboard split). The `activity` plugin records this from every
+plugin without instrumentation, so a new surface's buttons and keys count as soon as it ships.

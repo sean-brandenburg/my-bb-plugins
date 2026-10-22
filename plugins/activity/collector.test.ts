@@ -165,6 +165,24 @@ describe("mountCollector", () => {
     ]);
   });
 
+  it("forgets a key that a type-to-search box took, since it was text", async () => {
+    html(`<input id="search" aria-label="Search settings">`);
+    mount();
+    const box = document.getElementById("search") as HTMLInputElement;
+    // bb's settings page: a letter pressed on the page opens the search box with it.
+    window.addEventListener("keydown", (event) => {
+      if (event.key.length === 1) box.focus();
+    });
+    keydown(document, "t");
+    await vi.advanceTimersByTimeAsync(0);
+    keydown(box, "h");
+    box.blur();
+    keydown(document, "Escape");
+    await vi.advanceTimersByTimeAsync(0);
+    const events = await recorded();
+    expect(events.map((event) => event.key)).toEqual(["<Esc>"]);
+  });
+
   it("turns a key the library ran as a command into that command, folding in the keys the sequence took", async () => {
     html(`<div data-bb-plugin="grpc-client" id="root" tabindex="-1"></div>`);
     mount();
