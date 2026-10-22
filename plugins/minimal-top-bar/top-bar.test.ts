@@ -95,6 +95,39 @@ describe("mountMinimalTopBar", () => {
     cleanup();
   });
 
+  it("waits to collapse the sidebar while something in it has focus, as bb's / gives its settings search", async () => {
+    document.body.innerHTML = `
+      <div id="sidebar" data-side="left" data-variant="sidebar" data-state="collapsed" data-collapsible="rail">
+        <input id="search" aria-label="Search settings" />
+      </div>
+      <button id="toggle" data-sidebar="trigger"></button>`;
+    const sidebar = document.getElementById("sidebar")!;
+    const presses = vi.fn(() => {
+      sidebar.dataset.state = "collapsed";
+      sidebar.dataset.collapsible = "rail";
+    });
+    document.getElementById("toggle")!.addEventListener("click", presses);
+    const cleanup = mountMinimalTopBar(document, window);
+    await nextFrame();
+    expect(presses).not.toHaveBeenCalled();
+
+    const search = document.getElementById("search")!;
+    sidebar.dataset.state = "expanded";
+    sidebar.dataset.collapsible = "";
+    search.focus();
+    await nextFrame();
+    await nextFrame();
+    expect(presses).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(search);
+
+    search.blur();
+    await nextFrame();
+    await nextFrame();
+    expect(presses).toHaveBeenCalledTimes(1);
+    expect(sidebar.dataset.state).toBe("collapsed");
+    cleanup();
+  });
+
   it("leaves the compact window's sidebar drawer alone", async () => {
     document.body.innerHTML = `
       <div data-sidebar="panel" data-side="left" data-variant="sidebar" data-state="expanded"></div>

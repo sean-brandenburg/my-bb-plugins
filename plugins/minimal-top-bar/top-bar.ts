@@ -98,10 +98,14 @@ function hideCommitButtons(doc: Document, hide: boolean) {
 /**
  * Keeps the sidebar collapsed to the rail. bb remembers it open, opens it by
  * default, and opens it on its sidebar.toggle key, so the hidden toggle is
- * pressed whenever it shows; that also saves the collapsed state.
+ * pressed whenever it shows; that also saves the collapsed state. Not while
+ * something in it holds focus: bb's `/` on a settings page opens the sidebar
+ * to focus its search box, and collapsing then would blur the box. It
+ * collapses once focus leaves.
  */
 function collapseSidebar(doc: Document) {
-  if (doc.querySelector(EXPANDED_SIDEBAR) === null) return;
+  const sidebar = doc.querySelector(EXPANDED_SIDEBAR);
+  if (sidebar === null || sidebar.contains(doc.activeElement)) return;
   doc.querySelector<HTMLElement>(SIDEBAR_TRIGGER)?.click();
 }
 
@@ -170,10 +174,13 @@ export function mountMinimalTopBar(doc: Document, win: Window): () => void {
     attributes: true,
     attributeFilter: ["data-state", "class"],
   });
+  // Focus settles on its new target by the next frame, when schedule runs.
+  doc.addEventListener("focusout", schedule);
   schedule();
   const removeTitleMenu = installTitleMenu(doc, win);
   return () => {
     observer.disconnect();
+    doc.removeEventListener("focusout", schedule);
     if (frame !== 0) win.cancelAnimationFrame(frame);
     style.remove();
     hideCommitButtons(doc, false);
