@@ -44,5 +44,7 @@ candidate to drop from the keymap.
 
 They don't have to. Clicks are attributed through the root bb wraps around every plugin slot, and key commands
 through the event `createKeyHandler` in `bb-vim-keys` dispatches after a command runs (`KEY_COMMAND_EVENT`), which
-carries the plugin id `bb plugin build` defines into each bundle. A plugin whose keys don't go through the library
-shows up only as raw keys.
+carries the plugin id `bb plugin build` defines into each bundle. Keys pressed inside a text box are never recorded, so vim-mode's editing commands in the
+prompt box (`dd`, `ciw`) don't show up; its thread scroll-mode keys do, since they go through the library. A click
+bb makes itself (`element.click()`) counts as a keyboard click, and a row opened with Enter or `o` records both the
+command and the click it caused.
